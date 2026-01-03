@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   build-wheels:
-    name: Build wheels on ${{ matrix.os }}
+    name: Build wheels (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -25,11 +25,11 @@ jobs:
           # Linux x86_64
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-          # Linux aarch64
+          # Linux aarch64 (uses QEMU emulation via maturin-action)
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-          # macOS x86_64
-          - os: macos-13
+          # macOS x86_64 (Intel)
+          - os: macos-13-large
             target: x86_64-apple-darwin
           # macOS aarch64 (Apple Silicon)
           - os: macos-14
@@ -42,22 +42,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.ref }}
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install cross-compilation tools (Linux aarch64)
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Build wheels
         uses: PyO3/maturin-action@v1
