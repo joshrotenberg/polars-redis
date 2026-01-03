@@ -272,6 +272,14 @@ pub struct HashSchema {
     include_key: bool,
     /// Name of the key column (if included).
     key_column_name: String,
+    /// Whether to include the TTL as a column.
+    include_ttl: bool,
+    /// Name of the TTL column (if included).
+    ttl_column_name: String,
+    /// Whether to include the row index as a column.
+    include_row_index: bool,
+    /// Name of the row index column (if included).
+    row_index_column_name: String,
 }
 
 impl HashSchema {
@@ -285,6 +293,10 @@ impl HashSchema {
             types,
             include_key: true,
             key_column_name: "_key".to_string(),
+            include_ttl: false,
+            ttl_column_name: "_ttl".to_string(),
+            include_row_index: false,
+            row_index_column_name: "_index".to_string(),
         }
     }
 
@@ -297,6 +309,30 @@ impl HashSchema {
     /// Set the name of the key column.
     pub fn with_key_column_name(mut self, name: impl Into<String>) -> Self {
         self.key_column_name = name.into();
+        self
+    }
+
+    /// Set whether to include the TTL as a column.
+    pub fn with_ttl(mut self, include: bool) -> Self {
+        self.include_ttl = include;
+        self
+    }
+
+    /// Set the name of the TTL column.
+    pub fn with_ttl_column_name(mut self, name: impl Into<String>) -> Self {
+        self.ttl_column_name = name.into();
+        self
+    }
+
+    /// Set whether to include the row index as a column.
+    pub fn with_row_index(mut self, include: bool) -> Self {
+        self.include_row_index = include;
+        self
+    }
+
+    /// Set the name of the row index column.
+    pub fn with_row_index_column_name(mut self, name: impl Into<String>) -> Self {
+        self.row_index_column_name = name.into();
         self
     }
 
@@ -320,13 +356,47 @@ impl HashSchema {
         &self.key_column_name
     }
 
+    /// Whether the TTL column is included.
+    pub fn include_ttl(&self) -> bool {
+        self.include_ttl
+    }
+
+    /// Get the TTL column name.
+    pub fn ttl_column_name(&self) -> &str {
+        &self.ttl_column_name
+    }
+
+    /// Whether the row index column is included.
+    pub fn include_row_index(&self) -> bool {
+        self.include_row_index
+    }
+
+    /// Get the row index column name.
+    pub fn row_index_column_name(&self) -> &str {
+        &self.row_index_column_name
+    }
+
     /// Convert to Arrow Schema.
     pub fn to_arrow_schema(&self) -> Schema {
-        let mut arrow_fields: Vec<Field> = Vec::with_capacity(self.fields.len() + 1);
+        let mut arrow_fields: Vec<Field> = Vec::with_capacity(self.fields.len() + 3);
 
-        // Add key column first if included
+        // Add row index column first if included
+        if self.include_row_index {
+            arrow_fields.push(Field::new(
+                &self.row_index_column_name,
+                DataType::UInt64,
+                false,
+            ));
+        }
+
+        // Add key column if included
         if self.include_key {
             arrow_fields.push(Field::new(&self.key_column_name, DataType::Utf8, false));
+        }
+
+        // Add TTL column if included (Int64, nullable - returns -1 for no TTL, -2 for missing key)
+        if self.include_ttl {
+            arrow_fields.push(Field::new(&self.ttl_column_name, DataType::Int64, true));
         }
 
         // Add data fields
@@ -345,7 +415,7 @@ impl HashSchema {
         let projected_fields: Vec<String> = columns
             .iter()
             .filter(|c| {
-                // Include if it's a data field (not the key column)
+                // Include if it's a data field (not the key column, TTL column, or row index column)
                 self.types.contains_key(*c)
             })
             .cloned()
@@ -359,11 +429,22 @@ impl HashSchema {
         // Check if key column is requested
         let include_key = self.include_key && columns.contains(&self.key_column_name);
 
+        // Check if TTL column is requested
+        let include_ttl = self.include_ttl && columns.contains(&self.ttl_column_name);
+
+        // Check if row index column is requested
+        let include_row_index =
+            self.include_row_index && columns.contains(&self.row_index_column_name);
+
         Self {
             fields: projected_fields,
             types: projected_types,
             include_key,
             key_column_name: self.key_column_name.clone(),
+            include_ttl,
+            ttl_column_name: self.ttl_column_name.clone(),
+            include_row_index,
+            row_index_column_name: self.row_index_column_name.clone(),
         }
     }
 }
@@ -375,6 +456,10 @@ impl Default for HashSchema {
             types: HashMap::new(),
             include_key: true,
             key_column_name: "_key".to_string(),
+            include_ttl: false,
+            ttl_column_name: "_ttl".to_string(),
+            include_row_index: false,
+            row_index_column_name: "_index".to_string(),
         }
     }
 }

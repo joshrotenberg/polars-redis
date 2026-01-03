@@ -31,6 +31,8 @@ pub struct JsonBatchIterator {
     rows_yielded: usize,
     /// Buffer of keys waiting to be fetched.
     key_buffer: Vec<String>,
+    /// Current row offset for row index column.
+    row_offset: u64,
 }
 
 impl JsonBatchIterator {
@@ -56,6 +58,7 @@ impl JsonBatchIterator {
             done: false,
             rows_yielded: 0,
             key_buffer: Vec::new(),
+            row_offset: 0,
         })
     }
 
@@ -102,8 +105,11 @@ impl JsonBatchIterator {
             None => self.schema.clone(),
         };
 
-        // Convert to RecordBatch
-        let mut batch = json_to_record_batch(&json_data, &effective_schema)?;
+        // Convert to RecordBatch with current row offset
+        let mut batch = json_to_record_batch(&json_data, &effective_schema, self.row_offset)?;
+
+        // Update row offset for next batch
+        self.row_offset += batch.num_rows() as u64;
 
         // Apply max rows limit
         if let Some(max) = self.config.max_rows {
@@ -153,10 +159,11 @@ impl JsonBatchIterator {
     /// Fetch JSON data for a batch of keys.
     fn fetch_batch(&mut self, keys: &[String]) -> Result<Vec<JsonData>> {
         let projection = self.projection.as_deref();
+        let include_ttl = self.schema.include_ttl();
 
         self.runtime.block_on(async {
             let mut conn = self.connection.get_async_connection().await?;
-            fetch_json(&mut conn, keys, projection).await
+            fetch_json(&mut conn, keys, projection, include_ttl).await
         })
     }
 

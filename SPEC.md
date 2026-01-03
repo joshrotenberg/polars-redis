@@ -65,6 +65,8 @@ polars-redis is a Polars IO plugin that enables scanning Redis data structures (
 | Null/missing field handling | ✅ Done | Missing fields become null |
 | Batched iteration | ✅ Done | Configurable batch_size and count_hint |
 | Include/exclude key column | ✅ Done | `include_key`, `key_column_name` options |
+| TTL column support | ✅ Done | `include_ttl`, `ttl_column_name` options |
+| Row index column support | ✅ Done | `include_row_index`, `row_index_column_name` options |
 | Python API (`register_io_source`) | ✅ Done | Full LazyFrame integration |
 | Integration tests | ✅ Done | 50+ Python tests, 42 Rust tests |
 | CI/CD pipeline | ✅ Done | GitHub Actions with Redis service |
@@ -75,7 +77,6 @@ polars-redis is a Polars IO plugin that enables scanning Redis data structures (
 
 | Feature | Priority | Phase |
 |---------|----------|-------|
-| TTL column support | Low | 2 |
 | Write modes (fail/replace/append) | Medium | 3 |
 | TTL on write | Medium | 3 |
 | Key generation strategies | Medium | 3 |
@@ -958,12 +959,11 @@ client-side for millions of members.
 ### Phase 2: Enhanced Read (Done)
 - [x] `read_hashes()` / `read_json()` eager functions
 - [x] `infer_hash_schema()` / `infer_json_schema()`
-- [ ] TTL column support
-- [ ] Row index support
-- [ ] Better error messages
-- [ ] PyPI release
+- [x] TTL column support
+- [x] Row index support
+- [x] Better error messages
 
-### Phase 3: Write Support (Done)
+### Phase 3: Write Support
 - [x] `write_hashes()` basic implementation
 - [x] `write_json()` basic implementation
 - [ ] Write modes (fail/replace/append)
@@ -982,6 +982,11 @@ client-side for millions of members.
 - [ ] Connection pooling
 - [ ] Cluster support
 - [ ] Lists support (`scan_list`)
+
+### Phase 6: Release
+- [ ] PyPI release
+- [ ] crates.io release
+- [ ] Documentation site
 
 ---
 

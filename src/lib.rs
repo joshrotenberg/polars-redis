@@ -148,6 +148,10 @@ impl PyHashBatchIterator {
     /// * `projection` - Optional list of columns to fetch
     /// * `include_key` - Whether to include the Redis key as a column
     /// * `key_column_name` - Name of the key column
+    /// * `include_ttl` - Whether to include the TTL as a column
+    /// * `ttl_column_name` - Name of the TTL column
+    /// * `include_row_index` - Whether to include the row index as a column
+    /// * `row_index_column_name` - Name of the row index column
     /// * `max_rows` - Optional maximum rows to return
     #[new]
     #[pyo3(signature = (
@@ -159,6 +163,10 @@ impl PyHashBatchIterator {
         projection = None,
         include_key = true,
         key_column_name = "_key".to_string(),
+        include_ttl = false,
+        ttl_column_name = "_ttl".to_string(),
+        include_row_index = false,
+        row_index_column_name = "_index".to_string(),
         max_rows = None
     ))]
     #[allow(clippy::too_many_arguments)]
@@ -171,6 +179,10 @@ impl PyHashBatchIterator {
         projection: Option<Vec<String>>,
         include_key: bool,
         key_column_name: String,
+        include_ttl: bool,
+        ttl_column_name: String,
+        include_row_index: bool,
+        row_index_column_name: String,
         max_rows: Option<usize>,
     ) -> PyResult<Self> {
         // Parse schema from Python types
@@ -195,7 +207,11 @@ impl PyHashBatchIterator {
 
         let hash_schema = HashSchema::new(field_types)
             .with_key(include_key)
-            .with_key_column_name(key_column_name);
+            .with_key_column_name(key_column_name)
+            .with_ttl(include_ttl)
+            .with_ttl_column_name(ttl_column_name)
+            .with_row_index(include_row_index)
+            .with_row_index_column_name(row_index_column_name);
 
         let mut config = BatchConfig::new(pattern)
             .with_batch_size(batch_size)
@@ -293,6 +309,10 @@ impl PyJsonBatchIterator {
     /// * `projection` - Optional list of columns to fetch
     /// * `include_key` - Whether to include the Redis key as a column
     /// * `key_column_name` - Name of the key column
+    /// * `include_ttl` - Whether to include the TTL as a column
+    /// * `ttl_column_name` - Name of the TTL column
+    /// * `include_row_index` - Whether to include the row index as a column
+    /// * `row_index_column_name` - Name of the row index column
     /// * `max_rows` - Optional maximum rows to return
     #[new]
     #[pyo3(signature = (
@@ -304,6 +324,10 @@ impl PyJsonBatchIterator {
         projection = None,
         include_key = true,
         key_column_name = "_key".to_string(),
+        include_ttl = false,
+        ttl_column_name = "_ttl".to_string(),
+        include_row_index = false,
+        row_index_column_name = "_index".to_string(),
         max_rows = None
     ))]
     #[allow(clippy::too_many_arguments)]
@@ -316,6 +340,10 @@ impl PyJsonBatchIterator {
         projection: Option<Vec<String>>,
         include_key: bool,
         key_column_name: String,
+        include_ttl: bool,
+        ttl_column_name: String,
+        include_row_index: bool,
+        row_index_column_name: String,
         max_rows: Option<usize>,
     ) -> PyResult<Self> {
         // Parse schema from Python type strings to Arrow DataTypes
@@ -340,7 +368,11 @@ impl PyJsonBatchIterator {
 
         let json_schema = JsonSchema::new(field_types)
             .with_key(include_key)
-            .with_key_column_name(key_column_name);
+            .with_key_column_name(key_column_name)
+            .with_ttl(include_ttl)
+            .with_ttl_column_name(ttl_column_name)
+            .with_row_index(include_row_index)
+            .with_row_index_column_name(row_index_column_name);
 
         let mut config = BatchConfig::new(pattern)
             .with_batch_size(batch_size)
