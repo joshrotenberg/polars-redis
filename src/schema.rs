@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use arrow::datatypes::{DataType, Field, Schema};
+use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 
 use crate::error::{Error, Result};
 
@@ -20,6 +20,10 @@ pub enum RedisType {
     Float64,
     /// Boolean (parsed from "true"/"false", "1"/"0", etc.).
     Boolean,
+    /// Date (days since epoch, parsed from "YYYY-MM-DD" or epoch days).
+    Date,
+    /// Datetime with microsecond precision (parsed from ISO 8601 or Unix timestamp).
+    Datetime,
 }
 
 impl RedisType {
@@ -30,6 +34,8 @@ impl RedisType {
             RedisType::Int64 => DataType::Int64,
             RedisType::Float64 => DataType::Float64,
             RedisType::Boolean => DataType::Boolean,
+            RedisType::Date => DataType::Date32,
+            RedisType::Datetime => DataType::Timestamp(TimeUnit::Microsecond, None),
         }
     }
 
@@ -48,6 +54,16 @@ impl RedisType {
                 .ok_or_else(|| {
                     Error::TypeConversion(format!("Failed to parse '{}' as boolean", value))
                 }),
+            RedisType::Date => parse_date(value).map(TypedValue::Date).ok_or_else(|| {
+                Error::TypeConversion(format!("Failed to parse '{}' as date", value))
+            }),
+            RedisType::Datetime => {
+                parse_datetime(value)
+                    .map(TypedValue::Datetime)
+                    .ok_or_else(|| {
+                        Error::TypeConversion(format!("Failed to parse '{}' as datetime", value))
+                    })
+            }
         }
     }
 }
@@ -59,6 +75,10 @@ pub enum TypedValue {
     Int64(i64),
     Float64(f64),
     Boolean(bool),
+    /// Date as days since Unix epoch (1970-01-01).
+    Date(i32),
+    /// Datetime as microseconds since Unix epoch.
+    Datetime(i64),
 }
 
 /// Parse a string as a boolean value.
@@ -70,6 +90,175 @@ fn parse_boolean(s: &str) -> Option<bool> {
         "false" | "0" | "no" | "f" | "n" => Some(false),
         _ => None,
     }
+}
+
+/// Parse a string as a date (days since Unix epoch).
+///
+/// Accepts:
+/// - ISO 8601 date: "2024-01-15"
+/// - Epoch days as integer: "19738"
+pub fn parse_date(s: &str) -> Option<i32> {
+    // Try parsing as epoch days first (integer)
+    if let Ok(days) = s.parse::<i32>() {
+        return Some(days);
+    }
+
+    // Try parsing as YYYY-MM-DD
+    if s.len() >= 10 {
+        let parts: Vec<&str> = s.split('-').collect();
+        if parts.len() >= 3
+            && let (Ok(year), Ok(month), Ok(day)) = (
+                parts[0].parse::<i32>(),
+                parts[1].parse::<u32>(),
+                parts[2].chars().take(2).collect::<String>().parse::<u32>(),
+            )
+        {
+            // Calculate days since epoch (1970-01-01)
+            // This is a simplified calculation - not accounting for all edge cases
+            return days_since_epoch(year, month, day);
+        }
+    }
+
+    None
+}
+
+/// Calculate days since Unix epoch for a given date.
+fn days_since_epoch(year: i32, month: u32, day: u32) -> Option<i32> {
+    // Validate basic ranges
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+
+    // Days in each month (non-leap year)
+    let days_in_month = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+    let is_leap = |y: i32| (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
+
+    // Count days from 1970 to this year
+    let mut total_days: i32 = 0;
+
+    if year >= 1970 {
+        for y in 1970..year {
+            total_days += if is_leap(y) { 366 } else { 365 };
+        }
+    } else {
+        for y in year..1970 {
+            total_days -= if is_leap(y) { 366 } else { 365 };
+        }
+    }
+
+    // Add days for months in current year
+    for m in 1..month {
+        total_days += days_in_month[m as usize];
+        if m == 2 && is_leap(year) {
+            total_days += 1;
+        }
+    }
+
+    // Add days in current month
+    total_days += day as i32 - 1;
+
+    Some(total_days)
+}
+
+/// Parse a string as a datetime (microseconds since Unix epoch).
+///
+/// Accepts:
+/// - ISO 8601 datetime: "2024-01-15T10:30:00", "2024-01-15T10:30:00Z", "2024-01-15T10:30:00.123456Z"
+/// - Unix timestamp (seconds): "1705315800"
+/// - Unix timestamp (milliseconds): "1705315800000"
+/// - Unix timestamp (microseconds): "1705315800000000"
+pub fn parse_datetime(s: &str) -> Option<i64> {
+    let s = s.trim();
+
+    // Try parsing as numeric timestamp
+    if let Ok(ts) = s.parse::<i64>() {
+        // Heuristic to detect timestamp unit:
+        // - < 1e10: seconds (up to year 2286)
+        // - < 1e13: milliseconds (up to year 2286)
+        // - >= 1e13: microseconds
+        if ts < 10_000_000_000 {
+            // Seconds -> microseconds
+            return Some(ts * 1_000_000);
+        } else if ts < 10_000_000_000_000 {
+            // Milliseconds -> microseconds
+            return Some(ts * 1_000);
+        } else {
+            // Already microseconds
+            return Some(ts);
+        }
+    }
+
+    // Try parsing ISO 8601 datetime
+    parse_iso8601_datetime(s)
+}
+
+/// Parse ISO 8601 datetime string to microseconds since epoch.
+fn parse_iso8601_datetime(s: &str) -> Option<i64> {
+    // Remove trailing Z if present
+    let s = s.trim_end_matches('Z');
+
+    // Split into date and time parts
+    let parts: Vec<&str> = s.split('T').collect();
+    if parts.len() != 2 {
+        // Try space separator
+        let parts: Vec<&str> = s.split(' ').collect();
+        if parts.len() != 2 {
+            return None;
+        }
+        return parse_datetime_parts(parts[0], parts[1]);
+    }
+
+    parse_datetime_parts(parts[0], parts[1])
+}
+
+/// Parse date and time parts into microseconds since epoch.
+fn parse_datetime_parts(date_str: &str, time_str: &str) -> Option<i64> {
+    // Parse date
+    let date_parts: Vec<&str> = date_str.split('-').collect();
+    if date_parts.len() != 3 {
+        return None;
+    }
+
+    let year = date_parts[0].parse::<i32>().ok()?;
+    let month = date_parts[1].parse::<u32>().ok()?;
+    let day = date_parts[2].parse::<u32>().ok()?;
+
+    // Parse time (handle fractional seconds)
+    let time_str = time_str.split('+').next()?.split('-').next()?; // Remove timezone offset
+    let time_parts: Vec<&str> = time_str.split(':').collect();
+    if time_parts.len() < 2 {
+        return None;
+    }
+
+    let hour = time_parts[0].parse::<u32>().ok()?;
+    let minute = time_parts[1].parse::<u32>().ok()?;
+
+    let (second, microsecond) = if time_parts.len() >= 3 {
+        let sec_parts: Vec<&str> = time_parts[2].split('.').collect();
+        let sec = sec_parts[0].parse::<u32>().ok()?;
+        let usec = if sec_parts.len() > 1 {
+            // Pad or truncate to 6 digits for microseconds
+            let frac = sec_parts[1];
+            let padded = format!("{:0<6}", frac);
+            padded[..6].parse::<u32>().unwrap_or(0)
+        } else {
+            0
+        };
+        (sec, usec)
+    } else {
+        (0, 0)
+    };
+
+    // Get days since epoch
+    let days = days_since_epoch(year, month, day)?;
+
+    // Convert to microseconds
+    let day_us = days as i64 * 24 * 60 * 60 * 1_000_000;
+    let time_us =
+        (hour as i64 * 3600 + minute as i64 * 60 + second as i64) * 1_000_000 + microsecond as i64;
+
+    Some(day_us + time_us)
 }
 
 /// Schema for a Redis hash, mapping field names to types.
@@ -200,6 +389,11 @@ mod tests {
         assert_eq!(RedisType::Int64.to_arrow_type(), DataType::Int64);
         assert_eq!(RedisType::Float64.to_arrow_type(), DataType::Float64);
         assert_eq!(RedisType::Boolean.to_arrow_type(), DataType::Boolean);
+        assert_eq!(RedisType::Date.to_arrow_type(), DataType::Date32);
+        assert_eq!(
+            RedisType::Datetime.to_arrow_type(),
+            DataType::Timestamp(TimeUnit::Microsecond, None)
+        );
     }
 
     #[test]
@@ -312,5 +506,107 @@ mod tests {
         let projected_with_key = schema.project(&["_key".to_string(), "name".to_string()]);
         assert_eq!(projected_with_key.fields(), &["name"]);
         assert!(projected_with_key.include_key());
+    }
+
+    #[test]
+    fn test_parse_date_iso() {
+        // 2024-01-15 is 19737 days since 1970-01-01
+        let result = RedisType::Date.parse("2024-01-15").unwrap();
+        assert!(matches!(result, TypedValue::Date(_)));
+        if let TypedValue::Date(days) = result {
+            // Verify it's a reasonable value (around 19737)
+            assert!(days > 19000 && days < 20000);
+        }
+    }
+
+    #[test]
+    fn test_parse_date_epoch_days() {
+        assert_eq!(
+            RedisType::Date.parse("19737").unwrap(),
+            TypedValue::Date(19737)
+        );
+        assert_eq!(RedisType::Date.parse("0").unwrap(), TypedValue::Date(0));
+    }
+
+    #[test]
+    fn test_parse_date_invalid() {
+        assert!(RedisType::Date.parse("not-a-date").is_err());
+        assert!(RedisType::Date.parse("2024-13-01").is_err()); // Invalid month
+        assert!(RedisType::Date.parse("2024-01-32").is_err()); // Invalid day
+    }
+
+    #[test]
+    fn test_parse_datetime_iso() {
+        // Test basic ISO 8601
+        let result = RedisType::Datetime.parse("2024-01-15T10:30:00").unwrap();
+        assert!(matches!(result, TypedValue::Datetime(_)));
+
+        // Test with Z suffix
+        let result = RedisType::Datetime.parse("2024-01-15T10:30:00Z").unwrap();
+        assert!(matches!(result, TypedValue::Datetime(_)));
+
+        // Test with fractional seconds
+        let result = RedisType::Datetime
+            .parse("2024-01-15T10:30:00.123456Z")
+            .unwrap();
+        assert!(matches!(result, TypedValue::Datetime(_)));
+    }
+
+    #[test]
+    fn test_parse_datetime_unix_seconds() {
+        // Unix timestamp in seconds (2024-01-15 10:30:00 UTC approximately)
+        let result = RedisType::Datetime.parse("1705315800").unwrap();
+        if let TypedValue::Datetime(us) = result {
+            // Should be converted to microseconds
+            assert_eq!(us, 1_705_315_800_000_000);
+        } else {
+            panic!("Expected Datetime");
+        }
+    }
+
+    #[test]
+    fn test_parse_datetime_unix_milliseconds() {
+        let result = RedisType::Datetime.parse("1705315800000").unwrap();
+        if let TypedValue::Datetime(us) = result {
+            // Should be converted to microseconds
+            assert_eq!(us, 1_705_315_800_000_000);
+        } else {
+            panic!("Expected Datetime");
+        }
+    }
+
+    #[test]
+    fn test_parse_datetime_unix_microseconds() {
+        let result = RedisType::Datetime.parse("1705315800000000").unwrap();
+        if let TypedValue::Datetime(us) = result {
+            // Already in microseconds
+            assert_eq!(us, 1_705_315_800_000_000);
+        } else {
+            panic!("Expected Datetime");
+        }
+    }
+
+    #[test]
+    fn test_parse_datetime_invalid() {
+        assert!(RedisType::Datetime.parse("not-a-datetime").is_err());
+        assert!(RedisType::Datetime.parse("2024-01-15").is_err()); // Date only, no time
+    }
+
+    #[test]
+    fn test_days_since_epoch() {
+        // 1970-01-01 should be day 0
+        assert_eq!(days_since_epoch(1970, 1, 1), Some(0));
+
+        // 1970-01-02 should be day 1
+        assert_eq!(days_since_epoch(1970, 1, 2), Some(1));
+
+        // 1971-01-01 should be 365
+        assert_eq!(days_since_epoch(1971, 1, 1), Some(365));
+
+        // 1972-01-01 should be 365 + 365 = 730
+        assert_eq!(days_since_epoch(1972, 1, 1), Some(730));
+
+        // 1973-01-01 should be 730 + 366 (1972 is leap) = 1096
+        assert_eq!(days_since_epoch(1973, 1, 1), Some(1096));
     }
 }
