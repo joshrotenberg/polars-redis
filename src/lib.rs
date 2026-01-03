@@ -9,31 +9,21 @@ use arrow::datatypes::DataType;
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
 
-mod arrow_convert;
-mod batch_iter;
 mod connection;
 mod error;
-mod hash_reader;
 mod infer;
-mod json_batch_iter;
-mod json_convert;
-mod json_reader;
 mod scanner;
 mod schema;
-mod string_batch_iter;
-mod string_convert;
-mod string_reader;
+mod types;
 mod write;
 
-pub use batch_iter::{BatchConfig, HashBatchIterator};
 pub use connection::RedisConnection;
 pub use error::{Error, Result};
 pub use infer::{InferredSchema, infer_hash_schema, infer_json_schema};
-pub use json_batch_iter::JsonBatchIterator;
-pub use json_convert::JsonSchema;
 pub use schema::{HashSchema, RedisType};
-pub use string_batch_iter::StringBatchIterator;
-pub use string_convert::StringSchema;
+pub use types::hash::{BatchConfig, HashBatchIterator};
+pub use types::json::{JsonBatchIterator, JsonSchema};
+pub use types::string::{StringBatchIterator, StringSchema};
 pub use write::{WriteMode, WriteResult, write_hashes, write_json, write_strings};
 
 /// Serialize an Arrow RecordBatch to IPC format bytes.

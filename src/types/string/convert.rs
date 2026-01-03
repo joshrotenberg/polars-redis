@@ -11,8 +11,8 @@ use arrow::array::{
 };
 use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 
+use super::reader::StringData;
 use crate::error::{Error, Result};
-use crate::string_reader::StringData;
 
 /// Schema for Redis string values.
 #[derive(Debug, Clone)]

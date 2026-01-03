@@ -1,31 +1,29 @@
-//! Batch iterator for streaming Redis string data as Arrow RecordBatches.
-//!
-//! This module provides the iteration logic for scanning Redis string values
-//! and converting them to Arrow format.
+//! Batch iterator for streaming Redis JSON data as Arrow RecordBatches.
 
 use arrow::array::RecordBatch;
-use redis::aio::MultiplexedConnection;
 use tokio::runtime::Runtime;
 
-use crate::batch_iter::BatchConfig;
+use super::convert::{JsonSchema, json_to_record_batch};
+use super::reader::{JsonData, fetch_json};
 use crate::connection::RedisConnection;
 use crate::error::{Error, Result};
-use crate::string_convert::{StringSchema, strings_to_record_batch};
-use crate::string_reader::{StringData, fetch_strings};
+use crate::types::hash::BatchConfig;
 
-/// Iterator for scanning Redis strings and yielding Arrow RecordBatches.
-pub struct StringBatchIterator {
+/// Iterator state for scanning Redis JSON documents.
+pub struct JsonBatchIterator {
     /// Tokio runtime for async operations.
     runtime: Runtime,
     /// Redis connection.
     connection: RedisConnection,
-    /// Schema for the string data.
-    schema: StringSchema,
+    /// Schema for the JSON data.
+    schema: JsonSchema,
     /// Batch configuration.
     config: BatchConfig,
+    /// Fields to fetch (None = full document).
+    projection: Option<Vec<String>>,
     /// Current SCAN cursor.
     cursor: u64,
-    /// Whether we've started scanning (cursor has moved at least once).
+    /// Whether we've started scanning.
     scan_started: bool,
     /// Whether we've completed the SCAN.
     done: bool,
@@ -33,11 +31,18 @@ pub struct StringBatchIterator {
     rows_yielded: usize,
     /// Buffer of keys waiting to be fetched.
     key_buffer: Vec<String>,
+    /// Current row offset for row index column.
+    row_offset: u64,
 }
 
-impl StringBatchIterator {
-    /// Create a new StringBatchIterator.
-    pub fn new(url: &str, schema: StringSchema, config: BatchConfig) -> Result<Self> {
+impl JsonBatchIterator {
+    /// Create a new JsonBatchIterator.
+    pub fn new(
+        url: &str,
+        schema: JsonSchema,
+        config: BatchConfig,
+        projection: Option<Vec<String>>,
+    ) -> Result<Self> {
         let runtime = Runtime::new()
             .map_err(|e| Error::Runtime(format!("Failed to create runtime: {}", e)))?;
         let connection = RedisConnection::new(url)?;
@@ -47,17 +52,17 @@ impl StringBatchIterator {
             connection,
             schema,
             config,
+            projection,
             cursor: 0,
             scan_started: false,
             done: false,
             rows_yielded: 0,
             key_buffer: Vec::new(),
+            row_offset: 0,
         })
     }
 
     /// Get the next batch of data as a RecordBatch.
-    ///
-    /// Returns None when iteration is complete.
     pub fn next_batch(&mut self) -> Result<Option<RecordBatch>> {
         if self.done {
             return Ok(None);
@@ -87,16 +92,24 @@ impl StringBatchIterator {
             .drain(..self.key_buffer.len().min(self.config.batch_size))
             .collect();
 
-        // Fetch string data
-        let string_data = self.fetch_batch(&keys_to_fetch)?;
+        // Fetch JSON data
+        let json_data = self.fetch_batch(&keys_to_fetch)?;
 
-        if string_data.is_empty() {
-            // All keys were deleted between SCAN and fetch, try again
+        if json_data.is_empty() {
             return self.next_batch();
         }
 
-        // Convert to RecordBatch
-        let mut batch = strings_to_record_batch(&string_data, &self.schema)?;
+        // Apply projection to schema if needed
+        let effective_schema = match &self.projection {
+            Some(cols) => self.schema.project(cols),
+            None => self.schema.clone(),
+        };
+
+        // Convert to RecordBatch with current row offset
+        let mut batch = json_to_record_batch(&json_data, &effective_schema, self.row_offset)?;
+
+        // Update row offset for next batch
+        self.row_offset += batch.num_rows() as u64;
 
         // Apply max rows limit
         if let Some(max) = self.config.max_rows {
@@ -109,7 +122,6 @@ impl StringBatchIterator {
 
         self.rows_yielded += batch.num_rows();
 
-        // Check if we're done
         if self.key_buffer.is_empty() && self.scan_complete() {
             self.done = true;
         }
@@ -126,13 +138,15 @@ impl StringBatchIterator {
     fn scan_more_keys(&mut self) -> Result<()> {
         let (new_cursor, keys) = self.runtime.block_on(async {
             let mut conn = self.connection.get_async_connection().await?;
-            scan_keys_batch(
-                &mut conn,
-                self.cursor,
-                &self.config.pattern,
-                self.config.count_hint,
-            )
-            .await
+            let result: (u64, Vec<String>) = redis::cmd("SCAN")
+                .arg(self.cursor)
+                .arg("MATCH")
+                .arg(&self.config.pattern)
+                .arg("COUNT")
+                .arg(self.config.count_hint)
+                .query_async(&mut conn)
+                .await?;
+            Ok::<_, Error>(result)
         })?;
 
         self.key_buffer.extend(keys);
@@ -142,11 +156,14 @@ impl StringBatchIterator {
         Ok(())
     }
 
-    /// Fetch string data for a batch of keys.
-    fn fetch_batch(&mut self, keys: &[String]) -> Result<Vec<StringData>> {
+    /// Fetch JSON data for a batch of keys.
+    fn fetch_batch(&mut self, keys: &[String]) -> Result<Vec<JsonData>> {
+        let projection = self.projection.as_deref();
+        let include_ttl = self.schema.include_ttl();
+
         self.runtime.block_on(async {
             let mut conn = self.connection.get_async_connection().await?;
-            fetch_strings(&mut conn, keys).await
+            fetch_json(&mut conn, keys, projection, include_ttl).await
         })
     }
 
@@ -161,48 +178,20 @@ impl StringBatchIterator {
     }
 }
 
-/// Scan a batch of keys from Redis.
-async fn scan_keys_batch(
-    conn: &mut MultiplexedConnection,
-    cursor: u64,
-    pattern: &str,
-    count: usize,
-) -> Result<(u64, Vec<String>)> {
-    let result: (u64, Vec<String>) = redis::cmd("SCAN")
-        .arg(cursor)
-        .arg("MATCH")
-        .arg(pattern)
-        .arg("COUNT")
-        .arg(count)
-        .query_async(conn)
-        .await?;
-
-    Ok(result)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use arrow::datatypes::DataType;
 
     #[test]
-    fn test_string_batch_iterator_creation() {
-        let schema = StringSchema::new(DataType::Utf8);
+    fn test_json_batch_iterator_creation() {
+        let schema = JsonSchema::new(vec![
+            ("name".to_string(), DataType::Utf8),
+            ("count".to_string(), DataType::Int64),
+        ]);
         let config = BatchConfig::new("test:*");
 
-        // This will fail without a running Redis, but should create the iterator
-        let result = StringBatchIterator::new("redis://localhost:6379", schema, config);
-
-        // Should succeed even without Redis running (connection is lazy)
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_string_batch_iterator_with_int64() {
-        let schema = StringSchema::new(DataType::Int64).with_value_column_name("count");
-        let config = BatchConfig::new("counter:*").with_batch_size(500);
-
-        let result = StringBatchIterator::new("redis://localhost:6379", schema, config);
+        let result = JsonBatchIterator::new("redis://localhost:6379", schema, config, None);
         assert!(result.is_ok());
     }
 }
