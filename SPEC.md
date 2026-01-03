@@ -68,7 +68,12 @@ polars-redis is a Polars IO plugin that enables scanning Redis data structures (
 | TTL column support | ✅ Done | `include_ttl`, `ttl_column_name` options |
 | Row index column support | ✅ Done | `include_row_index`, `row_index_column_name` options |
 | Python API (`register_io_source`) | ✅ Done | Full LazyFrame integration |
-| Integration tests | ✅ Done | 50+ Python tests, 42 Rust tests |
+| `scan_strings()` / `read_strings()` | ✅ Done | LazyFrame/DataFrame from Redis strings |
+| `write_strings()` | ✅ Done | Write DataFrames as Redis strings |
+| Write modes (fail/replace/append) | ✅ Done | `if_exists` parameter on write functions |
+| TTL on write | ✅ Done | `ttl` parameter on write functions |
+| Key prefix support | ✅ Done | `key_prefix` parameter on write functions |
+| Integration tests | ✅ Done | 50+ Python tests, 82 Rust tests |
 | CI/CD pipeline | ✅ Done | GitHub Actions with Redis service |
 | Rust examples | ✅ Done | IPC serialization, projection examples |
 | Python examples | ✅ Done | 9 comprehensive examples |
@@ -77,10 +82,8 @@ polars-redis is a Polars IO plugin that enables scanning Redis data structures (
 
 | Feature | Priority | Phase |
 |---------|----------|-------|
-| Write modes (fail/replace/append) | Medium | 3 |
-| TTL on write | Medium | 3 |
-| Key generation strategies | Medium | 3 |
-| Redis Strings (`scan_strings`) | High | 4 |
+| Batch pipelining for writes | Medium | 3 |
+| Key generation from row index | Low | 3 |
 | Sorted Sets (`scan_zset`) | Medium | 4 |
 | Redis Streams (`scan_stream`) | Medium | 4 |
 | RedisTimeSeries support | High | 4 |
@@ -963,16 +966,18 @@ client-side for millions of members.
 - [x] Row index support
 - [x] Better error messages
 
-### Phase 3: Write Support
+### Phase 3: Write Support (Done)
 - [x] `write_hashes()` basic implementation
 - [x] `write_json()` basic implementation
-- [ ] Write modes (fail/replace/append)
-- [ ] TTL on write
-- [ ] Batch pipelining
-- [ ] Key generation strategies (prefix, auto-index)
+- [x] `write_strings()` basic implementation
+- [x] Write modes (fail/replace/append)
+- [x] TTL on write
+- [x] Key prefix support
+- [ ] Batch pipelining for writes
+- [ ] Key generation from row index (auto-index)
 
 ### Phase 4: Additional Data Types
-- [ ] Redis Strings support (`scan_strings`, `write_strings`)
+- [x] Redis Strings support (`scan_strings`, `read_strings`, `write_strings`)
 - [ ] Sorted Sets support (`scan_zset`)
 - [ ] Redis Streams support (`scan_stream`)
 - [ ] RedisTimeSeries support (`scan_timeseries`, `scan_timeseries_multi`)
