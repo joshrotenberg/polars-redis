@@ -25,7 +25,9 @@ pub use types::hash::{BatchConfig, HashBatchIterator};
 pub use types::json::{JsonBatchIterator, JsonSchema};
 pub use types::list::{ListBatchIterator, ListSchema};
 pub use types::set::{SetBatchIterator, SetSchema};
+pub use types::stream::{StreamBatchIterator, StreamSchema};
 pub use types::string::{StringBatchIterator, StringSchema};
+pub use types::timeseries::{TimeSeriesBatchIterator, TimeSeriesSchema};
 pub use types::zset::{ZSetBatchIterator, ZSetSchema};
 pub use write::{
     WriteMode, WriteResult, write_hashes, write_json, write_lists, write_sets, write_strings,
@@ -74,6 +76,8 @@ fn polars_redis_internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PySetBatchIterator>()?;
     m.add_class::<PyListBatchIterator>()?;
     m.add_class::<PyZSetBatchIterator>()?;
+    m.add_class::<PyStreamBatchIterator>()?;
+    m.add_class::<PyTimeSeriesBatchIterator>()?;
     m.add_function(wrap_pyfunction!(scan_keys, m)?)?;
     m.add_function(wrap_pyfunction!(py_infer_hash_schema, m)?)?;
     m.add_function(wrap_pyfunction!(py_infer_json_schema, m)?)?;
@@ -248,6 +252,172 @@ impl PyHashBatchIterator {
         match batch {
             Some(record_batch) => {
                 // Serialize to Arrow IPC format
+                let mut buf = Vec::new();
+                {
+                    let mut writer = arrow::ipc::writer::FileWriter::try_new(
+                        &mut buf,
+                        record_batch.schema().as_ref(),
+                    )
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to create IPC writer: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.write(&record_batch).map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to write batch: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.finish().map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to finish IPC: {}",
+                            e
+                        ))
+                    })?;
+                }
+
+                Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Check if iteration is complete.
+    fn is_done(&self) -> bool {
+        self.inner.is_done()
+    }
+
+    /// Get the number of rows yielded so far.
+    fn rows_yielded(&self) -> usize {
+        self.inner.rows_yielded()
+    }
+}
+
+#[cfg(feature = "python")]
+/// Python wrapper for TimeSeriesBatchIterator.
+///
+/// This class is used by the Python IO plugin to iterate over RedisTimeSeries data
+/// and yield Arrow RecordBatches.
+#[pyclass]
+pub struct PyTimeSeriesBatchIterator {
+    inner: TimeSeriesBatchIterator,
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl PyTimeSeriesBatchIterator {
+    /// Create a new PyTimeSeriesBatchIterator.
+    ///
+    /// # Arguments
+    /// * `url` - Redis connection URL
+    /// * `pattern` - Key pattern to match
+    /// * `batch_size` - Keys per batch
+    /// * `count_hint` - SCAN COUNT hint
+    /// * `start` - Start timestamp for TS.RANGE (default: "-" for oldest)
+    /// * `end` - End timestamp for TS.RANGE (default: "+" for newest)
+    /// * `count_per_series` - Max samples per time series (optional)
+    /// * `aggregation` - Aggregation type (avg, sum, min, max, etc.)
+    /// * `bucket_size_ms` - Bucket size in milliseconds for aggregation
+    /// * `include_key` - Whether to include the Redis key as a column
+    /// * `key_column_name` - Name of the key column
+    /// * `include_timestamp` - Whether to include the timestamp as a column
+    /// * `timestamp_column_name` - Name of the timestamp column
+    /// * `value_column_name` - Name of the value column
+    /// * `include_row_index` - Whether to include the row index as a column
+    /// * `row_index_column_name` - Name of the row index column
+    /// * `label_columns` - Label names to include as columns
+    /// * `max_rows` - Optional maximum rows to return
+    #[new]
+    #[pyo3(signature = (
+        url,
+        pattern,
+        batch_size = 1000,
+        count_hint = 100,
+        start = "-".to_string(),
+        end = "+".to_string(),
+        count_per_series = None,
+        aggregation = None,
+        bucket_size_ms = None,
+        include_key = true,
+        key_column_name = "_key".to_string(),
+        include_timestamp = true,
+        timestamp_column_name = "_ts".to_string(),
+        value_column_name = "value".to_string(),
+        include_row_index = false,
+        row_index_column_name = "_index".to_string(),
+        label_columns = vec![],
+        max_rows = None
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        url: String,
+        pattern: String,
+        batch_size: usize,
+        count_hint: usize,
+        start: String,
+        end: String,
+        count_per_series: Option<usize>,
+        aggregation: Option<String>,
+        bucket_size_ms: Option<i64>,
+        include_key: bool,
+        key_column_name: String,
+        include_timestamp: bool,
+        timestamp_column_name: String,
+        value_column_name: String,
+        include_row_index: bool,
+        row_index_column_name: String,
+        label_columns: Vec<String>,
+        max_rows: Option<usize>,
+    ) -> PyResult<Self> {
+        let ts_schema = TimeSeriesSchema::new()
+            .with_key(include_key)
+            .with_key_column_name(&key_column_name)
+            .with_timestamp(include_timestamp)
+            .with_timestamp_column_name(&timestamp_column_name)
+            .with_value_column_name(&value_column_name)
+            .with_row_index(include_row_index)
+            .with_row_index_column_name(&row_index_column_name)
+            .with_label_columns(label_columns);
+
+        let mut config = types::hash::BatchConfig::new(pattern)
+            .with_batch_size(batch_size)
+            .with_count_hint(count_hint);
+
+        if let Some(max) = max_rows {
+            config = config.with_max_rows(max);
+        }
+
+        let mut inner = TimeSeriesBatchIterator::new(&url, ts_schema, config)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        inner = inner.with_start(&start).with_end(&end);
+
+        if let Some(count) = count_per_series {
+            inner = inner.with_count_per_series(count);
+        }
+
+        if let (Some(agg), Some(bucket)) = (aggregation, bucket_size_ms) {
+            inner = inner.with_aggregation(&agg, bucket);
+        }
+
+        Ok(Self { inner })
+    }
+
+    /// Get the next batch as Arrow IPC bytes.
+    ///
+    /// Returns None when iteration is complete.
+    fn next_batch_ipc(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let batch = self
+            .inner
+            .next_batch()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        match batch {
+            Some(record_batch) => {
                 let mut buf = Vec::new();
                 {
                     let mut writer = arrow::ipc::writer::FileWriter::try_new(
@@ -1281,4 +1451,172 @@ fn py_write_zsets(
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
     Ok((result.keys_written, result.keys_failed, result.keys_skipped))
+}
+
+#[cfg(feature = "python")]
+/// Python wrapper for StreamBatchIterator.
+///
+/// This class is used by the Python IO plugin to iterate over Redis Stream data
+/// and yield Arrow RecordBatches.
+#[pyclass]
+pub struct PyStreamBatchIterator {
+    inner: StreamBatchIterator,
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl PyStreamBatchIterator {
+    /// Create a new PyStreamBatchIterator.
+    ///
+    /// # Arguments
+    /// * `url` - Redis connection URL
+    /// * `pattern` - Key pattern to match
+    /// * `fields` - List of field names to extract from entries
+    /// * `batch_size` - Keys per batch
+    /// * `count_hint` - SCAN COUNT hint
+    /// * `start_id` - Start ID for XRANGE (default: "-" for oldest)
+    /// * `end_id` - End ID for XRANGE (default: "+" for newest)
+    /// * `count_per_stream` - Max entries per stream (optional)
+    /// * `include_key` - Whether to include the Redis key as a column
+    /// * `key_column_name` - Name of the key column
+    /// * `include_id` - Whether to include the entry ID as a column
+    /// * `id_column_name` - Name of the entry ID column
+    /// * `include_timestamp` - Whether to include the timestamp as a column
+    /// * `timestamp_column_name` - Name of the timestamp column
+    /// * `include_sequence` - Whether to include the sequence as a column
+    /// * `sequence_column_name` - Name of the sequence column
+    /// * `include_row_index` - Whether to include the row index as a column
+    /// * `row_index_column_name` - Name of the row index column
+    /// * `max_rows` - Optional maximum rows to return
+    #[new]
+    #[pyo3(signature = (
+        url,
+        pattern,
+        fields = vec![],
+        batch_size = 1000,
+        count_hint = 100,
+        start_id = "-".to_string(),
+        end_id = "+".to_string(),
+        count_per_stream = None,
+        include_key = true,
+        key_column_name = "_key".to_string(),
+        include_id = true,
+        id_column_name = "_id".to_string(),
+        include_timestamp = true,
+        timestamp_column_name = "_ts".to_string(),
+        include_sequence = false,
+        sequence_column_name = "_seq".to_string(),
+        include_row_index = false,
+        row_index_column_name = "_index".to_string(),
+        max_rows = None
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        url: String,
+        pattern: String,
+        fields: Vec<String>,
+        batch_size: usize,
+        count_hint: usize,
+        start_id: String,
+        end_id: String,
+        count_per_stream: Option<usize>,
+        include_key: bool,
+        key_column_name: String,
+        include_id: bool,
+        id_column_name: String,
+        include_timestamp: bool,
+        timestamp_column_name: String,
+        include_sequence: bool,
+        sequence_column_name: String,
+        include_row_index: bool,
+        row_index_column_name: String,
+        max_rows: Option<usize>,
+    ) -> PyResult<Self> {
+        let stream_schema = StreamSchema::new()
+            .with_key(include_key)
+            .with_key_column_name(&key_column_name)
+            .with_id(include_id)
+            .with_id_column_name(&id_column_name)
+            .with_timestamp(include_timestamp)
+            .with_timestamp_column_name(&timestamp_column_name)
+            .with_sequence(include_sequence)
+            .with_sequence_column_name(&sequence_column_name)
+            .with_row_index(include_row_index)
+            .with_row_index_column_name(&row_index_column_name)
+            .set_fields(fields);
+
+        let mut config = types::hash::BatchConfig::new(pattern)
+            .with_batch_size(batch_size)
+            .with_count_hint(count_hint);
+
+        if let Some(max) = max_rows {
+            config = config.with_max_rows(max);
+        }
+
+        let mut inner = StreamBatchIterator::new(&url, stream_schema, config)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        inner = inner.with_start_id(&start_id).with_end_id(&end_id);
+
+        if let Some(count) = count_per_stream {
+            inner = inner.with_count_per_stream(count);
+        }
+
+        Ok(Self { inner })
+    }
+
+    /// Get the next batch as Arrow IPC bytes.
+    ///
+    /// Returns None when iteration is complete.
+    fn next_batch_ipc(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let batch = self
+            .inner
+            .next_batch()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        match batch {
+            Some(record_batch) => {
+                let mut buf = Vec::new();
+                {
+                    let mut writer = arrow::ipc::writer::FileWriter::try_new(
+                        &mut buf,
+                        record_batch.schema().as_ref(),
+                    )
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to create IPC writer: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.write(&record_batch).map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to write batch: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.finish().map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to finish IPC: {}",
+                            e
+                        ))
+                    })?;
+                }
+
+                Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Check if iteration is complete.
+    fn is_done(&self) -> bool {
+        self.inner.is_done()
+    }
+
+    /// Get the number of rows yielded so far.
+    fn rows_yielded(&self) -> usize {
+        self.inner.rows_yielded()
+    }
 }
