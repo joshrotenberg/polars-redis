@@ -976,28 +976,34 @@ client-side for millions of members.
 - [x] Batch pipelining for writes
 - [x] Key generation from row index (auto-index)
 
-### Phase 4: Additional Data Types
+### Phase 4: Documentation & Examples
+- [ ] Expand README with comprehensive examples
+- [ ] Add examples/ directory with standalone scripts
+- [ ] Document all public API with docstrings
+- [ ] Add inline code examples in docstrings
+- [ ] Write usage guide for common patterns
+
+### Phase 5: Additional Data Types
 - [x] Redis Strings support (`scan_strings`, `read_strings`, `write_strings`)
 - [ ] Sorted Sets support (`scan_zset`)
 - [ ] Redis Streams support (`scan_stream`)
 - [ ] RedisTimeSeries support (`scan_timeseries`, `scan_timeseries_multi`)
 
-### Phase 5: Advanced Features
+### Phase 6: Advanced Features
 - [ ] RediSearch predicate pushdown
 - [ ] Connection pooling
 - [ ] Cluster support
 - [ ] Lists support (`scan_list`)
 - [ ] Performance benchmarks (batch sizes, pipelining, etc.)
 
-### Phase 6: Documentation
+### Phase 7: Documentation Site
 - [ ] MkDocs Material site setup
 - [ ] Getting started guide
 - [ ] API reference (auto-generated from docstrings)
-- [ ] Usage examples
 - [ ] Data type selection guide
 - [ ] GitHub Pages deployment
 
-### Phase 7: Release
+### Phase 8: Release
 - [ ] PyPI release
 - [ ] crates.io release
 - [ ] awesome-polars submission
