@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/joshrotenberg/polars-redis/compare/polars-redis-v0.1.1...polars-redis-v0.1.2) (2026-01-03)
+
+
+### Bug Fixes
+
+* add workflow_dispatch trigger to publish workflow ([#31](https://github.com/joshrotenberg/polars-redis/issues/31)) ([7380f8d](https://github.com/joshrotenberg/polars-redis/commit/7380f8d473a6ae722fdef4a6de77a432a6d92e65))
+
 ## [0.1.1](https://github.com/joshrotenberg/polars-redis/compare/polars-redis-v0.1.0...polars-redis-v0.1.1) (2026-01-03)
 
 
