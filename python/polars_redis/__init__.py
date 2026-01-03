@@ -36,6 +36,8 @@ from polars_redis._internal import (
     PyHashBatchIterator,
     PyJsonBatchIterator,
     RedisScanner,
+    py_infer_hash_schema,
+    py_infer_json_schema,
     scan_keys,
 )
 
@@ -53,6 +55,8 @@ __all__ = [
     "read_hashes",
     "read_json",
     "scan_keys",
+    "infer_hash_schema",
+    "infer_json_schema",
     "__version__",
 ]
 
@@ -423,3 +427,95 @@ def read_json(
         batch_size=batch_size,
         count_hint=count_hint,
     ).collect()
+
+
+def infer_hash_schema(
+    url: str,
+    pattern: str = "*",
+    *,
+    sample_size: int = 100,
+    type_inference: bool = True,
+) -> dict[str, type[pl.DataType]]:
+    """Infer schema from Redis hashes by sampling keys.
+
+    Samples keys matching the pattern and infers field names and types
+    from the hash values. This is useful for discovering the schema
+    when you don't know it ahead of time.
+
+    Args:
+        url: Redis connection URL (e.g., "redis://localhost:6379").
+        pattern: Key pattern to match (e.g., "user:*").
+        sample_size: Maximum number of keys to sample (default: 100).
+        type_inference: Whether to infer types (default: True).
+            If False, all fields will be Utf8.
+
+    Returns:
+        A dictionary mapping field names to Polars dtypes, suitable
+        for passing to scan_hashes() or read_hashes().
+
+    Example:
+        >>> schema = infer_hash_schema(
+        ...     "redis://localhost:6379",
+        ...     pattern="user:*",
+        ...     sample_size=50
+        ... )
+        >>> print(schema)
+        {'name': Utf8, 'age': Int64, 'email': Utf8}
+        >>> df = read_hashes(
+        ...     "redis://localhost:6379",
+        ...     pattern="user:*",
+        ...     schema=schema
+        ... )
+    """
+    fields, _ = py_infer_hash_schema(url, pattern, sample_size, type_inference)
+    return _fields_to_schema(fields)
+
+
+def infer_json_schema(
+    url: str,
+    pattern: str = "*",
+    *,
+    sample_size: int = 100,
+) -> dict[str, type[pl.DataType]]:
+    """Infer schema from RedisJSON documents by sampling keys.
+
+    Samples keys matching the pattern and infers field names and types
+    from the JSON document structure. This is useful for discovering
+    the schema when you don't know it ahead of time.
+
+    Args:
+        url: Redis connection URL (e.g., "redis://localhost:6379").
+        pattern: Key pattern to match (e.g., "doc:*").
+        sample_size: Maximum number of keys to sample (default: 100).
+
+    Returns:
+        A dictionary mapping field names to Polars dtypes, suitable
+        for passing to scan_json() or read_json().
+
+    Example:
+        >>> schema = infer_json_schema(
+        ...     "redis://localhost:6379",
+        ...     pattern="doc:*",
+        ...     sample_size=50
+        ... )
+        >>> print(schema)
+        {'title': Utf8, 'views': Int64, 'rating': Float64}
+        >>> df = read_json(
+        ...     "redis://localhost:6379",
+        ...     pattern="doc:*",
+        ...     schema=schema
+        ... )
+    """
+    fields, _ = py_infer_json_schema(url, pattern, sample_size)
+    return _fields_to_schema(fields)
+
+
+def _fields_to_schema(fields: list[tuple[str, str]]) -> dict[str, type[pl.DataType]]:
+    """Convert internal field list to Polars schema dict."""
+    type_map = {
+        "utf8": pl.Utf8,
+        "int64": pl.Int64,
+        "float64": pl.Float64,
+        "bool": pl.Boolean,
+    }
+    return {name: type_map.get(type_str, pl.Utf8) for name, type_str in fields}

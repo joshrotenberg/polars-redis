@@ -558,6 +558,170 @@ class TestPyHashBatchIterator:
         assert total_rows == 15
 
 
+class TestInferSchema:
+    """Tests for schema inference functions."""
+
+    def test_infer_hash_schema_basic(self, redis_url: str) -> None:
+        """Test basic hash schema inference."""
+        schema = polars_redis.infer_hash_schema(
+            redis_url,
+            pattern="test:user:*",
+            sample_size=10,
+        )
+
+        assert isinstance(schema, dict)
+        assert "name" in schema
+        assert "age" in schema
+        assert "email" in schema
+        assert "active" in schema
+
+    def test_infer_hash_schema_types(self, redis_url: str) -> None:
+        """Test that type inference works correctly."""
+        schema = polars_redis.infer_hash_schema(
+            redis_url,
+            pattern="test:user:*",
+            sample_size=10,
+            type_inference=True,
+        )
+
+        # age should be inferred as Int64
+        assert schema["age"] == pl.Int64
+        # name and email should be Utf8
+        assert schema["name"] == pl.Utf8
+        assert schema["email"] == pl.Utf8
+        # active should be Boolean (stored as "true"/"false")
+        assert schema["active"] == pl.Boolean
+
+    def test_infer_hash_schema_no_type_inference(self, redis_url: str) -> None:
+        """Test schema inference without type inference."""
+        schema = polars_redis.infer_hash_schema(
+            redis_url,
+            pattern="test:user:*",
+            sample_size=10,
+            type_inference=False,
+        )
+
+        # All fields should be Utf8 when type_inference=False
+        assert schema["age"] == pl.Utf8
+        assert schema["name"] == pl.Utf8
+        assert schema["active"] == pl.Utf8
+
+    def test_infer_hash_schema_empty_pattern(self, redis_url: str) -> None:
+        """Test schema inference with pattern matching no keys."""
+        schema = polars_redis.infer_hash_schema(
+            redis_url,
+            pattern="nonexistent:*",
+            sample_size=10,
+        )
+
+        assert schema == {}
+
+    def test_infer_hash_schema_use_with_scan(self, redis_url: str) -> None:
+        """Test using inferred schema with scan_hashes."""
+        # First infer the schema
+        schema = polars_redis.infer_hash_schema(
+            redis_url,
+            pattern="test:user:*",
+            sample_size=10,
+        )
+
+        # Then use it to scan
+        df = polars_redis.read_hashes(
+            redis_url,
+            pattern="test:user:*",
+            schema=schema,
+        )
+
+        assert len(df) == 50
+        assert df.schema["age"] == pl.Int64
+
+
+class TestInferJsonSchema:
+    """Tests for JSON schema inference."""
+
+    @pytest.fixture(autouse=True)
+    def setup_json_data(self, redis_url: str) -> None:
+        """Set up JSON test data in Redis."""
+        import subprocess
+
+        for i in range(1, 11):
+            active = "true" if i % 2 == 0 else "false"
+            rating = 3.5 + (i * 0.1)
+            json_data = (
+                f'{{"title":"Doc{i}","views":{i * 100},"rating":{rating},"featured":{active}}}'
+            )
+            subprocess.run(
+                ["redis-cli", "JSON.SET", f"test:infer:doc:{i}", "$", json_data],
+                capture_output=True,
+            )
+
+        yield
+
+        for i in range(1, 11):
+            subprocess.run(["redis-cli", "DEL", f"test:infer:doc:{i}"], capture_output=True)
+
+    def test_infer_json_schema_basic(self, redis_url: str) -> None:
+        """Test basic JSON schema inference."""
+        schema = polars_redis.infer_json_schema(
+            redis_url,
+            pattern="test:infer:doc:*",
+            sample_size=10,
+        )
+
+        assert isinstance(schema, dict)
+        assert "title" in schema
+        assert "views" in schema
+        assert "rating" in schema
+        assert "featured" in schema
+
+    def test_infer_json_schema_types(self, redis_url: str) -> None:
+        """Test that JSON type inference works correctly."""
+        schema = polars_redis.infer_json_schema(
+            redis_url,
+            pattern="test:infer:doc:*",
+            sample_size=10,
+        )
+
+        # title should be Utf8
+        assert schema["title"] == pl.Utf8
+        # views should be Int64
+        assert schema["views"] == pl.Int64
+        # rating should be Float64
+        assert schema["rating"] == pl.Float64
+        # featured should be Boolean
+        assert schema["featured"] == pl.Boolean
+
+    def test_infer_json_schema_empty_pattern(self, redis_url: str) -> None:
+        """Test JSON schema inference with pattern matching no keys."""
+        schema = polars_redis.infer_json_schema(
+            redis_url,
+            pattern="nonexistent:*",
+            sample_size=10,
+        )
+
+        assert schema == {}
+
+    def test_infer_json_schema_use_with_scan(self, redis_url: str) -> None:
+        """Test using inferred schema with scan_json."""
+        # First infer the schema
+        schema = polars_redis.infer_json_schema(
+            redis_url,
+            pattern="test:infer:doc:*",
+            sample_size=10,
+        )
+
+        # Then use it to scan
+        df = polars_redis.read_json(
+            redis_url,
+            pattern="test:infer:doc:*",
+            schema=schema,
+        )
+
+        assert len(df) == 10
+        assert df.schema["views"] == pl.Int64
+        assert df.schema["rating"] == pl.Float64
+
+
 class TestReadEager:
     """Tests for eager read functions (read_hashes, read_json)."""
 

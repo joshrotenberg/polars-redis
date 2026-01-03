@@ -14,6 +14,7 @@ mod batch_iter;
 mod connection;
 mod error;
 mod hash_reader;
+mod infer;
 mod json_batch_iter;
 mod json_convert;
 mod json_reader;
@@ -23,6 +24,7 @@ mod schema;
 pub use batch_iter::{BatchConfig, HashBatchIterator};
 pub use connection::RedisConnection;
 pub use error::{Error, Result};
+pub use infer::{InferredSchema, infer_hash_schema, infer_json_schema};
 pub use json_batch_iter::JsonBatchIterator;
 pub use json_convert::JsonSchema;
 pub use schema::{HashSchema, RedisType};
@@ -66,6 +68,8 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyHashBatchIterator>()?;
     m.add_class::<PyJsonBatchIterator>()?;
     m.add_function(wrap_pyfunction!(scan_keys, m)?)?;
+    m.add_function(wrap_pyfunction!(py_infer_hash_schema, m)?)?;
+    m.add_function(wrap_pyfunction!(py_infer_json_schema, m)?)?;
     Ok(())
 }
 
@@ -447,4 +451,52 @@ fn scan_keys(connection_url: &str, pattern: &str, count: usize) -> PyResult<Vec<
         keys.truncate(count);
         Ok(keys)
     })
+}
+
+#[cfg(feature = "python")]
+/// Infer schema from Redis hashes by sampling keys.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `pattern` - Key pattern to match
+/// * `sample_size` - Maximum number of keys to sample (default: 100)
+/// * `type_inference` - Whether to infer types (default: true)
+///
+/// # Returns
+/// A tuple of (fields, sample_count) where fields is a list of (name, type) tuples.
+#[pyfunction]
+#[pyo3(signature = (url, pattern, sample_size = 100, type_inference = true))]
+fn py_infer_hash_schema(
+    url: &str,
+    pattern: &str,
+    sample_size: usize,
+    type_inference: bool,
+) -> PyResult<(Vec<(String, String)>, usize)> {
+    let schema = infer_hash_schema(url, pattern, sample_size, type_inference)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    Ok((schema.to_type_strings(), schema.sample_count))
+}
+
+#[cfg(feature = "python")]
+/// Infer schema from RedisJSON documents by sampling keys.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `pattern` - Key pattern to match
+/// * `sample_size` - Maximum number of keys to sample (default: 100)
+///
+/// # Returns
+/// A tuple of (fields, sample_count) where fields is a list of (name, type) tuples.
+#[pyfunction]
+#[pyo3(signature = (url, pattern, sample_size = 100))]
+fn py_infer_json_schema(
+    url: &str,
+    pattern: &str,
+    sample_size: usize,
+) -> PyResult<(Vec<(String, String)>, usize)> {
+    let schema = infer_json_schema(url, pattern, sample_size)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    Ok((schema.to_type_strings(), schema.sample_count))
 }
