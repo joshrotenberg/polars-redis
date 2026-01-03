@@ -9,7 +9,6 @@ keywords = ["polars", "redis", "dataframe", "io"]
 categories = ["database", "data-structures"]
 
 [lib]
-name = "_internal"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
