@@ -727,6 +727,7 @@ def write_hashes(
     df: pl.DataFrame,
     url: str,
     key_column: str = "_key",
+    ttl: int | None = None,
 ) -> int:
     """Write a DataFrame to Redis as hashes.
 
@@ -737,6 +738,7 @@ def write_hashes(
         df: The DataFrame to write.
         url: Redis connection URL (e.g., "redis://localhost:6379").
         key_column: Column containing Redis keys (default: "_key").
+        ttl: Optional TTL in seconds for each key (default: None, no expiration).
 
     Returns:
         Number of keys successfully written.
@@ -752,6 +754,8 @@ def write_hashes(
         ... })
         >>> count = write_hashes(df, "redis://localhost:6379")
         >>> print(f"Wrote {count} hashes")
+        >>> # With TTL (expires in 1 hour)
+        >>> count = write_hashes(df, "redis://localhost:6379", ttl=3600)
     """
     if key_column not in df.columns:
         raise ValueError(f"Key column '{key_column}' not found in DataFrame")
@@ -775,7 +779,7 @@ def write_hashes(
         values.append(row_values)
 
     # Call the Rust implementation
-    keys_written, _ = py_write_hashes(url, keys, field_columns, values)
+    keys_written, _ = py_write_hashes(url, keys, field_columns, values, ttl)
     return keys_written
 
 
@@ -783,6 +787,7 @@ def write_json(
     df: pl.DataFrame,
     url: str,
     key_column: str = "_key",
+    ttl: int | None = None,
 ) -> int:
     """Write a DataFrame to Redis as JSON documents.
 
@@ -794,6 +799,7 @@ def write_json(
         df: The DataFrame to write.
         url: Redis connection URL (e.g., "redis://localhost:6379").
         key_column: Column containing Redis keys (default: "_key").
+        ttl: Optional TTL in seconds for each key (default: None, no expiration).
 
     Returns:
         Number of keys successfully written.
@@ -809,6 +815,8 @@ def write_json(
         ... })
         >>> count = write_json(df, "redis://localhost:6379")
         >>> print(f"Wrote {count} JSON documents")
+        >>> # With TTL (expires in 1 hour)
+        >>> count = write_json(df, "redis://localhost:6379", ttl=3600)
     """
     import json
 
@@ -833,7 +841,7 @@ def write_json(
         json_strings.append(json.dumps(doc))
 
     # Call the Rust implementation
-    keys_written, _ = py_write_json(url, keys, json_strings)
+    keys_written, _ = py_write_json(url, keys, json_strings, ttl)
     return keys_written
 
 
@@ -842,6 +850,7 @@ def write_strings(
     url: str,
     key_column: str = "_key",
     value_column: str = "value",
+    ttl: int | None = None,
 ) -> int:
     """Write a DataFrame to Redis as string values.
 
@@ -853,6 +862,7 @@ def write_strings(
         url: Redis connection URL (e.g., "redis://localhost:6379").
         key_column: Column containing Redis keys (default: "_key").
         value_column: Column containing values to write (default: "value").
+        ttl: Optional TTL in seconds for each key (default: None, no expiration).
 
     Returns:
         Number of keys successfully written.
@@ -867,6 +877,8 @@ def write_strings(
         ... })
         >>> count = write_strings(df, "redis://localhost:6379")
         >>> print(f"Wrote {count} strings")
+        >>> # With TTL (expires in 1 hour)
+        >>> count = write_strings(df, "redis://localhost:6379", ttl=3600)
     """
     if key_column not in df.columns:
         raise ValueError(f"Key column '{key_column}' not found in DataFrame")
@@ -886,5 +898,5 @@ def write_strings(
             values.append(str(val))
 
     # Call the Rust implementation
-    keys_written, _ = py_write_strings(url, keys, values)
+    keys_written, _ = py_write_strings(url, keys, values, ttl)
     return keys_written
