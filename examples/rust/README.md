@@ -10,6 +10,8 @@ These examples demonstrate the polars-redis Rust API directly.
 
 ## Examples
 
+### Scanning
+
 | File | Description |
 |------|-------------|
 | `scan_hashes.rs` | Scanning Redis hashes with projection and batching |
@@ -17,17 +19,30 @@ These examples demonstrate the polars-redis Rust API directly.
 | `scan_strings.rs` | Redis strings with different value types |
 | `schema_inference.rs` | Automatic schema detection |
 
+### Writing
+
+| File | Description |
+|------|-------------|
+| `write_hashes.rs` | Writing data as Redis hashes |
+| `write_json.rs` | Writing data as RedisJSON documents |
+| `write_strings.rs` | Writing data as Redis strings |
+
 ## Running
 
 ```bash
-# Load sample data first
+# Load sample data for scan examples
 python examples/python/setup_sample_data.py
 
-# Run examples
+# Run scan examples
 cargo run --example scan_hashes
 cargo run --example scan_json
 cargo run --example scan_strings
 cargo run --example schema_inference
+
+# Run write examples (self-contained, cleanup after themselves)
+cargo run --example write_hashes
+cargo run --example write_json
+cargo run --example write_strings
 ```
 
 ## Environment Variables
