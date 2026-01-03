@@ -1063,49 +1063,6 @@ pytest tests/ -v
 
 ---
 
-## Prioritization
-
-### Immediate (Before PyPI Release)
-
-| Task | Effort | Impact | Notes |
-|------|--------|--------|-------|
-| Integration tests | Medium | High | Need Redis in CI |
-| `read_hashes()` / `read_json()` | Low | Medium | Just `scan_*().collect()` |
-| Error message improvements | Low | Medium | Connection failures, type errors |
-| Docstrings and type hints | Low | Medium | For IDE support |
-| README with examples | Low | High | First impression |
-
-### Next (v0.2)
-
-| Task | Effort | Impact | Notes |
-|------|--------|--------|-------|
-| Schema inference | Medium | High | Removes friction for new users |
-| `write_hashes()` | Medium | High | Completes read/write story |
-| `write_json()` | Low | Medium | Similar to write_hashes |
-| TTL column support | Low | Low | Nice to have |
-
-### Later (v0.3+)
-
-| Task | Effort | Impact | Notes |
-|------|--------|--------|-------|
-| RedisTimeSeries (`scan_timeseries`) | Medium | **Very High** | Native aggregation pushdown, IoT/metrics killer feature |
-| Redis Streams (`scan_stream`) | Medium | High | Events, CDC, audit logs |
-| Sorted Sets (`scan_zset`) | Low | Medium | Leaderboards, rankings |
-| RediSearch predicate pushdown | High | Medium | Powerful but niche |
-| Connection pooling | Medium | Low | Perf optimization |
-| Cluster support | High | Low | Enterprise use case |
-
-### Recommended Focus Order
-
-1. **Integration tests** - Can't ship without confidence
-2. **`read_hashes()` / `read_json()`** - 5 min implementation, expected API
-3. **README polish** - First thing users see
-4. **PyPI release** - Get it out there
-5. **Schema inference** - Biggest friction reducer
-6. **Write support** - Complete the story
-
----
-
 ## Open Questions
 
 1. **Large scans**: Should we warn/require opt-in for scans > N keys?
