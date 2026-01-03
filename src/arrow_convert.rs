@@ -6,7 +6,8 @@
 use std::sync::Arc;
 
 use arrow::array::{
-    ArrayRef, BooleanBuilder, Float64Builder, Int64Builder, RecordBatch, StringBuilder,
+    ArrayRef, BooleanBuilder, Date32Builder, Float64Builder, Int64Builder, RecordBatch,
+    StringBuilder, TimestampMicrosecondBuilder,
 };
 
 use crate::error::{Error, Result};
@@ -53,6 +54,8 @@ fn build_column(data: &[HashData], field_name: &str, redis_type: RedisType) -> R
         RedisType::Int64 => build_int64_column(data, field_name),
         RedisType::Float64 => build_float64_column(data, field_name),
         RedisType::Boolean => build_boolean_column(data, field_name),
+        RedisType::Date => build_date_column(data, field_name),
+        RedisType::Datetime => build_datetime_column(data, field_name),
     }
 }
 
@@ -124,6 +127,54 @@ fn build_boolean_column(data: &[HashData], field_name: &str) -> Result<ArrayRef>
                 let parsed = parse_bool(value).ok_or_else(|| {
                     Error::TypeConversion(format!(
                         "Failed to parse '{}' as boolean for field '{}'",
+                        value, field_name
+                    ))
+                })?;
+                builder.append_value(parsed);
+            }
+            Some(None) | None => builder.append_null(),
+        }
+    }
+
+    Ok(Arc::new(builder.finish()))
+}
+
+/// Build a Date32 column (days since Unix epoch), parsing string values.
+fn build_date_column(data: &[HashData], field_name: &str) -> Result<ArrayRef> {
+    use crate::schema::parse_date;
+
+    let mut builder = Date32Builder::with_capacity(data.len());
+
+    for row in data {
+        match row.fields.get(field_name) {
+            Some(Some(value)) => {
+                let parsed = parse_date(value).ok_or_else(|| {
+                    Error::TypeConversion(format!(
+                        "Failed to parse '{}' as date for field '{}'",
+                        value, field_name
+                    ))
+                })?;
+                builder.append_value(parsed);
+            }
+            Some(None) | None => builder.append_null(),
+        }
+    }
+
+    Ok(Arc::new(builder.finish()))
+}
+
+/// Build a Timestamp column (microseconds since Unix epoch), parsing string values.
+fn build_datetime_column(data: &[HashData], field_name: &str) -> Result<ArrayRef> {
+    use crate::schema::parse_datetime;
+
+    let mut builder = TimestampMicrosecondBuilder::with_capacity(data.len());
+
+    for row in data {
+        match row.fields.get(field_name) {
+            Some(Some(value)) => {
+                let parsed = parse_datetime(value).ok_or_else(|| {
+                    Error::TypeConversion(format!(
+                        "Failed to parse '{}' as datetime for field '{}'",
                         value, field_name
                     ))
                 })?;
@@ -251,5 +302,103 @@ mod tests {
         let batch = hashes_to_record_batch(&data, &schema).unwrap();
 
         assert_eq!(batch.num_rows(), 0);
+    }
+
+    #[test]
+    fn test_hashes_to_record_batch_with_date() {
+        let schema = HashSchema::new(vec![
+            ("name".to_string(), RedisType::Utf8),
+            ("birth_date".to_string(), RedisType::Date),
+        ]);
+
+        let data = vec![
+            make_hash_data(
+                "user:1",
+                vec![("name", Some("Alice")), ("birth_date", Some("2024-01-15"))],
+            ),
+            make_hash_data(
+                "user:2",
+                vec![("name", Some("Bob")), ("birth_date", Some("19737"))],
+            ),
+        ];
+
+        let batch = hashes_to_record_batch(&data, &schema).unwrap();
+        assert_eq!(batch.num_rows(), 2);
+        assert_eq!(batch.num_columns(), 3); // _key, name, birth_date
+    }
+
+    #[test]
+    fn test_hashes_to_record_batch_with_datetime() {
+        let schema = HashSchema::new(vec![
+            ("name".to_string(), RedisType::Utf8),
+            ("created_at".to_string(), RedisType::Datetime),
+        ]);
+
+        let data = vec![
+            make_hash_data(
+                "user:1",
+                vec![
+                    ("name", Some("Alice")),
+                    ("created_at", Some("2024-01-15T10:30:00")),
+                ],
+            ),
+            make_hash_data(
+                "user:2",
+                vec![
+                    ("name", Some("Bob")),
+                    ("created_at", Some("1705315800")), // Unix timestamp in seconds
+                ],
+            ),
+        ];
+
+        let batch = hashes_to_record_batch(&data, &schema).unwrap();
+        assert_eq!(batch.num_rows(), 2);
+        assert_eq!(batch.num_columns(), 3); // _key, name, created_at
+    }
+
+    #[test]
+    fn test_hashes_to_record_batch_date_with_nulls() {
+        let schema = HashSchema::new(vec![
+            ("name".to_string(), RedisType::Utf8),
+            ("birth_date".to_string(), RedisType::Date),
+        ]);
+
+        let data = vec![
+            make_hash_data(
+                "user:1",
+                vec![("name", Some("Alice")), ("birth_date", Some("2024-01-15"))],
+            ),
+            make_hash_data("user:2", vec![("name", Some("Bob")), ("birth_date", None)]),
+        ];
+
+        let batch = hashes_to_record_batch(&data, &schema).unwrap();
+        assert_eq!(batch.num_rows(), 2);
+    }
+
+    #[test]
+    fn test_hashes_to_record_batch_all_types_including_temporal() {
+        let schema = HashSchema::new(vec![
+            ("name".to_string(), RedisType::Utf8),
+            ("age".to_string(), RedisType::Int64),
+            ("score".to_string(), RedisType::Float64),
+            ("active".to_string(), RedisType::Boolean),
+            ("birth_date".to_string(), RedisType::Date),
+            ("created_at".to_string(), RedisType::Datetime),
+        ]);
+
+        let data = vec![make_hash_data(
+            "user:1",
+            vec![
+                ("name", Some("Alice")),
+                ("age", Some("30")),
+                ("score", Some("95.5")),
+                ("active", Some("true")),
+                ("birth_date", Some("1990-05-15")),
+                ("created_at", Some("2024-01-15T10:30:00Z")),
+            ],
+        )];
+
+        let batch = hashes_to_record_batch(&data, &schema).unwrap();
+        assert_eq!(batch.num_columns(), 7); // _key + 6 fields
     }
 }

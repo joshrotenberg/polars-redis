@@ -73,6 +73,8 @@ _DTYPE_MAP = {
     pl.Int64: "int64",
     pl.Float64: "float64",
     pl.Boolean: "bool",
+    pl.Date: "date",
+    pl.Datetime: "datetime",
 }
 
 
@@ -92,6 +94,10 @@ def _polars_dtype_to_internal(dtype: pl.DataType) -> str:
         return "float64"
     if "bool" in dtype_name:
         return "bool"
+    if "datetime" in dtype_name:
+        return "datetime"
+    if "date" in dtype_name:
+        return "date"
     raise ValueError(f"Unsupported dtype: {dtype}")
 
 
@@ -521,6 +527,8 @@ def _fields_to_schema(fields: list[tuple[str, str]]) -> dict[str, type[pl.DataTy
         "int64": pl.Int64,
         "float64": pl.Float64,
         "bool": pl.Boolean,
+        "date": pl.Date,
+        "datetime": pl.Datetime,
     }
     return {name: type_map.get(type_str, pl.Utf8) for name, type_str in fields}
 

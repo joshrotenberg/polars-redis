@@ -33,6 +33,8 @@ impl InferredSchema {
                     RedisType::Int64 => "int64",
                     RedisType::Float64 => "float64",
                     RedisType::Boolean => "bool",
+                    RedisType::Date => "date",
+                    RedisType::Datetime => "datetime",
                 };
                 (name.clone(), type_str.to_string())
             })
