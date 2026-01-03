@@ -72,7 +72,9 @@ jobs:
           pip install maturin polars pytest
 
       - name: Build and install package
-        run: maturin develop --features python
+        run: |
+          maturin build --release --features python
+          pip install target/wheels/*.whl
 
       - name: Wait for Redis
         run: |
