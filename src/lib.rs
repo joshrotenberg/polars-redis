@@ -23,8 +23,14 @@ pub use infer::{InferredSchema, infer_hash_schema, infer_json_schema};
 pub use schema::{HashSchema, RedisType};
 pub use types::hash::{BatchConfig, HashBatchIterator};
 pub use types::json::{JsonBatchIterator, JsonSchema};
+pub use types::list::{ListBatchIterator, ListSchema};
+pub use types::set::{SetBatchIterator, SetSchema};
 pub use types::string::{StringBatchIterator, StringSchema};
-pub use write::{WriteMode, WriteResult, write_hashes, write_json, write_strings};
+pub use types::zset::{ZSetBatchIterator, ZSetSchema};
+pub use write::{
+    WriteMode, WriteResult, write_hashes, write_json, write_lists, write_sets, write_strings,
+    write_zsets,
+};
 
 /// Serialize an Arrow RecordBatch to IPC format bytes.
 ///
@@ -65,12 +71,18 @@ fn polars_redis_internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyHashBatchIterator>()?;
     m.add_class::<PyJsonBatchIterator>()?;
     m.add_class::<PyStringBatchIterator>()?;
+    m.add_class::<PySetBatchIterator>()?;
+    m.add_class::<PyListBatchIterator>()?;
+    m.add_class::<PyZSetBatchIterator>()?;
     m.add_function(wrap_pyfunction!(scan_keys, m)?)?;
     m.add_function(wrap_pyfunction!(py_infer_hash_schema, m)?)?;
     m.add_function(wrap_pyfunction!(py_infer_json_schema, m)?)?;
     m.add_function(wrap_pyfunction!(py_write_hashes, m)?)?;
     m.add_function(wrap_pyfunction!(py_write_json, m)?)?;
     m.add_function(wrap_pyfunction!(py_write_strings, m)?)?;
+    m.add_function(wrap_pyfunction!(py_write_sets, m)?)?;
+    m.add_function(wrap_pyfunction!(py_write_lists, m)?)?;
+    m.add_function(wrap_pyfunction!(py_write_zsets, m)?)?;
     Ok(())
 }
 
@@ -712,6 +724,172 @@ fn py_write_hashes(
 }
 
 #[cfg(feature = "python")]
+/// Python wrapper for ListBatchIterator.
+///
+/// This class is used by the Python IO plugin to iterate over Redis list data
+/// and yield Arrow RecordBatches.
+#[pyclass]
+pub struct PyListBatchIterator {
+    inner: ListBatchIterator,
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl PyListBatchIterator {
+    /// Create a new PyListBatchIterator.
+    ///
+    /// # Arguments
+    /// * `url` - Redis connection URL
+    /// * `pattern` - Key pattern to match
+    /// * `batch_size` - Keys per batch
+    /// * `count_hint` - SCAN COUNT hint
+    /// * `include_key` - Whether to include the Redis key as a column
+    /// * `key_column_name` - Name of the key column
+    /// * `element_column_name` - Name of the element column
+    /// * `include_position` - Whether to include position index
+    /// * `position_column_name` - Name of the position column
+    /// * `include_row_index` - Whether to include the row index as a column
+    /// * `row_index_column_name` - Name of the row index column
+    /// * `max_rows` - Optional maximum rows to return
+    #[new]
+    #[pyo3(signature = (
+        url,
+        pattern,
+        batch_size = 1000,
+        count_hint = 100,
+        include_key = true,
+        key_column_name = "_key".to_string(),
+        element_column_name = "element".to_string(),
+        include_position = false,
+        position_column_name = "position".to_string(),
+        include_row_index = false,
+        row_index_column_name = "_index".to_string(),
+        max_rows = None
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        url: String,
+        pattern: String,
+        batch_size: usize,
+        count_hint: usize,
+        include_key: bool,
+        key_column_name: String,
+        element_column_name: String,
+        include_position: bool,
+        position_column_name: String,
+        include_row_index: bool,
+        row_index_column_name: String,
+        max_rows: Option<usize>,
+    ) -> PyResult<Self> {
+        let list_schema = ListSchema::new()
+            .with_key(include_key)
+            .with_key_column_name(&key_column_name)
+            .with_element_column_name(&element_column_name)
+            .with_position(include_position)
+            .with_position_column_name(&position_column_name)
+            .with_row_index(include_row_index)
+            .with_row_index_column_name(&row_index_column_name);
+
+        let mut config = types::hash::BatchConfig::new(pattern)
+            .with_batch_size(batch_size)
+            .with_count_hint(count_hint);
+
+        if let Some(max) = max_rows {
+            config = config.with_max_rows(max);
+        }
+
+        let inner = ListBatchIterator::new(&url, list_schema, config)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        Ok(Self { inner })
+    }
+
+    /// Get the next batch as Arrow IPC bytes.
+    fn next_batch_ipc(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let batch = self
+            .inner
+            .next_batch()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        match batch {
+            Some(record_batch) => {
+                let mut buf = Vec::new();
+                {
+                    let mut writer = arrow::ipc::writer::FileWriter::try_new(
+                        &mut buf,
+                        record_batch.schema().as_ref(),
+                    )
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to create IPC writer: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.write(&record_batch).map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to write batch: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.finish().map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to finish IPC: {}",
+                            e
+                        ))
+                    })?;
+                }
+
+                Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Check if iteration is complete.
+    fn is_done(&self) -> bool {
+        self.inner.is_done()
+    }
+
+    /// Get the number of rows yielded so far.
+    fn rows_yielded(&self) -> usize {
+        self.inner.rows_yielded()
+    }
+}
+
+#[cfg(feature = "python")]
+/// Write list elements to Redis.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `keys` - List of Redis keys to write to
+/// * `elements` - 2D list of elements for each list
+/// * `ttl` - Optional TTL in seconds for each key
+/// * `if_exists` - How to handle existing keys: "fail", "replace", or "append"
+///
+/// # Returns
+/// A tuple of (keys_written, keys_failed, keys_skipped).
+#[pyfunction]
+#[pyo3(signature = (url, keys, elements, ttl = None, if_exists = "replace".to_string()))]
+fn py_write_lists(
+    url: &str,
+    keys: Vec<String>,
+    elements: Vec<Vec<String>>,
+    ttl: Option<i64>,
+    if_exists: String,
+) -> PyResult<(usize, usize, usize)> {
+    let mode: WriteMode = if_exists.parse().map_err(|e: crate::Error| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string())
+    })?;
+
+    let result = write_lists(url, keys, elements, ttl, mode)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    Ok((result.keys_written, result.keys_failed, result.keys_skipped))
+}
+
+#[cfg(feature = "python")]
 /// Write JSON documents to Redis.
 ///
 /// # Arguments
@@ -768,6 +946,338 @@ fn py_write_strings(
     })?;
 
     let result = write_strings(url, keys, values, ttl, mode)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    Ok((result.keys_written, result.keys_failed, result.keys_skipped))
+}
+
+#[cfg(feature = "python")]
+/// Python wrapper for SetBatchIterator.
+///
+/// This class is used by the Python IO plugin to iterate over Redis set data
+/// and yield Arrow RecordBatches.
+#[pyclass]
+pub struct PySetBatchIterator {
+    inner: SetBatchIterator,
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl PySetBatchIterator {
+    /// Create a new PySetBatchIterator.
+    ///
+    /// # Arguments
+    /// * `url` - Redis connection URL
+    /// * `pattern` - Key pattern to match
+    /// * `batch_size` - Keys per batch
+    /// * `count_hint` - SCAN COUNT hint
+    /// * `include_key` - Whether to include the Redis key as a column
+    /// * `key_column_name` - Name of the key column
+    /// * `member_column_name` - Name of the member column
+    /// * `include_row_index` - Whether to include the row index as a column
+    /// * `row_index_column_name` - Name of the row index column
+    /// * `max_rows` - Optional maximum rows to return
+    #[new]
+    #[pyo3(signature = (
+        url,
+        pattern,
+        batch_size = 1000,
+        count_hint = 100,
+        include_key = true,
+        key_column_name = "_key".to_string(),
+        member_column_name = "member".to_string(),
+        include_row_index = false,
+        row_index_column_name = "_index".to_string(),
+        max_rows = None
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        url: String,
+        pattern: String,
+        batch_size: usize,
+        count_hint: usize,
+        include_key: bool,
+        key_column_name: String,
+        member_column_name: String,
+        include_row_index: bool,
+        row_index_column_name: String,
+        max_rows: Option<usize>,
+    ) -> PyResult<Self> {
+        let set_schema = SetSchema::new()
+            .with_key(include_key)
+            .with_key_column_name(&key_column_name)
+            .with_member_column_name(&member_column_name)
+            .with_row_index(include_row_index)
+            .with_row_index_column_name(&row_index_column_name);
+
+        let mut config = types::hash::BatchConfig::new(pattern)
+            .with_batch_size(batch_size)
+            .with_count_hint(count_hint);
+
+        if let Some(max) = max_rows {
+            config = config.with_max_rows(max);
+        }
+
+        let inner = SetBatchIterator::new(&url, set_schema, config)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        Ok(Self { inner })
+    }
+
+    /// Get the next batch as Arrow IPC bytes.
+    ///
+    /// Returns None when iteration is complete.
+    fn next_batch_ipc(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let batch = self
+            .inner
+            .next_batch()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        match batch {
+            Some(record_batch) => {
+                let mut buf = Vec::new();
+                {
+                    let mut writer = arrow::ipc::writer::FileWriter::try_new(
+                        &mut buf,
+                        record_batch.schema().as_ref(),
+                    )
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to create IPC writer: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.write(&record_batch).map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to write batch: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.finish().map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to finish IPC: {}",
+                            e
+                        ))
+                    })?;
+                }
+
+                Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Check if iteration is complete.
+    fn is_done(&self) -> bool {
+        self.inner.is_done()
+    }
+
+    /// Get the number of rows yielded so far.
+    fn rows_yielded(&self) -> usize {
+        self.inner.rows_yielded()
+    }
+}
+
+#[cfg(feature = "python")]
+/// Write set members to Redis.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `keys` - List of Redis keys to write to
+/// * `members` - 2D list of members for each set
+/// * `ttl` - Optional TTL in seconds for each key
+/// * `if_exists` - How to handle existing keys: "fail", "replace", or "append"
+///
+/// # Returns
+/// A tuple of (keys_written, keys_failed, keys_skipped).
+#[pyfunction]
+#[pyo3(signature = (url, keys, members, ttl = None, if_exists = "replace".to_string()))]
+fn py_write_sets(
+    url: &str,
+    keys: Vec<String>,
+    members: Vec<Vec<String>>,
+    ttl: Option<i64>,
+    if_exists: String,
+) -> PyResult<(usize, usize, usize)> {
+    let mode: WriteMode = if_exists.parse().map_err(|e: crate::Error| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string())
+    })?;
+
+    let result = write_sets(url, keys, members, ttl, mode)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    Ok((result.keys_written, result.keys_failed, result.keys_skipped))
+}
+
+#[cfg(feature = "python")]
+/// Python wrapper for ZSetBatchIterator.
+///
+/// This class is used by the Python IO plugin to iterate over Redis sorted set data
+/// and yield Arrow RecordBatches.
+#[pyclass]
+pub struct PyZSetBatchIterator {
+    inner: ZSetBatchIterator,
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl PyZSetBatchIterator {
+    /// Create a new PyZSetBatchIterator.
+    ///
+    /// # Arguments
+    /// * `url` - Redis connection URL
+    /// * `pattern` - Key pattern to match
+    /// * `batch_size` - Keys per batch
+    /// * `count_hint` - SCAN COUNT hint
+    /// * `include_key` - Whether to include the Redis key as a column
+    /// * `key_column_name` - Name of the key column
+    /// * `member_column_name` - Name of the member column
+    /// * `score_column_name` - Name of the score column
+    /// * `include_rank` - Whether to include rank index
+    /// * `rank_column_name` - Name of the rank column
+    /// * `include_row_index` - Whether to include the row index as a column
+    /// * `row_index_column_name` - Name of the row index column
+    /// * `max_rows` - Optional maximum rows to return
+    #[new]
+    #[pyo3(signature = (
+        url,
+        pattern,
+        batch_size = 1000,
+        count_hint = 100,
+        include_key = true,
+        key_column_name = "_key".to_string(),
+        member_column_name = "member".to_string(),
+        score_column_name = "score".to_string(),
+        include_rank = false,
+        rank_column_name = "rank".to_string(),
+        include_row_index = false,
+        row_index_column_name = "_index".to_string(),
+        max_rows = None
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        url: String,
+        pattern: String,
+        batch_size: usize,
+        count_hint: usize,
+        include_key: bool,
+        key_column_name: String,
+        member_column_name: String,
+        score_column_name: String,
+        include_rank: bool,
+        rank_column_name: String,
+        include_row_index: bool,
+        row_index_column_name: String,
+        max_rows: Option<usize>,
+    ) -> PyResult<Self> {
+        let zset_schema = ZSetSchema::new()
+            .with_key(include_key)
+            .with_key_column_name(&key_column_name)
+            .with_member_column_name(&member_column_name)
+            .with_score_column_name(&score_column_name)
+            .with_rank(include_rank)
+            .with_rank_column_name(&rank_column_name)
+            .with_row_index(include_row_index)
+            .with_row_index_column_name(&row_index_column_name);
+
+        let mut config = types::hash::BatchConfig::new(pattern)
+            .with_batch_size(batch_size)
+            .with_count_hint(count_hint);
+
+        if let Some(max) = max_rows {
+            config = config.with_max_rows(max);
+        }
+
+        let inner = ZSetBatchIterator::new(&url, zset_schema, config)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        Ok(Self { inner })
+    }
+
+    /// Get the next batch as Arrow IPC bytes.
+    ///
+    /// Returns None when iteration is complete.
+    fn next_batch_ipc(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let batch = self
+            .inner
+            .next_batch()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        match batch {
+            Some(record_batch) => {
+                let mut buf = Vec::new();
+                {
+                    let mut writer = arrow::ipc::writer::FileWriter::try_new(
+                        &mut buf,
+                        record_batch.schema().as_ref(),
+                    )
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to create IPC writer: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.write(&record_batch).map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to write batch: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.finish().map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to finish IPC: {}",
+                            e
+                        ))
+                    })?;
+                }
+
+                Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Check if iteration is complete.
+    fn is_done(&self) -> bool {
+        self.inner.is_done()
+    }
+
+    /// Get the number of rows yielded so far.
+    fn rows_yielded(&self) -> usize {
+        self.inner.rows_yielded()
+    }
+}
+
+#[cfg(feature = "python")]
+/// Write sorted set members to Redis.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `keys` - List of Redis keys to write to
+/// * `members_scores` - 2D list of (member, score) tuples for each sorted set
+/// * `ttl` - Optional TTL in seconds for each key
+/// * `if_exists` - How to handle existing keys: "fail", "replace", or "append"
+///
+/// # Returns
+/// A tuple of (keys_written, keys_failed, keys_skipped).
+#[pyfunction]
+#[pyo3(signature = (url, keys, members_scores, ttl = None, if_exists = "replace".to_string()))]
+fn py_write_zsets(
+    url: &str,
+    keys: Vec<String>,
+    members_scores: Vec<Vec<(String, f64)>>,
+    ttl: Option<i64>,
+    if_exists: String,
+) -> PyResult<(usize, usize, usize)> {
+    let mode: WriteMode = if_exists.parse().map_err(|e: crate::Error| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string())
+    })?;
+
+    let result = write_zsets(url, keys, members_scores, ttl, mode)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
     Ok((result.keys_written, result.keys_failed, result.keys_skipped))
