@@ -79,12 +79,13 @@ polars-redis is a Polars IO plugin that enables scanning Redis data structures (
 | Write modes (fail/replace/append) | Medium | 3 |
 | TTL on write | Medium | 3 |
 | Key generation strategies | Medium | 3 |
-| RediSearch predicate pushdown | High | 4 |
+| Redis Strings (`scan_strings`) | High | 4 |
+| Sorted Sets (`scan_zset`) | Medium | 4 |
+| Redis Streams (`scan_stream`) | Medium | 4 |
 | RedisTimeSeries support | High | 4 |
-| Redis Streams support | Medium | 4 |
-| Sorted Sets support | Medium | 4 |
-| Connection pooling | Low | 4 |
-| Cluster support | Low | 4 |
+| RediSearch predicate pushdown | Medium | 5 |
+| Connection pooling | Low | 5 |
+| Cluster support | Low | 5 |
 
 ---
 
@@ -130,6 +131,8 @@ def scan_hashes(
 | `pl.Int64` | `str.parse::<i64>()` |
 | `pl.Float64` | `str.parse::<f64>()` |
 | `pl.Boolean` | `true/false/1/0/yes/no/t/f/y/n` |
+| `pl.Date` | ISO 8601 date (`YYYY-MM-DD`) or epoch days |
+| `pl.Datetime` | ISO 8601 datetime or Unix timestamp (s/ms/us) |
 
 #### `scan_json()`
 
@@ -509,6 +512,158 @@ lf = redis.scan_zset(
 top_100 = lf.sort("score", descending=True).head(100).collect()
 ```
 
+#### Redis Strings Support
+
+Redis Strings are the simplest data type - single key-value pairs. While less structured
+than Hashes or JSON, they're commonly used for caching, counters, and simple values.
+
+```python
+def scan_strings(
+    url: str,
+    pattern: str = "*",
+    *,
+    value_type: pl.DataType = pl.Utf8,  # Type to parse values as
+    include_key: bool = True,
+    key_column_name: str = "_key",
+    value_column_name: str = "value",
+    batch_size: int = 1000,
+    count_hint: int = 100,
+) -> pl.LazyFrame
+```
+
+**Parameters:**
+- `url`: Redis connection URL
+- `pattern`: Key pattern for SCAN (e.g., `cache:*`, `counter:*`)
+- `value_type`: Polars dtype for the value column (Utf8, Int64, Float64, Boolean, Date, Datetime)
+- `include_key`: Whether to include Redis key as a column
+- `key_column_name`: Name of the key column (default: `_key`)
+- `value_column_name`: Name of the value column (default: `value`)
+- `batch_size`: Number of keys to fetch per batch
+- `count_hint`: SCAN COUNT hint
+
+**Use Cases:**
+- Cache hit/miss analysis
+- Counter aggregation
+- Session token auditing
+- Feature flag states
+- Simple key-value exports
+
+**Implementation:**
+- Uses `SCAN` to find keys matching pattern
+- Batched `MGET` to fetch values efficiently
+- Type conversion based on `value_type` parameter
+
+**Examples:**
+
+```python
+# Export all cache entries as strings
+lf = redis.scan_strings(
+    url,
+    pattern="cache:*",
+    value_type=pl.Utf8,
+)
+
+cache_entries = lf.collect()
+# Columns: _key (Utf8), value (Utf8)
+```
+
+```python
+# Aggregate counters
+lf = redis.scan_strings(
+    url,
+    pattern="counter:page_views:*",
+    value_type=pl.Int64,
+)
+
+total_views = lf.select(pl.col("value").sum()).collect()
+
+# Group by page (extract from key)
+page_stats = (
+    lf.with_columns(
+        pl.col("_key").str.extract(r"counter:page_views:(.+)", 1).alias("page")
+    )
+    .group_by("page")
+    .agg(pl.col("value").sum().alias("total_views"))
+    .collect()
+)
+```
+
+```python
+# Session analysis - parse JSON strings
+lf = redis.scan_strings(
+    url,
+    pattern="session:*",
+    value_type=pl.Utf8,
+)
+
+# Parse JSON values client-side
+sessions = (
+    lf.with_columns(
+        pl.col("value").str.json_decode().alias("data")
+    )
+    .unnest("data")
+    .collect()
+)
+```
+
+```python
+# Feature flags as booleans
+lf = redis.scan_strings(
+    url,
+    pattern="feature:*",
+    value_type=pl.Boolean,
+)
+
+enabled_features = lf.filter(pl.col("value")).collect()
+```
+
+**Write Support:**
+
+```python
+def write_strings(
+    df: pl.DataFrame,
+    url: str,
+    *,
+    key_column: str = "_key",
+    value_column: str = "value",
+    key_prefix: str = "",
+    ttl: int | None = None,
+    batch_size: int = 1000,
+) -> int  # Returns rows written
+```
+
+**Example:**
+```python
+# Write computed values back to Redis
+df = pl.DataFrame({
+    "_key": ["result:1", "result:2", "result:3"],
+    "value": [100, 200, 300],
+})
+
+redis.write_strings(df, url, ttl=3600)  # 1 hour TTL
+```
+
+**Comparison with Hashes:**
+
+| Aspect | Strings | Hashes |
+|--------|---------|--------|
+| **Structure** | Single value per key | Multiple fields per key |
+| **Atomicity** | Single SET/GET | Field-level operations |
+| **Memory** | Lower overhead per key | More efficient for multi-field |
+| **Best for** | Counters, caches, flags | Entities, profiles, objects |
+
+**When to use Strings:**
+- Single value per key (counters, flags, simple caches)
+- Need atomic increment/decrement (INCR, DECR)
+- Storing serialized data (JSON strings, binary)
+- Simple expiration patterns
+
+**When to use Hashes instead:**
+- Multiple related fields per entity
+- Need partial updates (HSET single field)
+- Memory efficiency for many small fields
+- Field-level TTL not needed (Hash fields share key TTL)
+
 ---
 
 ## Gap Analysis vs. Ecosystem
@@ -544,6 +699,7 @@ query patterns, and performance requirements. This section helps you decide.
 |-------------------|-----|-----|
 | User profiles, product catalogs, config | **Hash** (`scan_hashes`) | Flexible schema, field-level access |
 | Nested/hierarchical documents | **JSON** (`scan_json`) | Path queries, complex structures |
+| Simple key-value pairs, counters, flags | **Strings** (`scan_strings`) | Simplest structure, atomic ops |
 | Metrics, sensor readings, stock prices | **TimeSeries** (`scan_timeseries`) | Native aggregation, 90% compression |
 | Event logs, CDC streams, audit trails | **Streams** (`scan_stream`) | Ordered events, consumer groups |
 | Leaderboards, rankings, scored items | **Sorted Sets** (`scan_zset`) | Score-based ordering |
@@ -815,13 +971,17 @@ client-side for millions of members.
 - [ ] Batch pipelining
 - [ ] Key generation strategies (prefix, auto-index)
 
-### Phase 4: Advanced
-- [ ] RedisTimeSeries support (`scan_timeseries`, `scan_timeseries_multi`)
-- [ ] Redis Streams support (`scan_stream`)
+### Phase 4: Additional Data Types
+- [ ] Redis Strings support (`scan_strings`, `write_strings`)
 - [ ] Sorted Sets support (`scan_zset`)
+- [ ] Redis Streams support (`scan_stream`)
+- [ ] RedisTimeSeries support (`scan_timeseries`, `scan_timeseries_multi`)
+
+### Phase 5: Advanced Features
 - [ ] RediSearch predicate pushdown
 - [ ] Connection pooling
 - [ ] Cluster support
+- [ ] Lists support (`scan_list`)
 
 ---
 
