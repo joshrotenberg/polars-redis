@@ -983,10 +983,18 @@ client-side for millions of members.
 - [ ] Cluster support
 - [ ] Lists support (`scan_list`)
 
-### Phase 6: Release
+### Phase 6: Documentation
+- [ ] MkDocs Material site setup
+- [ ] Getting started guide
+- [ ] API reference (auto-generated from docstrings)
+- [ ] Usage examples
+- [ ] Data type selection guide
+- [ ] GitHub Pages deployment
+
+### Phase 7: Release
 - [ ] PyPI release
 - [ ] crates.io release
-- [ ] Documentation site
+- [ ] awesome-polars submission
 
 ---
 

@@ -39,6 +39,14 @@ pub enum Error {
     /// RedisJSON module not available.
     #[error("RedisJSON module not available. Install redis-stack or load the ReJSON module.")]
     JsonModuleNotAvailable,
+
+    /// Invalid input parameter.
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
+
+    /// Key already exists (when using WriteMode::Fail).
+    #[error("Key already exists: {0}")]
+    KeyExists(String),
 }
 
 #[cfg(feature = "python")]
@@ -57,6 +65,8 @@ impl From<Error> for pyo3::PyErr {
             Error::JsonModuleNotAvailable => {
                 pyo3::exceptions::PyRuntimeError::new_err(err.to_string())
             }
+            Error::InvalidInput(_) => pyo3::exceptions::PyValueError::new_err(err.to_string()),
+            Error::KeyExists(_) => pyo3::exceptions::PyValueError::new_err(err.to_string()),
         }
     }
 }

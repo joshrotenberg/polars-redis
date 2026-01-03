@@ -34,7 +34,7 @@ pub use json_convert::JsonSchema;
 pub use schema::{HashSchema, RedisType};
 pub use string_batch_iter::StringBatchIterator;
 pub use string_convert::StringSchema;
-pub use write::{WriteResult, write_hashes, write_json, write_strings};
+pub use write::{WriteMode, WriteResult, write_hashes, write_json, write_strings};
 
 /// Serialize an Arrow RecordBatch to IPC format bytes.
 ///
@@ -697,22 +697,28 @@ fn py_infer_json_schema(
 /// * `fields` - List of field names
 /// * `values` - 2D list of values (rows x columns), same order as fields
 /// * `ttl` - Optional TTL in seconds for each key
+/// * `if_exists` - How to handle existing keys: "fail", "replace", or "append"
 ///
 /// # Returns
-/// A tuple of (keys_written, keys_failed).
+/// A tuple of (keys_written, keys_failed, keys_skipped).
 #[pyfunction]
-#[pyo3(signature = (url, keys, fields, values, ttl = None))]
+#[pyo3(signature = (url, keys, fields, values, ttl = None, if_exists = "replace".to_string()))]
 fn py_write_hashes(
     url: &str,
     keys: Vec<String>,
     fields: Vec<String>,
     values: Vec<Vec<Option<String>>>,
     ttl: Option<i64>,
-) -> PyResult<(usize, usize)> {
-    let result = write_hashes(url, keys, fields, values, ttl)
+    if_exists: String,
+) -> PyResult<(usize, usize, usize)> {
+    let mode: WriteMode = if_exists.parse().map_err(|e: crate::Error| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string())
+    })?;
+
+    let result = write_hashes(url, keys, fields, values, ttl, mode)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
-    Ok((result.keys_written, result.keys_failed))
+    Ok((result.keys_written, result.keys_failed, result.keys_skipped))
 }
 
 #[cfg(feature = "python")]
@@ -723,21 +729,27 @@ fn py_write_hashes(
 /// * `keys` - List of Redis keys to write to
 /// * `json_strings` - List of JSON strings to write
 /// * `ttl` - Optional TTL in seconds for each key
+/// * `if_exists` - How to handle existing keys: "fail", "replace", or "append"
 ///
 /// # Returns
-/// A tuple of (keys_written, keys_failed).
+/// A tuple of (keys_written, keys_failed, keys_skipped).
 #[pyfunction]
-#[pyo3(signature = (url, keys, json_strings, ttl = None))]
+#[pyo3(signature = (url, keys, json_strings, ttl = None, if_exists = "replace".to_string()))]
 fn py_write_json(
     url: &str,
     keys: Vec<String>,
     json_strings: Vec<String>,
     ttl: Option<i64>,
-) -> PyResult<(usize, usize)> {
-    let result = write_json(url, keys, json_strings, ttl)
+    if_exists: String,
+) -> PyResult<(usize, usize, usize)> {
+    let mode: WriteMode = if_exists.parse().map_err(|e: crate::Error| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string())
+    })?;
+
+    let result = write_json(url, keys, json_strings, ttl, mode)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
-    Ok((result.keys_written, result.keys_failed))
+    Ok((result.keys_written, result.keys_failed, result.keys_skipped))
 }
 
 #[cfg(feature = "python")]
@@ -748,19 +760,25 @@ fn py_write_json(
 /// * `keys` - List of Redis keys to write to
 /// * `values` - List of string values to write (None for null)
 /// * `ttl` - Optional TTL in seconds for each key
+/// * `if_exists` - How to handle existing keys: "fail", "replace", or "append"
 ///
 /// # Returns
-/// A tuple of (keys_written, keys_failed).
+/// A tuple of (keys_written, keys_failed, keys_skipped).
 #[pyfunction]
-#[pyo3(signature = (url, keys, values, ttl = None))]
+#[pyo3(signature = (url, keys, values, ttl = None, if_exists = "replace".to_string()))]
 fn py_write_strings(
     url: &str,
     keys: Vec<String>,
     values: Vec<Option<String>>,
     ttl: Option<i64>,
-) -> PyResult<(usize, usize)> {
-    let result = write_strings(url, keys, values, ttl)
+    if_exists: String,
+) -> PyResult<(usize, usize, usize)> {
+    let mode: WriteMode = if_exists.parse().map_err(|e: crate::Error| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string())
+    })?;
+
+    let result = write_strings(url, keys, values, ttl, mode)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
-    Ok((result.keys_written, result.keys_failed))
+    Ok((result.keys_written, result.keys_failed, result.keys_skipped))
 }

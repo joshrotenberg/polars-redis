@@ -729,6 +729,7 @@ def write_hashes(
     key_column: str = "_key",
     ttl: int | None = None,
     key_prefix: str = "",
+    if_exists: str = "replace",
 ) -> int:
     """Write a DataFrame to Redis as hashes.
 
@@ -741,12 +742,16 @@ def write_hashes(
         key_column: Column containing Redis keys (default: "_key").
         ttl: Optional TTL in seconds for each key (default: None, no expiration).
         key_prefix: Prefix to prepend to all keys (default: "").
+        if_exists: How to handle existing keys (default: "replace").
+            - "fail": Skip keys that already exist.
+            - "replace": Delete existing keys before writing (clean replacement).
+            - "append": Merge new fields into existing hashes.
 
     Returns:
         Number of keys successfully written.
 
     Raises:
-        ValueError: If the key column is not in the DataFrame.
+        ValueError: If the key column is not in the DataFrame or if_exists is invalid.
 
     Example:
         >>> df = pl.DataFrame({
@@ -760,6 +765,8 @@ def write_hashes(
         >>> count = write_hashes(df, "redis://localhost:6379", ttl=3600)
         >>> # With key prefix (keys become "prod:user:1", "prod:user:2")
         >>> count = write_hashes(df, "redis://localhost:6379", key_prefix="prod:")
+        >>> # Skip existing keys
+        >>> count = write_hashes(df, "redis://localhost:6379", if_exists="fail")
     """
     if key_column not in df.columns:
         raise ValueError(f"Key column '{key_column}' not found in DataFrame")
@@ -783,7 +790,7 @@ def write_hashes(
         values.append(row_values)
 
     # Call the Rust implementation
-    keys_written, _ = py_write_hashes(url, keys, field_columns, values, ttl)
+    keys_written, _, _ = py_write_hashes(url, keys, field_columns, values, ttl, if_exists)
     return keys_written
 
 
@@ -793,6 +800,7 @@ def write_json(
     key_column: str = "_key",
     ttl: int | None = None,
     key_prefix: str = "",
+    if_exists: str = "replace",
 ) -> int:
     """Write a DataFrame to Redis as JSON documents.
 
@@ -806,12 +814,16 @@ def write_json(
         key_column: Column containing Redis keys (default: "_key").
         ttl: Optional TTL in seconds for each key (default: None, no expiration).
         key_prefix: Prefix to prepend to all keys (default: "").
+        if_exists: How to handle existing keys (default: "replace").
+            - "fail": Skip keys that already exist.
+            - "replace": Overwrite existing documents.
+            - "append": Same as replace (JSON documents are replaced entirely).
 
     Returns:
         Number of keys successfully written.
 
     Raises:
-        ValueError: If the key column is not in the DataFrame.
+        ValueError: If the key column is not in the DataFrame or if_exists is invalid.
 
     Example:
         >>> df = pl.DataFrame({
@@ -825,6 +837,8 @@ def write_json(
         >>> count = write_json(df, "redis://localhost:6379", ttl=3600)
         >>> # With key prefix (keys become "prod:doc:1", "prod:doc:2")
         >>> count = write_json(df, "redis://localhost:6379", key_prefix="prod:")
+        >>> # Skip existing keys
+        >>> count = write_json(df, "redis://localhost:6379", if_exists="fail")
     """
     import json
 
@@ -849,7 +863,7 @@ def write_json(
         json_strings.append(json.dumps(doc))
 
     # Call the Rust implementation
-    keys_written, _ = py_write_json(url, keys, json_strings, ttl)
+    keys_written, _, _ = py_write_json(url, keys, json_strings, ttl, if_exists)
     return keys_written
 
 
@@ -860,6 +874,7 @@ def write_strings(
     value_column: str = "value",
     ttl: int | None = None,
     key_prefix: str = "",
+    if_exists: str = "replace",
 ) -> int:
     """Write a DataFrame to Redis as string values.
 
@@ -873,6 +888,10 @@ def write_strings(
         value_column: Column containing values to write (default: "value").
         ttl: Optional TTL in seconds for each key (default: None, no expiration).
         key_prefix: Prefix to prepend to all keys (default: "").
+        if_exists: How to handle existing keys (default: "replace").
+            - "fail": Skip keys that already exist.
+            - "replace": Overwrite existing values.
+            - "append": Same as replace (strings are replaced entirely).
 
     Returns:
         Number of keys successfully written.
@@ -891,6 +910,8 @@ def write_strings(
         >>> count = write_strings(df, "redis://localhost:6379", ttl=3600)
         >>> # With key prefix (keys become "prod:counter:1", "prod:counter:2")
         >>> count = write_strings(df, "redis://localhost:6379", key_prefix="prod:")
+        >>> # Skip existing keys
+        >>> count = write_strings(df, "redis://localhost:6379", if_exists="fail")
     """
     if key_column not in df.columns:
         raise ValueError(f"Key column '{key_column}' not found in DataFrame")
@@ -910,5 +931,5 @@ def write_strings(
             values.append(str(val))
 
     # Call the Rust implementation
-    keys_written, _ = py_write_strings(url, keys, values, ttl)
+    keys_written, _, _ = py_write_strings(url, keys, values, ttl, if_exists)
     return keys_written
