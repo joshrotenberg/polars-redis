@@ -206,7 +206,7 @@ impl PyHashBatchIterator {
     ///
     /// Returns None when iteration is complete.
     /// Returns the RecordBatch serialized as Arrow IPC format.
-    fn next_batch_ipc(&mut self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+    fn next_batch_ipc(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         let batch = self
             .inner
             .next_batch()
@@ -351,7 +351,7 @@ impl PyJsonBatchIterator {
     ///
     /// Returns None when iteration is complete.
     /// Returns the RecordBatch serialized as Arrow IPC format.
-    fn next_batch_ipc(&mut self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+    fn next_batch_ipc(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         let batch = self
             .inner
             .next_batch()
