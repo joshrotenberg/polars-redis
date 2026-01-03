@@ -214,6 +214,110 @@ Scan Redis sorted sets matching a pattern and return a LazyFrame with one row pe
 
 ---
 
+### scan_streams
+
+```python
+def scan_streams(
+    url: str,
+    pattern: str = "*",
+    fields: list[str] = [],
+    *,
+    start_id: str = "-",
+    end_id: str = "+",
+    count_per_stream: int | None = None,
+    include_key: bool = True,
+    key_column_name: str = "_key",
+    include_id: bool = True,
+    id_column_name: str = "_id",
+    include_timestamp: bool = True,
+    timestamp_column_name: str = "_ts",
+    include_sequence: bool = False,
+    sequence_column_name: str = "_seq",
+    include_row_index: bool = False,
+    row_index_column_name: str = "_index",
+    batch_size: int = 1000,
+    count_hint: int = 100,
+) -> pl.LazyFrame
+```
+
+Scan Redis Streams matching a pattern and return a LazyFrame with one row per entry.
+
+**Parameters:**
+
+- `url`: Redis connection URL
+- `pattern`: Key pattern to match
+- `fields`: Field names to extract from entries
+- `start_id`: Start entry ID (default: "-" for oldest)
+- `end_id`: End entry ID (default: "+" for newest)
+- `count_per_stream`: Maximum entries per stream (optional)
+- `include_key`: Include Redis key as a column
+- `key_column_name`: Name of the key column
+- `include_id`: Include entry ID as a column
+- `id_column_name`: Name of the entry ID column
+- `include_timestamp`: Include timestamp as a column
+- `timestamp_column_name`: Name of the timestamp column
+- `include_sequence`: Include sequence number as a column
+- `sequence_column_name`: Name of the sequence column
+- `include_row_index`: Include row index column
+- `row_index_column_name`: Name of the index column
+- `batch_size`: Keys per batch
+- `count_hint`: Redis SCAN COUNT hint
+
+**Returns:** `pl.LazyFrame`
+
+---
+
+### scan_timeseries
+
+```python
+def scan_timeseries(
+    url: str,
+    pattern: str = "*",
+    *,
+    start: str = "-",
+    end: str = "+",
+    count_per_series: int | None = None,
+    aggregation: str | None = None,
+    bucket_size_ms: int | None = None,
+    include_key: bool = True,
+    key_column_name: str = "_key",
+    include_timestamp: bool = True,
+    timestamp_column_name: str = "_ts",
+    value_column_name: str = "value",
+    include_row_index: bool = False,
+    row_index_column_name: str = "_index",
+    label_columns: list[str] = [],
+    batch_size: int = 1000,
+    count_hint: int = 100,
+) -> pl.LazyFrame
+```
+
+Scan RedisTimeSeries matching a pattern and return a LazyFrame with one row per sample.
+
+**Parameters:**
+
+- `url`: Redis connection URL
+- `pattern`: Key pattern to match
+- `start`: Start timestamp (default: "-" for oldest)
+- `end`: End timestamp (default: "+" for newest)
+- `count_per_series`: Maximum samples per time series (optional)
+- `aggregation`: Aggregation type (avg, sum, min, max, range, count, first, last, std.p, std.s, var.p, var.s)
+- `bucket_size_ms`: Bucket size in milliseconds (required with aggregation)
+- `include_key`: Include Redis key as a column
+- `key_column_name`: Name of the key column
+- `include_timestamp`: Include timestamp as a column
+- `timestamp_column_name`: Name of the timestamp column
+- `value_column_name`: Name of the value column
+- `include_row_index`: Include row index column
+- `row_index_column_name`: Name of the index column
+- `label_columns`: Label names to include as columns
+- `batch_size`: Keys per batch
+- `count_hint`: Redis SCAN COUNT hint
+
+**Returns:** `pl.LazyFrame`
+
+---
+
 ## Read Functions (Eager)
 
 ### read_hashes
@@ -263,6 +367,22 @@ def read_zsets(...) -> pl.DataFrame
 ```
 
 Eager version of `scan_zsets`. Parameters are identical.
+
+### read_streams
+
+```python
+def read_streams(...) -> pl.DataFrame
+```
+
+Eager version of `scan_streams`. Parameters are identical.
+
+### read_timeseries
+
+```python
+def read_timeseries(...) -> pl.DataFrame
+```
+
+Eager version of `scan_timeseries`. Parameters are identical.
 
 ---
 

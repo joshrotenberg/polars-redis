@@ -7,7 +7,7 @@ Scan Redis data structures as LazyFrames with projection pushdown, or write Data
 ## Features
 
 - **Scan Redis data** as Polars LazyFrames
-    - Hashes, JSON documents, strings, sets, lists, and sorted sets
+    - Hashes, JSON documents, strings, sets, lists, sorted sets, streams, and time series
     - Projection pushdown (only fetch requested fields)
     - Batched iteration for memory efficiency
 - **Write DataFrames** to Redis
@@ -27,6 +27,8 @@ Scan Redis data structures as LazyFrames with projection pushdown, or write Data
 | Set | Yes | Yes | One row per member |
 | List | Yes | Yes | One row per element, optional position |
 | Sorted Set | Yes | Yes | One row per member with score |
+| Stream | Yes | No | One row per entry with timestamp |
+| TimeSeries | Yes | No | Server-side aggregation support |
 
 ## Quick Example
 

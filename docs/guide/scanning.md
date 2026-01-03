@@ -1,6 +1,6 @@
 # Scanning Data
 
-polars-redis provides scan functions for six Redis data types: hashes, JSON, strings, sets, lists, and sorted sets.
+polars-redis provides scan functions for eight Redis data types: hashes, JSON, strings, sets, lists, sorted sets, streams, and time series.
 
 ## Scanning Hashes
 
@@ -247,6 +247,119 @@ lf = redis.scan_zsets(
 | `member` | Utf8 | Sorted set member |
 | `score` | Float64 | Member's score |
 | `rank` | Int64 | 0-based rank by score (if `include_rank=True`) |
+| `_index` | UInt64 | Row index (if `include_row_index=True`) |
+
+## Scanning Streams
+
+`scan_streams` scans Redis Streams, returning one row per entry:
+
+```python
+lf = redis.scan_streams(
+    "redis://localhost:6379",
+    pattern="events:*",
+    fields=["action", "user_id", "timestamp"],
+)
+
+# Filter by entry ID range
+lf = redis.scan_streams(
+    "redis://localhost:6379",
+    pattern="events:*",
+    fields=["action", "user_id"],
+    start_id="-",      # oldest
+    end_id="+",        # newest
+)
+```
+
+### Stream-specific Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `fields` | list | `[]` | Field names to extract from entries |
+| `start_id` | str | `"-"` | Start entry ID (or "-" for oldest) |
+| `end_id` | str | `"+"` | End entry ID (or "+" for newest) |
+| `count_per_stream` | int | None | Max entries per stream |
+| `include_id` | bool | `True` | Include entry ID as column |
+| `id_column_name` | str | `"_id"` | Name of entry ID column |
+| `include_timestamp` | bool | `True` | Include timestamp as column |
+| `timestamp_column_name` | str | `"_ts"` | Name of timestamp column |
+| `include_sequence` | bool | `False` | Include sequence number |
+| `sequence_column_name` | str | `"_seq"` | Name of sequence column |
+
+### Output Schema
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `_key` | Utf8 | Redis key (if `include_key=True`) |
+| `_id` | Utf8 | Entry ID e.g. "1234567890123-0" (if `include_id=True`) |
+| `_ts` | Timestamp | Timestamp from entry ID (if `include_timestamp=True`) |
+| `_seq` | UInt64 | Sequence number (if `include_sequence=True`) |
+| `<field>` | Utf8 | User-defined fields (nullable) |
+| `_index` | UInt64 | Row index (if `include_row_index=True`) |
+
+## Scanning Time Series
+
+`scan_timeseries` scans RedisTimeSeries data, returning one row per sample:
+
+```python
+lf = redis.scan_timeseries(
+    "redis://localhost:6379",
+    pattern="sensor:*",
+)
+
+# With time range
+lf = redis.scan_timeseries(
+    "redis://localhost:6379",
+    pattern="sensor:*",
+    start="-",         # oldest
+    end="+",           # newest
+)
+
+# With aggregation (server-side downsampling)
+lf = redis.scan_timeseries(
+    "redis://localhost:6379",
+    pattern="sensor:*",
+    aggregation="avg",
+    bucket_size_ms=60000,  # 1 minute buckets
+)
+```
+
+### TimeSeries-specific Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `start` | str | `"-"` | Start timestamp (or "-" for oldest) |
+| `end` | str | `"+"` | End timestamp (or "+" for newest) |
+| `count_per_series` | int | None | Max samples per time series |
+| `aggregation` | str | None | Aggregation type (see below) |
+| `bucket_size_ms` | int | None | Bucket size in ms (required with aggregation) |
+| `value_column_name` | str | `"value"` | Name of value column |
+| `label_columns` | list | `[]` | Label names to include as columns |
+
+### Aggregation Types
+
+| Type | Description |
+|------|-------------|
+| `avg` | Average value |
+| `sum` | Sum of values |
+| `min` | Minimum value |
+| `max` | Maximum value |
+| `range` | Max - Min |
+| `count` | Number of samples |
+| `first` | First value |
+| `last` | Last value |
+| `std.p` | Population standard deviation |
+| `std.s` | Sample standard deviation |
+| `var.p` | Population variance |
+| `var.s` | Sample variance |
+
+### Output Schema
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `_key` | Utf8 | Redis key (if `include_key=True`) |
+| `_ts` | Timestamp | Sample timestamp (if `include_timestamp=True`) |
+| `value` | Float64 | Sample value |
+| `<label>` | Utf8 | Label values (if `label_columns` specified) |
 | `_index` | UInt64 | Row index (if `include_row_index=True`) |
 
 ## Batching
