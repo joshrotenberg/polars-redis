@@ -27,6 +27,7 @@ pub struct WriteResult {
 /// * `keys` - List of Redis keys to write to
 /// * `fields` - List of field names
 /// * `values` - 2D list of values (rows x columns), same order as fields
+/// * `ttl` - Optional TTL in seconds for each key
 ///
 /// # Returns
 /// A `WriteResult` with the number of keys written.
@@ -35,6 +36,7 @@ pub fn write_hashes(
     keys: Vec<String>,
     fields: Vec<String>,
     values: Vec<Vec<Option<String>>>,
+    ttl: Option<i64>,
 ) -> Result<WriteResult> {
     let runtime =
         Runtime::new().map_err(|e| Error::Runtime(format!("Failed to create runtime: {}", e)))?;
@@ -43,7 +45,7 @@ pub fn write_hashes(
 
     runtime.block_on(async {
         let mut conn = connection.get_async_connection().await?;
-        write_hashes_async(&mut conn, keys, fields, values).await
+        write_hashes_async(&mut conn, keys, fields, values, ttl).await
     })
 }
 
@@ -53,6 +55,7 @@ async fn write_hashes_async(
     keys: Vec<String>,
     fields: Vec<String>,
     values: Vec<Vec<Option<String>>>,
+    ttl: Option<i64>,
 ) -> Result<WriteResult> {
     let mut keys_written = 0;
     let mut keys_failed = 0;
@@ -78,7 +81,13 @@ async fn write_hashes_async(
                 .hset_multiple::<_, _, _, ()>(key, &hash_data.into_iter().collect::<Vec<_>>())
                 .await
             {
-                Ok(_) => keys_written += 1,
+                Ok(_) => {
+                    // Set TTL if provided
+                    if let Some(seconds) = ttl {
+                        let _ = conn.expire::<_, ()>(key, seconds).await;
+                    }
+                    keys_written += 1;
+                }
                 Err(_) => keys_failed += 1,
             }
         }
@@ -96,10 +105,16 @@ async fn write_hashes_async(
 /// * `url` - Redis connection URL
 /// * `keys` - List of Redis keys to write to
 /// * `json_strings` - List of JSON strings to write
+/// * `ttl` - Optional TTL in seconds for each key
 ///
 /// # Returns
 /// A `WriteResult` with the number of keys written.
-pub fn write_json(url: &str, keys: Vec<String>, json_strings: Vec<String>) -> Result<WriteResult> {
+pub fn write_json(
+    url: &str,
+    keys: Vec<String>,
+    json_strings: Vec<String>,
+    ttl: Option<i64>,
+) -> Result<WriteResult> {
     let runtime =
         Runtime::new().map_err(|e| Error::Runtime(format!("Failed to create runtime: {}", e)))?;
 
@@ -107,7 +122,7 @@ pub fn write_json(url: &str, keys: Vec<String>, json_strings: Vec<String>) -> Re
 
     runtime.block_on(async {
         let mut conn = connection.get_async_connection().await?;
-        write_json_async(&mut conn, keys, json_strings).await
+        write_json_async(&mut conn, keys, json_strings, ttl).await
     })
 }
 
@@ -116,6 +131,7 @@ async fn write_json_async(
     conn: &mut redis::aio::MultiplexedConnection,
     keys: Vec<String>,
     json_strings: Vec<String>,
+    ttl: Option<i64>,
 ) -> Result<WriteResult> {
     let mut keys_written = 0;
     let mut keys_failed = 0;
@@ -128,7 +144,13 @@ async fn write_json_async(
             .query_async::<Option<String>>(conn)
             .await
         {
-            Ok(_) => keys_written += 1,
+            Ok(_) => {
+                // Set TTL if provided
+                if let Some(seconds) = ttl {
+                    let _ = conn.expire::<_, ()>(key, seconds).await;
+                }
+                keys_written += 1;
+            }
             Err(_) => keys_failed += 1,
         }
     }
@@ -145,6 +167,7 @@ async fn write_json_async(
 /// * `url` - Redis connection URL
 /// * `keys` - List of Redis keys to write to
 /// * `values` - List of string values to write
+/// * `ttl` - Optional TTL in seconds for each key
 ///
 /// # Returns
 /// A `WriteResult` with the number of keys written.
@@ -152,6 +175,7 @@ pub fn write_strings(
     url: &str,
     keys: Vec<String>,
     values: Vec<Option<String>>,
+    ttl: Option<i64>,
 ) -> Result<WriteResult> {
     let runtime =
         Runtime::new().map_err(|e| Error::Runtime(format!("Failed to create runtime: {}", e)))?;
@@ -160,7 +184,7 @@ pub fn write_strings(
 
     runtime.block_on(async {
         let mut conn = connection.get_async_connection().await?;
-        write_strings_async(&mut conn, keys, values).await
+        write_strings_async(&mut conn, keys, values, ttl).await
     })
 }
 
@@ -169,6 +193,7 @@ async fn write_strings_async(
     conn: &mut redis::aio::MultiplexedConnection,
     keys: Vec<String>,
     values: Vec<Option<String>>,
+    ttl: Option<i64>,
 ) -> Result<WriteResult> {
     let mut keys_written = 0;
     let mut keys_failed = 0;
@@ -179,7 +204,14 @@ async fn write_strings_async(
             continue;
         };
 
-        match conn.set::<_, _, ()>(key, val).await {
+        // Use SETEX for atomic set with TTL, or SET without TTL
+        let result = if let Some(seconds) = ttl {
+            conn.set_ex::<_, _, ()>(key, val, seconds as u64).await
+        } else {
+            conn.set::<_, _, ()>(key, val).await
+        };
+
+        match result {
             Ok(_) => keys_written += 1,
             Err(_) => keys_failed += 1,
         }

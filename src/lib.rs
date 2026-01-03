@@ -546,17 +546,20 @@ fn py_infer_json_schema(
 /// * `keys` - List of Redis keys to write to
 /// * `fields` - List of field names
 /// * `values` - 2D list of values (rows x columns), same order as fields
+/// * `ttl` - Optional TTL in seconds for each key
 ///
 /// # Returns
 /// A tuple of (keys_written, keys_failed).
 #[pyfunction]
+#[pyo3(signature = (url, keys, fields, values, ttl = None))]
 fn py_write_hashes(
     url: &str,
     keys: Vec<String>,
     fields: Vec<String>,
     values: Vec<Vec<Option<String>>>,
+    ttl: Option<i64>,
 ) -> PyResult<(usize, usize)> {
-    let result = write_hashes(url, keys, fields, values)
+    let result = write_hashes(url, keys, fields, values, ttl)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
     Ok((result.keys_written, result.keys_failed))
@@ -569,16 +572,19 @@ fn py_write_hashes(
 /// * `url` - Redis connection URL
 /// * `keys` - List of Redis keys to write to
 /// * `json_strings` - List of JSON strings to write
+/// * `ttl` - Optional TTL in seconds for each key
 ///
 /// # Returns
 /// A tuple of (keys_written, keys_failed).
 #[pyfunction]
+#[pyo3(signature = (url, keys, json_strings, ttl = None))]
 fn py_write_json(
     url: &str,
     keys: Vec<String>,
     json_strings: Vec<String>,
+    ttl: Option<i64>,
 ) -> PyResult<(usize, usize)> {
-    let result = write_json(url, keys, json_strings)
+    let result = write_json(url, keys, json_strings, ttl)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
     Ok((result.keys_written, result.keys_failed))
@@ -591,16 +597,19 @@ fn py_write_json(
 /// * `url` - Redis connection URL
 /// * `keys` - List of Redis keys to write to
 /// * `values` - List of string values to write (None for null)
+/// * `ttl` - Optional TTL in seconds for each key
 ///
 /// # Returns
 /// A tuple of (keys_written, keys_failed).
 #[pyfunction]
+#[pyo3(signature = (url, keys, values, ttl = None))]
 fn py_write_strings(
     url: &str,
     keys: Vec<String>,
     values: Vec<Option<String>>,
+    ttl: Option<i64>,
 ) -> PyResult<(usize, usize)> {
-    let result = write_strings(url, keys, values)
+    let result = write_strings(url, keys, values, ttl)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
     Ok((result.keys_written, result.keys_failed))
