@@ -939,6 +939,301 @@ class TestWriteHashes:
             subprocess.run(["redis-cli", "DEL", "test:roundtrip:hash:2"], capture_output=True)
 
 
+class TestScanStrings:
+    """Tests for scan_strings function."""
+
+    @pytest.fixture(autouse=True)
+    def setup_string_data(self, redis_url: str) -> None:
+        """Set up string test data in Redis."""
+        import subprocess
+
+        # Create test string values
+        for i in range(1, 21):
+            # String values
+            subprocess.run(
+                ["redis-cli", "SET", f"test:cache:{i}", f"cached_value_{i}"],
+                capture_output=True,
+            )
+            # Counter values (integers)
+            subprocess.run(
+                ["redis-cli", "SET", f"test:counter:{i}", str(i * 10)],
+                capture_output=True,
+            )
+            # Float values
+            subprocess.run(
+                ["redis-cli", "SET", f"test:price:{i}", f"{i * 1.5:.2f}"],
+                capture_output=True,
+            )
+            # Boolean flags
+            flag = "true" if i % 2 == 0 else "false"
+            subprocess.run(
+                ["redis-cli", "SET", f"test:flag:{i}", flag],
+                capture_output=True,
+            )
+
+        yield
+
+        # Cleanup
+        for i in range(1, 21):
+            subprocess.run(["redis-cli", "DEL", f"test:cache:{i}"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", f"test:counter:{i}"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", f"test:price:{i}"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", f"test:flag:{i}"], capture_output=True)
+
+    def test_scan_strings_basic(self, redis_url: str) -> None:
+        """Test basic string scanning as UTF-8."""
+        lf = polars_redis.scan_strings(
+            redis_url,
+            pattern="test:cache:*",
+        )
+
+        df = lf.collect()
+        assert len(df) == 20
+        assert df.columns == ["_key", "value"]
+        assert df.schema["_key"] == pl.Utf8
+        assert df.schema["value"] == pl.Utf8
+
+    def test_scan_strings_as_int64(self, redis_url: str) -> None:
+        """Test scanning string values as integers."""
+        lf = polars_redis.scan_strings(
+            redis_url,
+            pattern="test:counter:*",
+            value_type=pl.Int64,
+        )
+
+        df = lf.collect()
+        assert len(df) == 20
+        assert df.schema["value"] == pl.Int64
+        # Sum should be 10 + 20 + ... + 200 = 10 * (1+2+...+20) = 10 * 210 = 2100
+        assert df["value"].sum() == 2100
+
+    def test_scan_strings_as_float64(self, redis_url: str) -> None:
+        """Test scanning string values as floats."""
+        lf = polars_redis.scan_strings(
+            redis_url,
+            pattern="test:price:*",
+            value_type=pl.Float64,
+        )
+
+        df = lf.collect()
+        assert len(df) == 20
+        assert df.schema["value"] == pl.Float64
+        # All values should be positive floats
+        assert all(v > 0 for v in df["value"].to_list())
+
+    def test_scan_strings_as_boolean(self, redis_url: str) -> None:
+        """Test scanning string values as booleans."""
+        lf = polars_redis.scan_strings(
+            redis_url,
+            pattern="test:flag:*",
+            value_type=pl.Boolean,
+        )
+
+        df = lf.collect()
+        assert len(df) == 20
+        assert df.schema["value"] == pl.Boolean
+        # Half should be true (even numbers), half false
+        assert df["value"].sum() == 10
+
+    def test_scan_strings_without_key(self, redis_url: str) -> None:
+        """Test scanning without the key column."""
+        lf = polars_redis.scan_strings(
+            redis_url,
+            pattern="test:cache:*",
+            include_key=False,
+        )
+
+        df = lf.collect()
+        assert "_key" not in df.columns
+        assert df.columns == ["value"]
+
+    def test_scan_strings_custom_column_names(self, redis_url: str) -> None:
+        """Test scanning with custom column names."""
+        lf = polars_redis.scan_strings(
+            redis_url,
+            pattern="test:counter:*",
+            value_type=pl.Int64,
+            key_column_name="redis_key",
+            value_column_name="count",
+        )
+
+        df = lf.collect()
+        assert "redis_key" in df.columns
+        assert "count" in df.columns
+        assert "_key" not in df.columns
+        assert "value" not in df.columns
+
+    def test_scan_strings_filter(self, redis_url: str) -> None:
+        """Test filtering string values."""
+        lf = polars_redis.scan_strings(
+            redis_url,
+            pattern="test:counter:*",
+            value_type=pl.Int64,
+        )
+
+        # Filter to values > 100 (counters 11-20 have values 110-200)
+        df = lf.filter(pl.col("value") > 100).collect()
+        assert len(df) == 10
+        assert all(v > 100 for v in df["value"].to_list())
+
+    def test_scan_strings_limit(self, redis_url: str) -> None:
+        """Test row limit."""
+        lf = polars_redis.scan_strings(
+            redis_url,
+            pattern="test:cache:*",
+        )
+
+        df = lf.head(5).collect()
+        assert len(df) == 5
+
+    def test_scan_strings_aggregation(self, redis_url: str) -> None:
+        """Test aggregation on scanned data."""
+        lf = polars_redis.scan_strings(
+            redis_url,
+            pattern="test:counter:*",
+            value_type=pl.Int64,
+        )
+
+        df = lf.select(
+            [
+                pl.col("value").sum().alias("total"),
+                pl.col("value").mean().alias("average"),
+                pl.col("value").max().alias("max_val"),
+            ]
+        ).collect()
+
+        assert df["total"][0] == 2100
+        assert df["average"][0] == 105.0
+        assert df["max_val"][0] == 200
+
+    def test_scan_strings_no_matches(self, redis_url: str) -> None:
+        """Test scanning pattern with no matches."""
+        lf = polars_redis.scan_strings(
+            redis_url,
+            pattern="nonexistent:*",
+        )
+
+        df = lf.collect()
+        assert len(df) == 0
+
+
+class TestReadStrings:
+    """Tests for read_strings function."""
+
+    @pytest.fixture(autouse=True)
+    def setup_string_data(self, redis_url: str) -> None:
+        """Set up string test data in Redis."""
+        import subprocess
+
+        for i in range(1, 11):
+            subprocess.run(
+                ["redis-cli", "SET", f"test:read:str:{i}", f"value_{i}"],
+                capture_output=True,
+            )
+
+        yield
+
+        for i in range(1, 11):
+            subprocess.run(["redis-cli", "DEL", f"test:read:str:{i}"], capture_output=True)
+
+    def test_read_strings_basic(self, redis_url: str) -> None:
+        """Test basic eager string reading."""
+        df = polars_redis.read_strings(
+            redis_url,
+            pattern="test:read:str:*",
+        )
+
+        assert isinstance(df, pl.DataFrame)
+        assert len(df) == 10
+        assert "_key" in df.columns
+        assert "value" in df.columns
+
+    def test_read_strings_empty_result(self, redis_url: str) -> None:
+        """Test eager string reading with no matches."""
+        df = polars_redis.read_strings(
+            redis_url,
+            pattern="nonexistent:*",
+        )
+
+        assert isinstance(df, pl.DataFrame)
+        assert len(df) == 0
+
+
+class TestPyStringBatchIterator:
+    """Tests for the low-level PyStringBatchIterator."""
+
+    @pytest.fixture(autouse=True)
+    def setup_string_data(self, redis_url: str) -> None:
+        """Set up string test data in Redis."""
+        import subprocess
+
+        for i in range(1, 26):
+            subprocess.run(
+                ["redis-cli", "SET", f"test:iter:str:{i}", str(i * 5)],
+                capture_output=True,
+            )
+
+        yield
+
+        for i in range(1, 26):
+            subprocess.run(["redis-cli", "DEL", f"test:iter:str:{i}"], capture_output=True)
+
+    def test_string_iterator_basic(self, redis_url: str) -> None:
+        """Test basic string iterator functionality."""
+        iterator = polars_redis.PyStringBatchIterator(
+            url=redis_url,
+            pattern="test:iter:str:*",
+            value_type="int64",
+            batch_size=10,
+        )
+
+        assert not iterator.is_done()
+
+        batches = []
+        while not iterator.is_done():
+            ipc_bytes = iterator.next_batch_ipc()
+            if ipc_bytes is None:
+                break
+            batches.append(pl.read_ipc(ipc_bytes))
+
+        total_rows = sum(len(b) for b in batches)
+        assert total_rows == 25
+
+    def test_string_iterator_max_rows(self, redis_url: str) -> None:
+        """Test string iterator with max_rows limit."""
+        iterator = polars_redis.PyStringBatchIterator(
+            url=redis_url,
+            pattern="test:iter:str:*",
+            value_type="utf8",
+            max_rows=10,
+        )
+
+        total_rows = 0
+        while not iterator.is_done():
+            ipc_bytes = iterator.next_batch_ipc()
+            if ipc_bytes is None:
+                break
+            total_rows += len(pl.read_ipc(ipc_bytes))
+
+        assert total_rows == 10
+
+    def test_string_iterator_custom_columns(self, redis_url: str) -> None:
+        """Test string iterator with custom column names."""
+        iterator = polars_redis.PyStringBatchIterator(
+            url=redis_url,
+            pattern="test:iter:str:*",
+            value_type="int64",
+            key_column_name="key",
+            value_column_name="num",
+            batch_size=5,
+        )
+
+        ipc_bytes = iterator.next_batch_ipc()
+        df = pl.read_ipc(ipc_bytes)
+        assert "key" in df.columns
+        assert "num" in df.columns
+
+
 class TestWriteJson:
     """Tests for write_json function."""
 

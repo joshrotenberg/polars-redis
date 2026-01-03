@@ -20,6 +20,9 @@ mod json_convert;
 mod json_reader;
 mod scanner;
 mod schema;
+mod string_batch_iter;
+mod string_convert;
+mod string_reader;
 mod write;
 
 pub use batch_iter::{BatchConfig, HashBatchIterator};
@@ -29,6 +32,8 @@ pub use infer::{InferredSchema, infer_hash_schema, infer_json_schema};
 pub use json_batch_iter::JsonBatchIterator;
 pub use json_convert::JsonSchema;
 pub use schema::{HashSchema, RedisType};
+pub use string_batch_iter::StringBatchIterator;
+pub use string_convert::StringSchema;
 pub use write::{WriteResult, write_hashes, write_json, write_strings};
 
 /// Serialize an Arrow RecordBatch to IPC format bytes.
@@ -64,11 +69,12 @@ pub fn batch_to_ipc(batch: &arrow::array::RecordBatch) -> Result<Vec<u8>> {
 
 #[cfg(feature = "python")]
 /// Python module definition for polars_redis._internal
-#[pymodule]
-fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
+#[pymodule(name = "_internal")]
+fn polars_redis_internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<RedisScanner>()?;
     m.add_class::<PyHashBatchIterator>()?;
     m.add_class::<PyJsonBatchIterator>()?;
+    m.add_class::<PyStringBatchIterator>()?;
     m.add_function(wrap_pyfunction!(scan_keys, m)?)?;
     m.add_function(wrap_pyfunction!(py_infer_hash_schema, m)?)?;
     m.add_function(wrap_pyfunction!(py_infer_json_schema, m)?)?;
@@ -383,6 +389,150 @@ impl PyJsonBatchIterator {
         }
 
         let inner = JsonBatchIterator::new(&url, json_schema, config, projection)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        Ok(Self { inner })
+    }
+
+    /// Get the next batch as Arrow IPC bytes.
+    ///
+    /// Returns None when iteration is complete.
+    /// Returns the RecordBatch serialized as Arrow IPC format.
+    fn next_batch_ipc(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let batch = self
+            .inner
+            .next_batch()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        match batch {
+            Some(record_batch) => {
+                // Serialize to Arrow IPC format
+                let mut buf = Vec::new();
+                {
+                    let mut writer = arrow::ipc::writer::FileWriter::try_new(
+                        &mut buf,
+                        record_batch.schema().as_ref(),
+                    )
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to create IPC writer: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.write(&record_batch).map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to write batch: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.finish().map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to finish IPC: {}",
+                            e
+                        ))
+                    })?;
+                }
+
+                Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Check if iteration is complete.
+    fn is_done(&self) -> bool {
+        self.inner.is_done()
+    }
+
+    /// Get the number of rows yielded so far.
+    fn rows_yielded(&self) -> usize {
+        self.inner.rows_yielded()
+    }
+}
+
+#[cfg(feature = "python")]
+/// Python wrapper for StringBatchIterator.
+///
+/// This class is used by the Python IO plugin to iterate over Redis string data
+/// and yield Arrow RecordBatches.
+#[pyclass]
+pub struct PyStringBatchIterator {
+    inner: StringBatchIterator,
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl PyStringBatchIterator {
+    /// Create a new PyStringBatchIterator.
+    ///
+    /// # Arguments
+    /// * `url` - Redis connection URL
+    /// * `pattern` - Key pattern to match
+    /// * `value_type` - Type string for value column (utf8, int64, float64, bool, date, datetime)
+    /// * `batch_size` - Keys per batch
+    /// * `count_hint` - SCAN COUNT hint
+    /// * `include_key` - Whether to include the Redis key as a column
+    /// * `key_column_name` - Name of the key column
+    /// * `value_column_name` - Name of the value column
+    /// * `max_rows` - Optional maximum rows to return
+    #[new]
+    #[pyo3(signature = (
+        url,
+        pattern,
+        value_type = "utf8".to_string(),
+        batch_size = 1000,
+        count_hint = 100,
+        include_key = true,
+        key_column_name = "_key".to_string(),
+        value_column_name = "value".to_string(),
+        max_rows = None
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        url: String,
+        pattern: String,
+        value_type: String,
+        batch_size: usize,
+        count_hint: usize,
+        include_key: bool,
+        key_column_name: String,
+        value_column_name: String,
+        max_rows: Option<usize>,
+    ) -> PyResult<Self> {
+        use arrow::datatypes::TimeUnit;
+
+        // Parse value type from Python type string
+        let dtype = match value_type.to_lowercase().as_str() {
+            "utf8" | "str" | "string" => DataType::Utf8,
+            "int64" | "int" | "integer" => DataType::Int64,
+            "float64" | "float" | "double" => DataType::Float64,
+            "bool" | "boolean" => DataType::Boolean,
+            "date" => DataType::Date32,
+            "datetime" => DataType::Timestamp(TimeUnit::Microsecond, None),
+            _ => {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Unknown value type '{}'. Supported: utf8, int64, float64, bool, date, datetime",
+                    value_type
+                )));
+            }
+        };
+
+        let string_schema = StringSchema::new(dtype)
+            .with_key(include_key)
+            .with_key_column_name(key_column_name)
+            .with_value_column_name(value_column_name);
+
+        let mut config = BatchConfig::new(pattern)
+            .with_batch_size(batch_size)
+            .with_count_hint(count_hint);
+
+        if let Some(max) = max_rows {
+            config = config.with_max_rows(max);
+        }
+
+        let inner = StringBatchIterator::new(&url, string_schema, config)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
         Ok(Self { inner })

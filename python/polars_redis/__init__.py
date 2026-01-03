@@ -35,6 +35,7 @@ from polars.io.plugins import register_io_source
 from polars_redis._internal import (
     PyHashBatchIterator,
     PyJsonBatchIterator,
+    PyStringBatchIterator,
     RedisScanner,
     py_infer_hash_schema,
     py_infer_json_schema,
@@ -52,6 +53,7 @@ __all__ = [
     "RedisScanner",
     "PyHashBatchIterator",
     "PyJsonBatchIterator",
+    "PyStringBatchIterator",
     "scan_hashes",
     "scan_json",
     "scan_strings",
@@ -364,6 +366,7 @@ def scan_strings(
     url: str,
     pattern: str = "*",
     *,
+    value_type: type[pl.DataType] = pl.Utf8,
     include_key: bool = True,
     key_column_name: str = "_key",
     value_column_name: str = "value",
@@ -375,6 +378,8 @@ def scan_strings(
     Args:
         url: Redis connection URL (e.g., "redis://localhost:6379").
         pattern: Key pattern to match (e.g., "cache:*").
+        value_type: Polars dtype for the value column (default: pl.Utf8).
+            Supported: pl.Utf8, pl.Int64, pl.Float64, pl.Boolean.
         include_key: Whether to include the Redis key as a column.
         key_column_name: Name of the key column (default: "_key").
         value_column_name: Name of the value column (default: "value").
@@ -385,14 +390,127 @@ def scan_strings(
         A Polars LazyFrame with key and value columns.
 
     Example:
+        >>> # Scan string values as UTF-8
         >>> lf = scan_strings(
         ...     "redis://localhost:6379",
         ...     pattern="cache:*"
         ... )
         >>> df = lf.collect()
+
+        >>> # Scan counters as integers
+        >>> lf = scan_strings(
+        ...     "redis://localhost:6379",
+        ...     pattern="counter:*",
+        ...     value_type=pl.Int64
+        ... )
+        >>> total = lf.select(pl.col("value").sum()).collect()
     """
-    # TODO: Implement via register_io_source
-    raise NotImplementedError("scan_strings not yet implemented")
+    # Convert value_type to internal string
+    value_type_str = _polars_dtype_to_internal(value_type)
+
+    # Build the full Polars schema (for register_io_source)
+    polars_schema: SchemaDict = {}
+    if include_key:
+        polars_schema[key_column_name] = pl.Utf8
+    polars_schema[value_column_name] = value_type
+
+    def _string_source(
+        with_columns: list[str] | None,
+        predicate: Expr | None,
+        n_rows: int | None,
+        batch_size_hint: int | None,
+    ) -> Iterator[DataFrame]:
+        """Generator that yields DataFrames from Redis string values."""
+        # Use batch_size_hint if provided, otherwise use configured batch_size
+        effective_batch_size = batch_size_hint if batch_size_hint is not None else batch_size
+
+        # Create the iterator
+        iterator = PyStringBatchIterator(
+            url=url,
+            pattern=pattern,
+            value_type=value_type_str,
+            batch_size=effective_batch_size,
+            count_hint=count_hint,
+            include_key=include_key,
+            key_column_name=key_column_name,
+            value_column_name=value_column_name,
+            max_rows=n_rows,
+        )
+
+        # Yield batches
+        while not iterator.is_done():
+            ipc_bytes = iterator.next_batch_ipc()
+            if ipc_bytes is None:
+                break
+
+            df = pl.read_ipc(ipc_bytes)
+
+            # Apply predicate filter if provided (client-side filtering)
+            if predicate is not None:
+                df = df.filter(predicate)
+
+            # Apply column selection if needed
+            if with_columns is not None:
+                available = [c for c in with_columns if c in df.columns]
+                if available:
+                    df = df.select(available)
+
+            # Don't yield empty batches
+            if len(df) > 0:
+                yield df
+
+    return register_io_source(
+        io_source=_string_source,
+        schema=polars_schema,
+    )
+
+
+def read_strings(
+    url: str,
+    pattern: str = "*",
+    *,
+    value_type: type[pl.DataType] = pl.Utf8,
+    include_key: bool = True,
+    key_column_name: str = "_key",
+    value_column_name: str = "value",
+    batch_size: int = 1000,
+    count_hint: int = 100,
+) -> pl.DataFrame:
+    """Read Redis string values matching a pattern and return a DataFrame.
+
+    This is the eager version of scan_strings(). It immediately executes
+    the scan and returns a DataFrame with all results.
+
+    Args:
+        url: Redis connection URL (e.g., "redis://localhost:6379").
+        pattern: Key pattern to match (e.g., "cache:*").
+        value_type: Polars dtype for the value column (default: pl.Utf8).
+        include_key: Whether to include the Redis key as a column.
+        key_column_name: Name of the key column (default: "_key").
+        value_column_name: Name of the value column (default: "value").
+        batch_size: Number of keys to process per batch.
+        count_hint: SCAN COUNT hint for Redis.
+
+    Returns:
+        A Polars DataFrame containing all matching string values.
+
+    Example:
+        >>> df = read_strings(
+        ...     "redis://localhost:6379",
+        ...     pattern="cache:*"
+        ... )
+        >>> print(df)
+    """
+    return scan_strings(
+        url=url,
+        pattern=pattern,
+        value_type=value_type,
+        include_key=include_key,
+        key_column_name=key_column_name,
+        value_column_name=value_column_name,
+        batch_size=batch_size,
+        count_hint=count_hint,
+    ).collect()
 
 
 def read_hashes(
