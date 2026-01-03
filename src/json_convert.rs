@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use arrow::array::{
     ArrayRef, BooleanBuilder, Float64Builder, Int64Builder, RecordBatch, StringBuilder,
+    UInt64Builder,
 };
 use arrow::datatypes::{DataType, Field, Schema};
 
@@ -24,6 +25,14 @@ pub struct JsonSchema {
     include_key: bool,
     /// Name of the key column.
     key_column_name: String,
+    /// Whether to include the TTL as a column.
+    include_ttl: bool,
+    /// Name of the TTL column.
+    ttl_column_name: String,
+    /// Whether to include the row index as a column.
+    include_row_index: bool,
+    /// Name of the row index column.
+    row_index_column_name: String,
 }
 
 impl JsonSchema {
@@ -35,6 +44,10 @@ impl JsonSchema {
             types,
             include_key: true,
             key_column_name: "_key".to_string(),
+            include_ttl: false,
+            ttl_column_name: "_ttl".to_string(),
+            include_row_index: false,
+            row_index_column_name: "_index".to_string(),
         }
     }
 
@@ -47,6 +60,30 @@ impl JsonSchema {
     /// Set the name of the key column.
     pub fn with_key_column_name(mut self, name: impl Into<String>) -> Self {
         self.key_column_name = name.into();
+        self
+    }
+
+    /// Set whether to include the TTL as a column.
+    pub fn with_ttl(mut self, include: bool) -> Self {
+        self.include_ttl = include;
+        self
+    }
+
+    /// Set the name of the TTL column.
+    pub fn with_ttl_column_name(mut self, name: impl Into<String>) -> Self {
+        self.ttl_column_name = name.into();
+        self
+    }
+
+    /// Set whether to include the row index as a column.
+    pub fn with_row_index(mut self, include: bool) -> Self {
+        self.include_row_index = include;
+        self
+    }
+
+    /// Set the name of the row index column.
+    pub fn with_row_index_column_name(mut self, name: impl Into<String>) -> Self {
+        self.row_index_column_name = name.into();
         self
     }
 
@@ -65,12 +102,44 @@ impl JsonSchema {
         &self.key_column_name
     }
 
+    /// Whether the TTL column is included.
+    pub fn include_ttl(&self) -> bool {
+        self.include_ttl
+    }
+
+    /// Get the TTL column name.
+    pub fn ttl_column_name(&self) -> &str {
+        &self.ttl_column_name
+    }
+
+    /// Whether the row index column is included.
+    pub fn include_row_index(&self) -> bool {
+        self.include_row_index
+    }
+
+    /// Get the row index column name.
+    pub fn row_index_column_name(&self) -> &str {
+        &self.row_index_column_name
+    }
+
     /// Convert to Arrow Schema.
     pub fn to_arrow_schema(&self) -> Schema {
-        let mut arrow_fields: Vec<Field> = Vec::with_capacity(self.fields.len() + 1);
+        let mut arrow_fields: Vec<Field> = Vec::with_capacity(self.fields.len() + 3);
+
+        if self.include_row_index {
+            arrow_fields.push(Field::new(
+                &self.row_index_column_name,
+                DataType::UInt64,
+                false,
+            ));
+        }
 
         if self.include_key {
             arrow_fields.push(Field::new(&self.key_column_name, DataType::Utf8, false));
+        }
+
+        if self.include_ttl {
+            arrow_fields.push(Field::new(&self.ttl_column_name, DataType::Int64, true));
         }
 
         for (name, dtype) in self.fields.iter().zip(self.types.iter()) {
@@ -93,12 +162,19 @@ impl JsonSchema {
         }
 
         let include_key = self.include_key && columns.contains(&self.key_column_name);
+        let include_ttl = self.include_ttl && columns.contains(&self.ttl_column_name);
+        let include_row_index =
+            self.include_row_index && columns.contains(&self.row_index_column_name);
 
         Self {
             fields: projected_fields,
             types: projected_types,
             include_key,
             key_column_name: self.key_column_name.clone(),
+            include_ttl,
+            ttl_column_name: self.ttl_column_name.clone(),
+            include_row_index,
+            row_index_column_name: self.row_index_column_name.clone(),
         }
     }
 }
@@ -147,17 +223,47 @@ fn normalize_json_response(parsed: serde_json::Value) -> Option<serde_json::Valu
 }
 
 /// Convert a batch of Redis JSON data to an Arrow RecordBatch.
-pub fn json_to_record_batch(data: &[JsonData], schema: &JsonSchema) -> Result<RecordBatch> {
+///
+/// # Arguments
+/// * `data` - The JSON data from Redis
+/// * `schema` - The schema defining the column types
+/// * `row_offset` - Starting row index for this batch (used when include_row_index is true)
+pub fn json_to_record_batch(
+    data: &[JsonData],
+    schema: &JsonSchema,
+    row_offset: u64,
+) -> Result<RecordBatch> {
     let arrow_schema = Arc::new(schema.to_arrow_schema());
     let num_rows = data.len();
 
     let mut arrays: Vec<ArrayRef> = Vec::with_capacity(arrow_schema.fields().len());
+
+    // Build row index column if included (first column)
+    if schema.include_row_index() {
+        let mut builder = UInt64Builder::with_capacity(num_rows);
+        for i in 0..num_rows {
+            builder.append_value(row_offset + i as u64);
+        }
+        arrays.push(Arc::new(builder.finish()));
+    }
 
     // Build key column if included
     if schema.include_key() {
         let mut builder = StringBuilder::with_capacity(num_rows, num_rows * 32);
         for row in data {
             builder.append_value(&row.key);
+        }
+        arrays.push(Arc::new(builder.finish()));
+    }
+
+    // Build TTL column if included
+    if schema.include_ttl() {
+        let mut builder = Int64Builder::with_capacity(num_rows);
+        for row in data {
+            match row.ttl {
+                Some(ttl) => builder.append_value(ttl),
+                None => builder.append_null(),
+            }
         }
         arrays.push(Arc::new(builder.finish()));
     }
@@ -319,6 +425,15 @@ mod tests {
         JsonData {
             key: key.to_string(),
             json: json.map(|s| s.to_string()),
+            ttl: None,
+        }
+    }
+
+    fn make_json_data_with_ttl(key: &str, json: Option<&str>, ttl: Option<i64>) -> JsonData {
+        JsonData {
+            key: key.to_string(),
+            json: json.map(|s| s.to_string()),
+            ttl,
         }
     }
 
@@ -334,7 +449,7 @@ mod tests {
             make_json_data("doc:2", Some(r#"[{"name":"Bob","age":25}]"#)),
         ];
 
-        let batch = json_to_record_batch(&data, &schema).unwrap();
+        let batch = json_to_record_batch(&data, &schema, 0).unwrap();
 
         assert_eq!(batch.num_rows(), 2);
         assert_eq!(batch.num_columns(), 3); // _key, name, age
@@ -352,7 +467,7 @@ mod tests {
             make_json_data("doc:2", None),                          // missing document
         ];
 
-        let batch = json_to_record_batch(&data, &schema).unwrap();
+        let batch = json_to_record_batch(&data, &schema, 0).unwrap();
         assert_eq!(batch.num_rows(), 2);
     }
 
@@ -370,7 +485,7 @@ mod tests {
             Some(r#"[{"name":"Test","count":42,"score":3.5,"active":true}]"#),
         )];
 
-        let batch = json_to_record_batch(&data, &schema).unwrap();
+        let batch = json_to_record_batch(&data, &schema, 0).unwrap();
         assert_eq!(batch.num_columns(), 5); // _key + 4 fields
     }
 
@@ -385,5 +500,71 @@ mod tests {
         let projected = schema.project(&["name".to_string(), "email".to_string()]);
         assert_eq!(projected.fields(), &["name", "email"]);
         assert!(!projected.include_key());
+    }
+
+    #[test]
+    fn test_json_to_record_batch_with_ttl() {
+        let schema = JsonSchema::new(vec![("name".to_string(), DataType::Utf8)]).with_ttl(true);
+
+        let data = vec![
+            make_json_data_with_ttl("doc:1", Some(r#"[{"name":"Alice"}]"#), Some(3600)),
+            make_json_data_with_ttl("doc:2", Some(r#"[{"name":"Bob"}]"#), Some(-1)),
+        ];
+
+        let batch = json_to_record_batch(&data, &schema, 0).unwrap();
+
+        assert_eq!(batch.num_rows(), 2);
+        assert_eq!(batch.num_columns(), 3); // _key, _ttl, name
+        assert_eq!(batch.schema().field(1).name(), "_ttl");
+    }
+
+    #[test]
+    fn test_json_to_record_batch_with_row_index() {
+        let schema =
+            JsonSchema::new(vec![("name".to_string(), DataType::Utf8)]).with_row_index(true);
+
+        let data = vec![
+            make_json_data("doc:1", Some(r#"[{"name":"Alice"}]"#)),
+            make_json_data("doc:2", Some(r#"[{"name":"Bob"}]"#)),
+            make_json_data("doc:3", Some(r#"[{"name":"Charlie"}]"#)),
+        ];
+
+        let batch = json_to_record_batch(&data, &schema, 0).unwrap();
+
+        assert_eq!(batch.num_rows(), 3);
+        assert_eq!(batch.num_columns(), 3); // _index, _key, name
+        assert_eq!(batch.schema().field(0).name(), "_index");
+
+        // Verify row indices
+        let index_col = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<arrow::array::UInt64Array>()
+            .unwrap();
+        assert_eq!(index_col.value(0), 0);
+        assert_eq!(index_col.value(1), 1);
+        assert_eq!(index_col.value(2), 2);
+    }
+
+    #[test]
+    fn test_json_to_record_batch_with_row_index_offset() {
+        let schema =
+            JsonSchema::new(vec![("name".to_string(), DataType::Utf8)]).with_row_index(true);
+
+        let data = vec![
+            make_json_data("doc:1", Some(r#"[{"name":"Alice"}]"#)),
+            make_json_data("doc:2", Some(r#"[{"name":"Bob"}]"#)),
+        ];
+
+        // Simulate second batch starting at offset 50
+        let batch = json_to_record_batch(&data, &schema, 50).unwrap();
+
+        let index_col = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<arrow::array::UInt64Array>()
+            .unwrap();
+        assert_eq!(index_col.value(0), 50);
+        assert_eq!(index_col.value(1), 51);
     }
 }

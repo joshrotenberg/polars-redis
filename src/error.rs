@@ -9,19 +9,19 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Error, Debug)]
 pub enum Error {
     /// Redis connection error.
-    #[error("Redis connection error: {0}")]
+    #[error("Redis connection error: {0}. Check that Redis is running and accessible.")]
     Connection(#[from] redis::RedisError),
 
     /// Invalid connection URL.
-    #[error("Invalid connection URL: {0}")]
+    #[error("Invalid Redis URL '{0}'. Expected format: redis://[user:password@]host[:port][/db]")]
     InvalidUrl(String),
 
     /// Schema mismatch error.
-    #[error("Schema mismatch: {0}")]
+    #[error("Schema mismatch: {0}. Ensure the schema matches the Redis data structure.")]
     SchemaMismatch(String),
 
     /// Type conversion error.
-    #[error("Type conversion error: {0}")]
+    #[error("Type conversion error: {0}. Check that the schema types match the actual data.")]
     TypeConversion(String),
 
     /// IO error.
@@ -31,6 +31,14 @@ pub enum Error {
     /// Tokio runtime error.
     #[error("Runtime error: {0}")]
     Runtime(String),
+
+    /// Key not found error.
+    #[error("Key not found: {0}")]
+    KeyNotFound(String),
+
+    /// RedisJSON module not available.
+    #[error("RedisJSON module not available. Install redis-stack or load the ReJSON module.")]
+    JsonModuleNotAvailable,
 }
 
 #[cfg(feature = "python")]
@@ -45,6 +53,10 @@ impl From<Error> for pyo3::PyErr {
             }
             Error::Io(_) => pyo3::exceptions::PyIOError::new_err(err.to_string()),
             Error::Runtime(_) => pyo3::exceptions::PyRuntimeError::new_err(err.to_string()),
+            Error::KeyNotFound(_) => pyo3::exceptions::PyKeyError::new_err(err.to_string()),
+            Error::JsonModuleNotAvailable => {
+                pyo3::exceptions::PyRuntimeError::new_err(err.to_string())
+            }
         }
     }
 }

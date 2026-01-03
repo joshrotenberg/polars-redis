@@ -111,6 +111,10 @@ def scan_hashes(
     *,
     include_key: bool = True,
     key_column_name: str = "_key",
+    include_ttl: bool = False,
+    ttl_column_name: str = "_ttl",
+    include_row_index: bool = False,
+    row_index_column_name: str = "_index",
     batch_size: int = 1000,
     count_hint: int = 100,
 ) -> pl.LazyFrame:
@@ -122,6 +126,10 @@ def scan_hashes(
         schema: Dictionary mapping field names to Polars dtypes.
         include_key: Whether to include the Redis key as a column.
         key_column_name: Name of the key column (default: "_key").
+        include_ttl: Whether to include the TTL as a column.
+        ttl_column_name: Name of the TTL column (default: "_ttl").
+        include_row_index: Whether to include the row index as a column.
+        row_index_column_name: Name of the row index column (default: "_index").
         batch_size: Number of keys to process per batch.
         count_hint: SCAN COUNT hint for Redis.
 
@@ -144,8 +152,12 @@ def scan_hashes(
 
     # Build the full Polars schema (for register_io_source)
     polars_schema: SchemaDict = {}
+    if include_row_index:
+        polars_schema[row_index_column_name] = pl.UInt64
     if include_key:
         polars_schema[key_column_name] = pl.Utf8
+    if include_ttl:
+        polars_schema[ttl_column_name] = pl.Int64
     for name, dtype in schema.items():
         polars_schema[name] = dtype
 
@@ -157,13 +169,19 @@ def scan_hashes(
     ) -> Iterator[DataFrame]:
         """Generator that yields DataFrames from Redis hashes."""
         # Determine projection
-        # We need to tell Rust which columns are requested, including the key column
-        # if it's in with_columns. The Rust code uses this to decide whether to include
-        # the key in the output.
+        # We need to tell Rust which columns are requested, including the key column,
+        # TTL column, and row index column if in with_columns.
         projection = None
         if with_columns is not None:
-            # Include both data columns and the key column (if requested)
-            projection = [c for c in with_columns if c in schema or c == key_column_name]
+            # Include data columns, key column, TTL column, and row index column (if requested)
+            projection = [
+                c
+                for c in with_columns
+                if c in schema
+                or c == key_column_name
+                or c == ttl_column_name
+                or c == row_index_column_name
+            ]
 
         # Use batch_size_hint if provided, otherwise use configured batch_size
         effective_batch_size = batch_size_hint if batch_size_hint is not None else batch_size
@@ -178,6 +196,10 @@ def scan_hashes(
             projection=projection,
             include_key=include_key,
             key_column_name=key_column_name,
+            include_ttl=include_ttl,
+            ttl_column_name=ttl_column_name,
+            include_row_index=include_row_index,
+            row_index_column_name=row_index_column_name,
             max_rows=n_rows,
         )
 
@@ -219,6 +241,10 @@ def scan_json(
     *,
     include_key: bool = True,
     key_column_name: str = "_key",
+    include_ttl: bool = False,
+    ttl_column_name: str = "_ttl",
+    include_row_index: bool = False,
+    row_index_column_name: str = "_index",
     batch_size: int = 1000,
     count_hint: int = 100,
 ) -> pl.LazyFrame:
@@ -230,6 +256,10 @@ def scan_json(
         schema: Dictionary mapping field names to Polars dtypes.
         include_key: Whether to include the Redis key as a column.
         key_column_name: Name of the key column (default: "_key").
+        include_ttl: Whether to include the TTL as a column.
+        ttl_column_name: Name of the TTL column (default: "_ttl").
+        include_row_index: Whether to include the row index as a column.
+        row_index_column_name: Name of the row index column (default: "_index").
         batch_size: Number of keys to process per batch.
         count_hint: SCAN COUNT hint for Redis.
 
@@ -252,8 +282,12 @@ def scan_json(
 
     # Build the full Polars schema (for register_io_source)
     polars_schema: SchemaDict = {}
+    if include_row_index:
+        polars_schema[row_index_column_name] = pl.UInt64
     if include_key:
         polars_schema[key_column_name] = pl.Utf8
+    if include_ttl:
+        polars_schema[ttl_column_name] = pl.Int64
     for name, dtype in schema.items():
         polars_schema[name] = dtype
 
@@ -265,10 +299,17 @@ def scan_json(
     ) -> Iterator[DataFrame]:
         """Generator that yields DataFrames from Redis JSON documents."""
         # Determine projection
-        # Include both data columns and the key column (if requested)
+        # Include data columns, key column, TTL column, and row index column (if requested)
         projection = None
         if with_columns is not None:
-            projection = [c for c in with_columns if c in schema or c == key_column_name]
+            projection = [
+                c
+                for c in with_columns
+                if c in schema
+                or c == key_column_name
+                or c == ttl_column_name
+                or c == row_index_column_name
+            ]
 
         # Use batch_size_hint if provided, otherwise use configured batch_size
         effective_batch_size = batch_size_hint if batch_size_hint is not None else batch_size
@@ -283,6 +324,10 @@ def scan_json(
             projection=projection,
             include_key=include_key,
             key_column_name=key_column_name,
+            include_ttl=include_ttl,
+            ttl_column_name=ttl_column_name,
+            include_row_index=include_row_index,
+            row_index_column_name=row_index_column_name,
             max_rows=n_rows,
         )
 
@@ -357,6 +402,10 @@ def read_hashes(
     *,
     include_key: bool = True,
     key_column_name: str = "_key",
+    include_ttl: bool = False,
+    ttl_column_name: str = "_ttl",
+    include_row_index: bool = False,
+    row_index_column_name: str = "_index",
     batch_size: int = 1000,
     count_hint: int = 100,
 ) -> pl.DataFrame:
@@ -371,6 +420,10 @@ def read_hashes(
         schema: Dictionary mapping field names to Polars dtypes.
         include_key: Whether to include the Redis key as a column.
         key_column_name: Name of the key column (default: "_key").
+        include_ttl: Whether to include the TTL as a column.
+        ttl_column_name: Name of the TTL column (default: "_ttl").
+        include_row_index: Whether to include the row index as a column.
+        row_index_column_name: Name of the row index column (default: "_index").
         batch_size: Number of keys to process per batch.
         count_hint: SCAN COUNT hint for Redis.
 
@@ -391,6 +444,10 @@ def read_hashes(
         schema=schema,
         include_key=include_key,
         key_column_name=key_column_name,
+        include_ttl=include_ttl,
+        ttl_column_name=ttl_column_name,
+        include_row_index=include_row_index,
+        row_index_column_name=row_index_column_name,
         batch_size=batch_size,
         count_hint=count_hint,
     ).collect()
@@ -403,6 +460,10 @@ def read_json(
     *,
     include_key: bool = True,
     key_column_name: str = "_key",
+    include_ttl: bool = False,
+    ttl_column_name: str = "_ttl",
+    include_row_index: bool = False,
+    row_index_column_name: str = "_index",
     batch_size: int = 1000,
     count_hint: int = 100,
 ) -> pl.DataFrame:
@@ -417,6 +478,10 @@ def read_json(
         schema: Dictionary mapping field names to Polars dtypes.
         include_key: Whether to include the Redis key as a column.
         key_column_name: Name of the key column (default: "_key").
+        include_ttl: Whether to include the TTL as a column.
+        ttl_column_name: Name of the TTL column (default: "_ttl").
+        include_row_index: Whether to include the row index as a column.
+        row_index_column_name: Name of the row index column (default: "_index").
         batch_size: Number of keys to process per batch.
         count_hint: SCAN COUNT hint for Redis.
 
@@ -437,6 +502,10 @@ def read_json(
         schema=schema,
         include_key=include_key,
         key_column_name=key_column_name,
+        include_ttl=include_ttl,
+        ttl_column_name=ttl_column_name,
+        include_row_index=include_row_index,
+        row_index_column_name=row_index_column_name,
         batch_size=batch_size,
         count_hint=count_hint,
     ).collect()

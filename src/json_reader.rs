@@ -14,6 +14,8 @@ pub struct JsonData {
     pub key: String,
     /// The JSON document as a string (will be parsed later).
     pub json: Option<String>,
+    /// TTL in seconds (-1 = no expiry, -2 = key doesn't exist, None = TTL not requested).
+    pub ttl: Option<i64>,
 }
 
 /// Fetch JSON documents from multiple keys using JSON.GET.
@@ -23,6 +25,7 @@ pub struct JsonData {
 pub async fn fetch_json_all(
     conn: &mut MultiplexedConnection,
     keys: &[String],
+    include_ttl: bool,
 ) -> Result<Vec<JsonData>> {
     if keys.is_empty() {
         return Ok(Vec::new());
@@ -35,12 +38,21 @@ pub async fn fetch_json_all(
 
     let results: Vec<Option<String>> = pipe.query_async(conn).await?;
 
+    // Optionally fetch TTLs
+    let ttls = if include_ttl {
+        fetch_ttls(conn, keys).await?
+    } else {
+        vec![None; keys.len()]
+    };
+
     Ok(keys
         .iter()
         .zip(results)
-        .map(|(key, json)| JsonData {
+        .zip(ttls)
+        .map(|((key, json), ttl)| JsonData {
             key: key.clone(),
             json,
+            ttl,
         })
         .collect())
 }
@@ -53,6 +65,7 @@ pub async fn fetch_json_paths(
     conn: &mut MultiplexedConnection,
     keys: &[String],
     paths: &[String],
+    include_ttl: bool,
 ) -> Result<Vec<JsonData>> {
     if keys.is_empty() || paths.is_empty() {
         return Ok(Vec::new());
@@ -70,14 +83,43 @@ pub async fn fetch_json_paths(
 
     let results: Vec<Option<String>> = pipe.query_async(conn).await?;
 
+    // Optionally fetch TTLs
+    let ttls = if include_ttl {
+        fetch_ttls(conn, keys).await?
+    } else {
+        vec![None; keys.len()]
+    };
+
     Ok(keys
         .iter()
         .zip(results)
-        .map(|(key, json)| JsonData {
+        .zip(ttls)
+        .map(|((key, json), ttl)| JsonData {
             key: key.clone(),
             json,
+            ttl,
         })
         .collect())
+}
+
+/// Fetch TTLs for multiple keys using pipelining.
+///
+/// Returns a vector of Option<i64> where:
+/// - Some(ttl) where ttl >= 0: key has TTL in seconds
+/// - Some(-1): key exists but has no expiry
+/// - Some(-2): key doesn't exist
+async fn fetch_ttls(conn: &mut MultiplexedConnection, keys: &[String]) -> Result<Vec<Option<i64>>> {
+    if keys.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut pipe = redis::pipe();
+    for key in keys {
+        pipe.cmd("TTL").arg(key);
+    }
+
+    let results: Vec<i64> = pipe.query_async(conn).await?;
+    Ok(results.into_iter().map(Some).collect())
 }
 
 /// Fetch JSON data with optional path projection.
@@ -88,10 +130,11 @@ pub async fn fetch_json(
     conn: &mut MultiplexedConnection,
     keys: &[String],
     paths: Option<&[String]>,
+    include_ttl: bool,
 ) -> Result<Vec<JsonData>> {
     match paths {
-        Some(p) if !p.is_empty() => fetch_json_paths(conn, keys, p).await,
-        _ => fetch_json_all(conn, keys).await,
+        Some(p) if !p.is_empty() => fetch_json_paths(conn, keys, p, include_ttl).await,
+        _ => fetch_json_all(conn, keys, include_ttl).await,
     }
 }
 
@@ -104,10 +147,12 @@ mod tests {
         let data = JsonData {
             key: "doc:1".to_string(),
             json: Some(r#"{"name":"Alice","age":30}"#.to_string()),
+            ttl: None,
         };
 
         assert_eq!(data.key, "doc:1");
         assert!(data.json.is_some());
+        assert_eq!(data.ttl, None);
     }
 
     #[test]
@@ -115,9 +160,22 @@ mod tests {
         let data = JsonData {
             key: "doc:missing".to_string(),
             json: None,
+            ttl: Some(-2),
         };
 
         assert_eq!(data.key, "doc:missing");
         assert!(data.json.is_none());
+        assert_eq!(data.ttl, Some(-2));
+    }
+
+    #[test]
+    fn test_json_data_with_ttl() {
+        let data = JsonData {
+            key: "doc:1".to_string(),
+            json: Some(r#"{"name":"Alice"}"#.to_string()),
+            ttl: Some(3600),
+        };
+
+        assert_eq!(data.ttl, Some(3600));
     }
 }

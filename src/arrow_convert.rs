@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use arrow::array::{
     ArrayRef, BooleanBuilder, Date32Builder, Float64Builder, Int64Builder, RecordBatch,
-    StringBuilder, TimestampMicrosecondBuilder,
+    StringBuilder, TimestampMicrosecondBuilder, UInt64Builder,
 };
 
 use crate::error::{Error, Result};
@@ -18,17 +18,47 @@ use crate::schema::{HashSchema, RedisType};
 ///
 /// This function takes hash data from Redis and converts it to a typed Arrow
 /// RecordBatch according to the provided schema.
-pub fn hashes_to_record_batch(data: &[HashData], schema: &HashSchema) -> Result<RecordBatch> {
+///
+/// # Arguments
+/// * `data` - The hash data from Redis
+/// * `schema` - The schema defining the column types
+/// * `row_offset` - Starting row index for this batch (used when include_row_index is true)
+pub fn hashes_to_record_batch(
+    data: &[HashData],
+    schema: &HashSchema,
+    row_offset: u64,
+) -> Result<RecordBatch> {
     let arrow_schema = Arc::new(schema.to_arrow_schema());
     let num_rows = data.len();
 
     let mut arrays: Vec<ArrayRef> = Vec::with_capacity(arrow_schema.fields().len());
+
+    // Build row index column if included (first column)
+    if schema.include_row_index() {
+        let mut builder = UInt64Builder::with_capacity(num_rows);
+        for i in 0..num_rows {
+            builder.append_value(row_offset + i as u64);
+        }
+        arrays.push(Arc::new(builder.finish()));
+    }
 
     // Build key column if included
     if schema.include_key() {
         let mut builder = StringBuilder::with_capacity(num_rows, num_rows * 32);
         for row in data {
             builder.append_value(&row.key);
+        }
+        arrays.push(Arc::new(builder.finish()));
+    }
+
+    // Build TTL column if included
+    if schema.include_ttl() {
+        let mut builder = Int64Builder::with_capacity(num_rows);
+        for row in data {
+            match row.ttl {
+                Some(ttl) => builder.append_value(ttl),
+                None => builder.append_null(),
+            }
         }
         arrays.push(Arc::new(builder.finish()));
     }
@@ -80,10 +110,10 @@ fn build_int64_column(data: &[HashData], field_name: &str) -> Result<ArrayRef> {
     for row in data {
         match row.fields.get(field_name) {
             Some(Some(value)) => {
-                let parsed = value.parse::<i64>().map_err(|e| {
+                let parsed = value.parse::<i64>().map_err(|_| {
                     Error::TypeConversion(format!(
-                        "Failed to parse '{}' as i64 for field '{}': {}",
-                        value, field_name, e
+                        "Cannot parse '{}' as Int64 for field '{}'. Expected a valid integer (e.g., '42', '-100')",
+                        value, field_name
                     ))
                 })?;
                 builder.append_value(parsed);
@@ -102,10 +132,10 @@ fn build_float64_column(data: &[HashData], field_name: &str) -> Result<ArrayRef>
     for row in data {
         match row.fields.get(field_name) {
             Some(Some(value)) => {
-                let parsed = value.parse::<f64>().map_err(|e| {
+                let parsed = value.parse::<f64>().map_err(|_| {
                     Error::TypeConversion(format!(
-                        "Failed to parse '{}' as f64 for field '{}': {}",
-                        value, field_name, e
+                        "Cannot parse '{}' as Float64 for field '{}'. Expected a valid number (e.g., '3.14', '-0.5')",
+                        value, field_name
                     ))
                 })?;
                 builder.append_value(parsed);
@@ -126,7 +156,7 @@ fn build_boolean_column(data: &[HashData], field_name: &str) -> Result<ArrayRef>
             Some(Some(value)) => {
                 let parsed = parse_bool(value).ok_or_else(|| {
                     Error::TypeConversion(format!(
-                        "Failed to parse '{}' as boolean for field '{}'",
+                        "Cannot parse '{}' as Boolean for field '{}'. Expected: true/false, yes/no, 1/0, t/f, y/n",
                         value, field_name
                     ))
                 })?;
@@ -150,7 +180,7 @@ fn build_date_column(data: &[HashData], field_name: &str) -> Result<ArrayRef> {
             Some(Some(value)) => {
                 let parsed = parse_date(value).ok_or_else(|| {
                     Error::TypeConversion(format!(
-                        "Failed to parse '{}' as date for field '{}'",
+                        "Cannot parse '{}' as Date for field '{}'. Expected: YYYY-MM-DD (e.g., '2024-01-15') or epoch days",
                         value, field_name
                     ))
                 })?;
@@ -174,7 +204,7 @@ fn build_datetime_column(data: &[HashData], field_name: &str) -> Result<ArrayRef
             Some(Some(value)) => {
                 let parsed = parse_datetime(value).ok_or_else(|| {
                     Error::TypeConversion(format!(
-                        "Failed to parse '{}' as datetime for field '{}'",
+                        "Cannot parse '{}' as Datetime for field '{}'. Expected: ISO 8601 (e.g., '2024-01-15T10:30:00') or Unix timestamp",
                         value, field_name
                     ))
                 })?;
@@ -209,6 +239,22 @@ mod tests {
                 .into_iter()
                 .map(|(k, v)| (k.to_string(), v.map(|s| s.to_string())))
                 .collect(),
+            ttl: None,
+        }
+    }
+
+    fn make_hash_data_with_ttl(
+        key: &str,
+        fields: Vec<(&str, Option<&str>)>,
+        ttl: Option<i64>,
+    ) -> HashData {
+        HashData {
+            key: key.to_string(),
+            fields: fields
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v.map(|s| s.to_string())))
+                .collect(),
+            ttl,
         }
     }
 
@@ -224,7 +270,7 @@ mod tests {
             make_hash_data("user:2", vec![("name", Some("Bob")), ("age", Some("25"))]),
         ];
 
-        let batch = hashes_to_record_batch(&data, &schema).unwrap();
+        let batch = hashes_to_record_batch(&data, &schema, 0).unwrap();
 
         assert_eq!(batch.num_rows(), 2);
         assert_eq!(batch.num_columns(), 3); // _key, name, age
@@ -242,7 +288,7 @@ mod tests {
             make_hash_data("user:2", vec![("name", None), ("age", Some("25"))]),
         ];
 
-        let batch = hashes_to_record_batch(&data, &schema).unwrap();
+        let batch = hashes_to_record_batch(&data, &schema, 0).unwrap();
         assert_eq!(batch.num_rows(), 2);
     }
 
@@ -252,7 +298,7 @@ mod tests {
 
         let data = vec![make_hash_data("user:1", vec![("name", Some("Alice"))])];
 
-        let batch = hashes_to_record_batch(&data, &schema).unwrap();
+        let batch = hashes_to_record_batch(&data, &schema, 0).unwrap();
 
         assert_eq!(batch.num_columns(), 1); // Just name, no _key
         assert_eq!(batch.schema().field(0).name(), "name");
@@ -277,7 +323,7 @@ mod tests {
             ],
         )];
 
-        let batch = hashes_to_record_batch(&data, &schema).unwrap();
+        let batch = hashes_to_record_batch(&data, &schema, 0).unwrap();
         assert_eq!(batch.num_columns(), 5); // _key + 4 fields
     }
 
@@ -290,7 +336,7 @@ mod tests {
             vec![("age", Some("not_a_number"))],
         )];
 
-        let result = hashes_to_record_batch(&data, &schema);
+        let result = hashes_to_record_batch(&data, &schema, 0);
         assert!(result.is_err());
     }
 
@@ -299,9 +345,44 @@ mod tests {
         let schema = HashSchema::new(vec![("name".to_string(), RedisType::Utf8)]);
 
         let data: Vec<HashData> = vec![];
-        let batch = hashes_to_record_batch(&data, &schema).unwrap();
+        let batch = hashes_to_record_batch(&data, &schema, 0).unwrap();
 
         assert_eq!(batch.num_rows(), 0);
+    }
+
+    #[test]
+    fn test_hashes_to_record_batch_with_ttl() {
+        let schema = HashSchema::new(vec![("name".to_string(), RedisType::Utf8)]).with_ttl(true);
+
+        let data = vec![
+            make_hash_data_with_ttl("user:1", vec![("name", Some("Alice"))], Some(3600)),
+            make_hash_data_with_ttl("user:2", vec![("name", Some("Bob"))], Some(-1)), // No expiry
+            make_hash_data_with_ttl("user:3", vec![("name", Some("Charlie"))], Some(7200)),
+        ];
+
+        let batch = hashes_to_record_batch(&data, &schema, 0).unwrap();
+
+        assert_eq!(batch.num_rows(), 3);
+        assert_eq!(batch.num_columns(), 3); // _key, _ttl, name
+        assert_eq!(batch.schema().field(1).name(), "_ttl");
+    }
+
+    #[test]
+    fn test_hashes_to_record_batch_with_ttl_custom_name() {
+        let schema = HashSchema::new(vec![("name".to_string(), RedisType::Utf8)])
+            .with_ttl(true)
+            .with_ttl_column_name("expires_in");
+
+        let data = vec![make_hash_data_with_ttl(
+            "user:1",
+            vec![("name", Some("Alice"))],
+            Some(3600),
+        )];
+
+        let batch = hashes_to_record_batch(&data, &schema, 0).unwrap();
+
+        assert_eq!(batch.num_columns(), 3); // _key, expires_in, name
+        assert_eq!(batch.schema().field(1).name(), "expires_in");
     }
 
     #[test]
@@ -322,7 +403,7 @@ mod tests {
             ),
         ];
 
-        let batch = hashes_to_record_batch(&data, &schema).unwrap();
+        let batch = hashes_to_record_batch(&data, &schema, 0).unwrap();
         assert_eq!(batch.num_rows(), 2);
         assert_eq!(batch.num_columns(), 3); // _key, name, birth_date
     }
@@ -351,7 +432,7 @@ mod tests {
             ),
         ];
 
-        let batch = hashes_to_record_batch(&data, &schema).unwrap();
+        let batch = hashes_to_record_batch(&data, &schema, 0).unwrap();
         assert_eq!(batch.num_rows(), 2);
         assert_eq!(batch.num_columns(), 3); // _key, name, created_at
     }
@@ -371,7 +452,7 @@ mod tests {
             make_hash_data("user:2", vec![("name", Some("Bob")), ("birth_date", None)]),
         ];
 
-        let batch = hashes_to_record_batch(&data, &schema).unwrap();
+        let batch = hashes_to_record_batch(&data, &schema, 0).unwrap();
         assert_eq!(batch.num_rows(), 2);
     }
 
@@ -398,7 +479,70 @@ mod tests {
             ],
         )];
 
-        let batch = hashes_to_record_batch(&data, &schema).unwrap();
+        let batch = hashes_to_record_batch(&data, &schema, 0).unwrap();
         assert_eq!(batch.num_columns(), 7); // _key + 6 fields
+    }
+
+    #[test]
+    fn test_hashes_to_record_batch_with_row_index() {
+        let schema =
+            HashSchema::new(vec![("name".to_string(), RedisType::Utf8)]).with_row_index(true);
+
+        let data = vec![
+            make_hash_data("user:1", vec![("name", Some("Alice"))]),
+            make_hash_data("user:2", vec![("name", Some("Bob"))]),
+            make_hash_data("user:3", vec![("name", Some("Charlie"))]),
+        ];
+
+        let batch = hashes_to_record_batch(&data, &schema, 0).unwrap();
+
+        assert_eq!(batch.num_rows(), 3);
+        assert_eq!(batch.num_columns(), 3); // _index, _key, name
+        assert_eq!(batch.schema().field(0).name(), "_index");
+
+        // Verify row indices
+        let index_col = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<arrow::array::UInt64Array>()
+            .unwrap();
+        assert_eq!(index_col.value(0), 0);
+        assert_eq!(index_col.value(1), 1);
+        assert_eq!(index_col.value(2), 2);
+    }
+
+    #[test]
+    fn test_hashes_to_record_batch_with_row_index_offset() {
+        let schema =
+            HashSchema::new(vec![("name".to_string(), RedisType::Utf8)]).with_row_index(true);
+
+        let data = vec![
+            make_hash_data("user:1", vec![("name", Some("Alice"))]),
+            make_hash_data("user:2", vec![("name", Some("Bob"))]),
+        ];
+
+        // Simulate second batch starting at offset 100
+        let batch = hashes_to_record_batch(&data, &schema, 100).unwrap();
+
+        let index_col = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<arrow::array::UInt64Array>()
+            .unwrap();
+        assert_eq!(index_col.value(0), 100);
+        assert_eq!(index_col.value(1), 101);
+    }
+
+    #[test]
+    fn test_hashes_to_record_batch_with_row_index_custom_name() {
+        let schema = HashSchema::new(vec![("name".to_string(), RedisType::Utf8)])
+            .with_row_index(true)
+            .with_row_index_column_name("row_num");
+
+        let data = vec![make_hash_data("user:1", vec![("name", Some("Alice"))])];
+
+        let batch = hashes_to_record_batch(&data, &schema, 0).unwrap();
+
+        assert_eq!(batch.schema().field(0).name(), "row_num");
     }
 }
