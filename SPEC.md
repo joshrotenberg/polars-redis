@@ -68,7 +68,12 @@ polars-redis is a Polars IO plugin that enables scanning Redis data structures (
 | TTL column support | ✅ Done | `include_ttl`, `ttl_column_name` options |
 | Row index column support | ✅ Done | `include_row_index`, `row_index_column_name` options |
 | Python API (`register_io_source`) | ✅ Done | Full LazyFrame integration |
-| Integration tests | ✅ Done | 50+ Python tests, 42 Rust tests |
+| `scan_strings()` / `read_strings()` | ✅ Done | LazyFrame/DataFrame from Redis strings |
+| `write_strings()` | ✅ Done | Write DataFrames as Redis strings |
+| Write modes (fail/replace/append) | ✅ Done | `if_exists` parameter on write functions |
+| TTL on write | ✅ Done | `ttl` parameter on write functions |
+| Key prefix support | ✅ Done | `key_prefix` parameter on write functions |
+| Integration tests | ✅ Done | 50+ Python tests, 82 Rust tests |
 | CI/CD pipeline | ✅ Done | GitHub Actions with Redis service |
 | Rust examples | ✅ Done | IPC serialization, projection examples |
 | Python examples | ✅ Done | 9 comprehensive examples |
@@ -77,10 +82,8 @@ polars-redis is a Polars IO plugin that enables scanning Redis data structures (
 
 | Feature | Priority | Phase |
 |---------|----------|-------|
-| Write modes (fail/replace/append) | Medium | 3 |
-| TTL on write | Medium | 3 |
-| Key generation strategies | Medium | 3 |
-| Redis Strings (`scan_strings`) | High | 4 |
+| Batch pipelining for writes | Medium | 3 |
+| Key generation from row index | Low | 3 |
 | Sorted Sets (`scan_zset`) | Medium | 4 |
 | Redis Streams (`scan_stream`) | Medium | 4 |
 | RedisTimeSeries support | High | 4 |
@@ -963,16 +966,18 @@ client-side for millions of members.
 - [x] Row index support
 - [x] Better error messages
 
-### Phase 3: Write Support
+### Phase 3: Write Support (Done)
 - [x] `write_hashes()` basic implementation
 - [x] `write_json()` basic implementation
-- [ ] Write modes (fail/replace/append)
-- [ ] TTL on write
-- [ ] Batch pipelining
-- [ ] Key generation strategies (prefix, auto-index)
+- [x] `write_strings()` basic implementation
+- [x] Write modes (fail/replace/append)
+- [x] TTL on write
+- [x] Key prefix support
+- [ ] Batch pipelining for writes
+- [ ] Key generation from row index (auto-index)
 
 ### Phase 4: Additional Data Types
-- [ ] Redis Strings support (`scan_strings`, `write_strings`)
+- [x] Redis Strings support (`scan_strings`, `read_strings`, `write_strings`)
 - [ ] Sorted Sets support (`scan_zset`)
 - [ ] Redis Streams support (`scan_stream`)
 - [ ] RedisTimeSeries support (`scan_timeseries`, `scan_timeseries_multi`)
@@ -1055,49 +1060,6 @@ pytest tests/ -v
 1. "Bridging Redis and Polars: Zero-Copy Analytics on Operational Data"
 2. "Projection Pushdown in polars-redis: Why HMGET Beats HGETALL"
 3. "From Cache to DataFrame: Real-Time Analytics with polars-redis"
-
----
-
-## Prioritization
-
-### Immediate (Before PyPI Release)
-
-| Task | Effort | Impact | Notes |
-|------|--------|--------|-------|
-| Integration tests | Medium | High | Need Redis in CI |
-| `read_hashes()` / `read_json()` | Low | Medium | Just `scan_*().collect()` |
-| Error message improvements | Low | Medium | Connection failures, type errors |
-| Docstrings and type hints | Low | Medium | For IDE support |
-| README with examples | Low | High | First impression |
-
-### Next (v0.2)
-
-| Task | Effort | Impact | Notes |
-|------|--------|--------|-------|
-| Schema inference | Medium | High | Removes friction for new users |
-| `write_hashes()` | Medium | High | Completes read/write story |
-| `write_json()` | Low | Medium | Similar to write_hashes |
-| TTL column support | Low | Low | Nice to have |
-
-### Later (v0.3+)
-
-| Task | Effort | Impact | Notes |
-|------|--------|--------|-------|
-| RedisTimeSeries (`scan_timeseries`) | Medium | **Very High** | Native aggregation pushdown, IoT/metrics killer feature |
-| Redis Streams (`scan_stream`) | Medium | High | Events, CDC, audit logs |
-| Sorted Sets (`scan_zset`) | Low | Medium | Leaderboards, rankings |
-| RediSearch predicate pushdown | High | Medium | Powerful but niche |
-| Connection pooling | Medium | Low | Perf optimization |
-| Cluster support | High | Low | Enterprise use case |
-
-### Recommended Focus Order
-
-1. **Integration tests** - Can't ship without confidence
-2. **`read_hashes()` / `read_json()`** - 5 min implementation, expected API
-3. **README polish** - First thing users see
-4. **PyPI release** - Get it out there
-5. **Schema inference** - Biggest friction reducer
-6. **Write support** - Complete the story
 
 ---
 

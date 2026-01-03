@@ -10,8 +10,8 @@ use arrow::array::{
     StringBuilder, TimestampMicrosecondBuilder, UInt64Builder,
 };
 
+use super::reader::HashData;
 use crate::error::{Error, Result};
-use crate::hash_reader::HashData;
 use crate::schema::{HashSchema, RedisType};
 
 /// Convert a batch of Redis hash data to an Arrow RecordBatch.

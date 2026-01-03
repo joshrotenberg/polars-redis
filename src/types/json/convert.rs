@@ -11,8 +11,8 @@ use arrow::array::{
 };
 use arrow::datatypes::{DataType, Field, Schema};
 
+use super::reader::JsonData;
 use crate::error::{Error, Result};
-use crate::json_reader::JsonData;
 
 /// Schema for JSON documents, mapping field names to expected types.
 #[derive(Debug, Clone)]
