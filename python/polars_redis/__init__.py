@@ -40,6 +40,7 @@ from polars_redis._internal import (
     py_infer_json_schema,
     py_write_hashes,
     py_write_json,
+    py_write_strings,
     scan_keys,
 )
 
@@ -56,8 +57,10 @@ __all__ = [
     "scan_strings",
     "read_hashes",
     "read_json",
+    "read_strings",
     "write_hashes",
     "write_json",
+    "write_strings",
     "scan_keys",
     "infer_hash_schema",
     "infer_json_schema",
@@ -644,4 +647,57 @@ def write_json(
 
     # Call the Rust implementation
     keys_written, _ = py_write_json(url, keys, json_strings)
+    return keys_written
+
+
+def write_strings(
+    df: pl.DataFrame,
+    url: str,
+    key_column: str = "_key",
+    value_column: str = "value",
+) -> int:
+    """Write a DataFrame to Redis as string values.
+
+    Each row in the DataFrame becomes a Redis string. The key column specifies
+    the Redis key, and the value column specifies the string value to store.
+
+    Args:
+        df: The DataFrame to write.
+        url: Redis connection URL (e.g., "redis://localhost:6379").
+        key_column: Column containing Redis keys (default: "_key").
+        value_column: Column containing values to write (default: "value").
+
+    Returns:
+        Number of keys successfully written.
+
+    Raises:
+        ValueError: If the key column or value column is not in the DataFrame.
+
+    Example:
+        >>> df = pl.DataFrame({
+        ...     "_key": ["counter:1", "counter:2"],
+        ...     "value": ["100", "200"]
+        ... })
+        >>> count = write_strings(df, "redis://localhost:6379")
+        >>> print(f"Wrote {count} strings")
+    """
+    if key_column not in df.columns:
+        raise ValueError(f"Key column '{key_column}' not found in DataFrame")
+
+    if value_column not in df.columns:
+        raise ValueError(f"Value column '{value_column}' not found in DataFrame")
+
+    # Extract keys
+    keys = df[key_column].to_list()
+
+    # Extract values, converting to strings
+    values = []
+    for val in df[value_column].to_list():
+        if val is None:
+            values.append(None)
+        else:
+            values.append(str(val))
+
+    # Call the Rust implementation
+    keys_written, _ = py_write_strings(url, keys, values)
     return keys_written

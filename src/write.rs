@@ -139,6 +139,58 @@ async fn write_json_async(
     })
 }
 
+/// Write string values to Redis.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `keys` - List of Redis keys to write to
+/// * `values` - List of string values to write
+///
+/// # Returns
+/// A `WriteResult` with the number of keys written.
+pub fn write_strings(
+    url: &str,
+    keys: Vec<String>,
+    values: Vec<Option<String>>,
+) -> Result<WriteResult> {
+    let runtime =
+        Runtime::new().map_err(|e| Error::Runtime(format!("Failed to create runtime: {}", e)))?;
+
+    let connection = RedisConnection::new(url)?;
+
+    runtime.block_on(async {
+        let mut conn = connection.get_async_connection().await?;
+        write_strings_async(&mut conn, keys, values).await
+    })
+}
+
+/// Async implementation of string writing.
+async fn write_strings_async(
+    conn: &mut redis::aio::MultiplexedConnection,
+    keys: Vec<String>,
+    values: Vec<Option<String>>,
+) -> Result<WriteResult> {
+    let mut keys_written = 0;
+    let mut keys_failed = 0;
+
+    for (key, value) in keys.iter().zip(values.iter()) {
+        // Skip null values
+        let Some(val) = value else {
+            continue;
+        };
+
+        match conn.set::<_, _, ()>(key, val).await {
+            Ok(_) => keys_written += 1,
+            Err(_) => keys_failed += 1,
+        }
+    }
+
+    Ok(WriteResult {
+        keys_written,
+        keys_failed,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

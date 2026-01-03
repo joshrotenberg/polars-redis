@@ -29,7 +29,7 @@ pub use infer::{InferredSchema, infer_hash_schema, infer_json_schema};
 pub use json_batch_iter::JsonBatchIterator;
 pub use json_convert::JsonSchema;
 pub use schema::{HashSchema, RedisType};
-pub use write::{WriteResult, write_hashes, write_json};
+pub use write::{WriteResult, write_hashes, write_json, write_strings};
 
 /// Serialize an Arrow RecordBatch to IPC format bytes.
 ///
@@ -74,6 +74,7 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_infer_json_schema, m)?)?;
     m.add_function(wrap_pyfunction!(py_write_hashes, m)?)?;
     m.add_function(wrap_pyfunction!(py_write_json, m)?)?;
+    m.add_function(wrap_pyfunction!(py_write_strings, m)?)?;
     Ok(())
 }
 
@@ -546,6 +547,28 @@ fn py_write_json(
     json_strings: Vec<String>,
 ) -> PyResult<(usize, usize)> {
     let result = write_json(url, keys, json_strings)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    Ok((result.keys_written, result.keys_failed))
+}
+
+#[cfg(feature = "python")]
+/// Write string values to Redis.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `keys` - List of Redis keys to write to
+/// * `values` - List of string values to write (None for null)
+///
+/// # Returns
+/// A tuple of (keys_written, keys_failed).
+#[pyfunction]
+fn py_write_strings(
+    url: &str,
+    keys: Vec<String>,
+    values: Vec<Option<String>>,
+) -> PyResult<(usize, usize)> {
+    let result = write_strings(url, keys, values)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
     Ok((result.keys_written, result.keys_failed))

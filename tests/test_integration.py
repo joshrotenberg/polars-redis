@@ -1072,3 +1072,179 @@ class TestWriteJson:
         finally:
             subprocess.run(["redis-cli", "DEL", "test:roundtrip:json:1"], capture_output=True)
             subprocess.run(["redis-cli", "DEL", "test:roundtrip:json:2"], capture_output=True)
+
+
+class TestWriteStrings:
+    """Tests for write_strings function."""
+
+    def test_write_strings_basic(self, redis_url: str) -> None:
+        """Test basic string writing."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:write:str:1", "test:write:str:2"],
+                "value": ["hello", "world"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_strings(df, redis_url)
+            assert count == 2
+
+            # Verify data was written
+            result = subprocess.run(
+                ["redis-cli", "GET", "test:write:str:1"],
+                capture_output=True,
+                text=True,
+            )
+            assert result.stdout.strip() == "hello"
+
+            result = subprocess.run(
+                ["redis-cli", "GET", "test:write:str:2"],
+                capture_output=True,
+                text=True,
+            )
+            assert result.stdout.strip() == "world"
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:write:str:1"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", "test:write:str:2"], capture_output=True)
+
+    def test_write_strings_custom_columns(self, redis_url: str) -> None:
+        """Test writing strings with custom column names."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "redis_key": ["test:write:str:custom:1"],
+                "data": ["custom_value"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_strings(
+                df, redis_url, key_column="redis_key", value_column="data"
+            )
+            assert count == 1
+
+            result = subprocess.run(
+                ["redis-cli", "GET", "test:write:str:custom:1"],
+                capture_output=True,
+                text=True,
+            )
+            assert result.stdout.strip() == "custom_value"
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:write:str:custom:1"], capture_output=True)
+
+    def test_write_strings_missing_key_column(self, redis_url: str) -> None:
+        """Test that missing key column raises error."""
+        df = pl.DataFrame({"value": ["hello"]})
+
+        with pytest.raises(ValueError, match="Key column '_key' not found"):
+            polars_redis.write_strings(df, redis_url)
+
+    def test_write_strings_missing_value_column(self, redis_url: str) -> None:
+        """Test that missing value column raises error."""
+        df = pl.DataFrame({"_key": ["test:key"]})
+
+        with pytest.raises(ValueError, match="Value column 'value' not found"):
+            polars_redis.write_strings(df, redis_url)
+
+    def test_write_strings_with_nulls(self, redis_url: str) -> None:
+        """Test that null values are skipped."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:write:str:null:1", "test:write:str:null:2"],
+                "value": ["valid", None],
+            }
+        )
+
+        try:
+            count = polars_redis.write_strings(df, redis_url)
+            # Only non-null values should be written
+            assert count == 1
+
+            # Verify the valid key was written
+            result = subprocess.run(
+                ["redis-cli", "GET", "test:write:str:null:1"],
+                capture_output=True,
+                text=True,
+            )
+            assert result.stdout.strip() == "valid"
+
+            # Verify the null key was not written
+            result = subprocess.run(
+                ["redis-cli", "EXISTS", "test:write:str:null:2"],
+                capture_output=True,
+                text=True,
+            )
+            assert result.stdout.strip() == "0"
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:write:str:null:1"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", "test:write:str:null:2"], capture_output=True)
+
+    def test_write_strings_int_values(self, redis_url: str) -> None:
+        """Test writing integer values as strings."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:write:str:int:1", "test:write:str:int:2"],
+                "value": [42, 100],
+            }
+        )
+
+        try:
+            count = polars_redis.write_strings(df, redis_url)
+            assert count == 2
+
+            result = subprocess.run(
+                ["redis-cli", "GET", "test:write:str:int:1"],
+                capture_output=True,
+                text=True,
+            )
+            assert result.stdout.strip() == "42"
+
+            result = subprocess.run(
+                ["redis-cli", "GET", "test:write:str:int:2"],
+                capture_output=True,
+                text=True,
+            )
+            assert result.stdout.strip() == "100"
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:write:str:int:1"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", "test:write:str:int:2"], capture_output=True)
+
+    def test_write_strings_float_values(self, redis_url: str) -> None:
+        """Test writing float values as strings."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:write:str:float:1", "test:write:str:float:2"],
+                "value": [3.14, 2.718],
+            }
+        )
+
+        try:
+            count = polars_redis.write_strings(df, redis_url)
+            assert count == 2
+
+            result = subprocess.run(
+                ["redis-cli", "GET", "test:write:str:float:1"],
+                capture_output=True,
+                text=True,
+            )
+            assert result.stdout.strip() == "3.14"
+
+            result = subprocess.run(
+                ["redis-cli", "GET", "test:write:str:float:2"],
+                capture_output=True,
+                text=True,
+            )
+            assert result.stdout.strip() == "2.718"
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:write:str:float:1"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", "test:write:str:float:2"], capture_output=True)
