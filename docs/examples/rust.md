@@ -5,10 +5,16 @@ Example code is in [`examples/rust/`](https://github.com/joshrotenberg/polars-re
 Run examples with:
 
 ```bash
+# Scan examples
 cargo run --example scan_hashes
 cargo run --example scan_json
 cargo run --example scan_strings
 cargo run --example schema_inference
+
+# Write examples
+cargo run --example write_hashes
+cargo run --example write_json
+cargo run --example write_strings
 ```
 
 ## Scan Hashes
@@ -41,4 +47,28 @@ Automatic schema detection from existing data:
 
 ```rust
 --8<-- "examples/rust/schema_inference.rs"
+```
+
+## Write Hashes
+
+Writing data to Redis as hashes:
+
+```rust
+--8<-- "examples/rust/write_hashes.rs"
+```
+
+## Write JSON
+
+Writing data to Redis as JSON documents:
+
+```rust
+--8<-- "examples/rust/write_json.rs"
+```
+
+## Write Strings
+
+Writing data to Redis as strings:
+
+```rust
+--8<-- "examples/rust/write_strings.rs"
 ```
