@@ -11,6 +11,8 @@ A Polars IO plugin for Redis.
 - [x] `scan_sets()` / `read_sets()` - LazyFrame/DataFrame from Redis sets
 - [x] `scan_lists()` / `read_lists()` - LazyFrame/DataFrame from Redis lists
 - [x] `scan_zsets()` / `read_zsets()` - LazyFrame/DataFrame from Redis sorted sets
+- [x] `scan_streams()` / `read_streams()` - LazyFrame/DataFrame from Redis Streams
+- [x] `scan_timeseries()` / `read_timeseries()` - LazyFrame/DataFrame from RedisTimeSeries
 - [x] `write_hashes()` / `write_json()` / `write_strings()` - Write DataFrames to Redis
 - [x] `write_sets()` / `write_lists()` / `write_zsets()` - Write DataFrames to Redis
 - [x] `infer_hash_schema()` / `infer_json_schema()` - Schema inference from samples
@@ -30,16 +32,12 @@ A Polars IO plugin for Redis.
 
 ### Infrastructure
 - [x] CI/CD pipeline (GitHub Actions)
-- [x] 114 Rust unit tests
+- [x] 138 Rust unit tests
 - [x] 50+ Python integration tests
 - [x] Documentation site (MkDocs Material)
 - [x] Python and Rust examples
 
 ## Todo
-
-### Phase 6: Additional Data Types
-- [ ] Redis Streams (`scan_stream`) - event logs, CDC
-- [ ] RedisTimeSeries (`scan_timeseries`) - metrics, sensor data
 
 ### Phase 7: Advanced Features
 - [ ] RediSearch predicate pushdown
