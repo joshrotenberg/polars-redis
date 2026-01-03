@@ -38,6 +38,8 @@ from polars_redis._internal import (
     RedisScanner,
     py_infer_hash_schema,
     py_infer_json_schema,
+    py_write_hashes,
+    py_write_json,
     scan_keys,
 )
 
@@ -54,6 +56,8 @@ __all__ = [
     "scan_strings",
     "read_hashes",
     "read_json",
+    "write_hashes",
+    "write_json",
     "scan_keys",
     "infer_hash_schema",
     "infer_json_schema",
@@ -519,3 +523,117 @@ def _fields_to_schema(fields: list[tuple[str, str]]) -> dict[str, type[pl.DataTy
         "bool": pl.Boolean,
     }
     return {name: type_map.get(type_str, pl.Utf8) for name, type_str in fields}
+
+
+def write_hashes(
+    df: pl.DataFrame,
+    url: str,
+    key_column: str = "_key",
+) -> int:
+    """Write a DataFrame to Redis as hashes.
+
+    Each row in the DataFrame becomes a Redis hash. The key column specifies
+    the Redis key for each hash, and the remaining columns become hash fields.
+
+    Args:
+        df: The DataFrame to write.
+        url: Redis connection URL (e.g., "redis://localhost:6379").
+        key_column: Column containing Redis keys (default: "_key").
+
+    Returns:
+        Number of keys successfully written.
+
+    Raises:
+        ValueError: If the key column is not in the DataFrame.
+
+    Example:
+        >>> df = pl.DataFrame({
+        ...     "_key": ["user:1", "user:2"],
+        ...     "name": ["Alice", "Bob"],
+        ...     "age": [30, 25]
+        ... })
+        >>> count = write_hashes(df, "redis://localhost:6379")
+        >>> print(f"Wrote {count} hashes")
+    """
+    if key_column not in df.columns:
+        raise ValueError(f"Key column '{key_column}' not found in DataFrame")
+
+    # Extract keys
+    keys = df[key_column].to_list()
+
+    # Get field columns (all columns except the key column)
+    field_columns = [c for c in df.columns if c != key_column]
+
+    # Convert all values to strings (Redis stores everything as strings)
+    values = []
+    for i in range(len(df)):
+        row_values = []
+        for col in field_columns:
+            val = df[col][i]
+            if val is None:
+                row_values.append(None)
+            else:
+                row_values.append(str(val))
+        values.append(row_values)
+
+    # Call the Rust implementation
+    keys_written, _ = py_write_hashes(url, keys, field_columns, values)
+    return keys_written
+
+
+def write_json(
+    df: pl.DataFrame,
+    url: str,
+    key_column: str = "_key",
+) -> int:
+    """Write a DataFrame to Redis as JSON documents.
+
+    Each row in the DataFrame becomes a RedisJSON document. The key column
+    specifies the Redis key for each document, and the remaining columns
+    become JSON fields.
+
+    Args:
+        df: The DataFrame to write.
+        url: Redis connection URL (e.g., "redis://localhost:6379").
+        key_column: Column containing Redis keys (default: "_key").
+
+    Returns:
+        Number of keys successfully written.
+
+    Raises:
+        ValueError: If the key column is not in the DataFrame.
+
+    Example:
+        >>> df = pl.DataFrame({
+        ...     "_key": ["doc:1", "doc:2"],
+        ...     "title": ["Hello", "World"],
+        ...     "views": [100, 200]
+        ... })
+        >>> count = write_json(df, "redis://localhost:6379")
+        >>> print(f"Wrote {count} JSON documents")
+    """
+    import json
+
+    if key_column not in df.columns:
+        raise ValueError(f"Key column '{key_column}' not found in DataFrame")
+
+    # Extract keys
+    keys = df[key_column].to_list()
+
+    # Get field columns (all columns except the key column)
+    field_columns = [c for c in df.columns if c != key_column]
+
+    # Build JSON strings for each row
+    json_strings = []
+    for i in range(len(df)):
+        doc = {}
+        for col in field_columns:
+            val = df[col][i]
+            if val is not None:
+                # Preserve native types for JSON
+                doc[col] = val
+        json_strings.append(json.dumps(doc))
+
+    # Call the Rust implementation
+    keys_written, _ = py_write_json(url, keys, json_strings)
+    return keys_written
