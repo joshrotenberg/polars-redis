@@ -2,14 +2,19 @@
 //!
 //! This module provides functionality to write Polars DataFrames to Redis
 //! as hashes or JSON documents.
+//!
+//! Write operations use Redis pipelining for improved performance, processing
+//! keys in configurable batches (default: 1000 keys per batch).
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 
-use redis::AsyncCommands;
 use tokio::runtime::Runtime;
 
 use crate::connection::RedisConnection;
 use crate::error::{Error, Result};
+
+/// Default batch size for pipelined write operations.
+const DEFAULT_WRITE_BATCH_SIZE: usize = 1000;
 
 /// Write mode for handling existing keys.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -81,7 +86,7 @@ pub fn write_hashes(
     })
 }
 
-/// Async implementation of hash writing.
+/// Async implementation of hash writing with pipelining.
 async fn write_hashes_async(
     conn: &mut redis::aio::MultiplexedConnection,
     keys: Vec<String>,
@@ -94,51 +99,78 @@ async fn write_hashes_async(
     let mut keys_failed = 0;
     let mut keys_skipped = 0;
 
-    for (i, key) in keys.iter().enumerate() {
-        if i >= values.len() {
-            break;
+    // Process in batches for better performance
+    for batch_start in (0..keys.len()).step_by(DEFAULT_WRITE_BATCH_SIZE) {
+        let batch_end = (batch_start + DEFAULT_WRITE_BATCH_SIZE).min(keys.len());
+        let batch_keys = &keys[batch_start..batch_end];
+
+        // For Fail mode, check existence of all keys in batch first
+        let existing_keys: HashSet<usize> = if if_exists == WriteMode::Fail {
+            let mut pipe = redis::pipe();
+            for key in batch_keys {
+                pipe.exists(key);
+            }
+            let exists_results: Vec<bool> = pipe.query_async(conn).await.unwrap_or_default();
+            exists_results
+                .into_iter()
+                .enumerate()
+                .filter_map(|(i, exists)| if exists { Some(i) } else { None })
+                .collect()
+        } else {
+            HashSet::new()
+        };
+
+        // For Replace mode, delete existing keys in batch
+        if if_exists == WriteMode::Replace {
+            let mut del_pipe = redis::pipe();
+            for key in batch_keys {
+                del_pipe.del(key).ignore();
+            }
+            let _ = del_pipe.query_async::<()>(conn).await;
         }
 
-        // Check if key exists when mode is Fail
-        if if_exists == WriteMode::Fail {
-            let exists: bool = conn.exists(key).await.unwrap_or(false);
-            if exists {
+        // Build pipeline for HSET operations
+        let mut pipe = redis::pipe();
+        let mut batch_indices: Vec<usize> = Vec::new();
+
+        for (batch_idx, key) in batch_keys.iter().enumerate() {
+            let global_idx = batch_start + batch_idx;
+
+            // Skip if key exists and mode is Fail
+            if existing_keys.contains(&batch_idx) {
                 keys_skipped += 1;
                 continue;
             }
-        }
 
-        let row = &values[i];
-        let mut hash_data: HashMap<&str, &str> = HashMap::new();
-
-        for (j, field) in fields.iter().enumerate() {
-            if j < row.len()
-                && let Some(value) = &row[j]
-            {
-                hash_data.insert(field.as_str(), value.as_str());
+            if global_idx >= values.len() {
+                break;
             }
-        }
 
-        if !hash_data.is_empty() {
-            // For Replace mode, delete the key first to ensure clean replacement
-            if if_exists == WriteMode::Replace {
-                let _ = conn.del::<_, ()>(key).await;
-            }
-            // For Append mode (and Replace after delete), just set the fields
-            // HSET naturally merges/overwrites fields
+            let row = &values[global_idx];
+            let mut hash_data: Vec<(&str, &str)> = Vec::new();
 
-            match conn
-                .hset_multiple::<_, _, _, ()>(key, &hash_data.into_iter().collect::<Vec<_>>())
-                .await
-            {
-                Ok(_) => {
-                    // Set TTL if provided
-                    if let Some(seconds) = ttl {
-                        let _ = conn.expire::<_, ()>(key, seconds).await;
-                    }
-                    keys_written += 1;
+            for (j, field) in fields.iter().enumerate() {
+                if j < row.len()
+                    && let Some(value) = &row[j]
+                {
+                    hash_data.push((field.as_str(), value.as_str()));
                 }
-                Err(_) => keys_failed += 1,
+            }
+
+            if !hash_data.is_empty() {
+                pipe.hset_multiple(key, &hash_data);
+                if let Some(seconds) = ttl {
+                    pipe.expire(key, seconds);
+                }
+                batch_indices.push(batch_idx);
+            }
+        }
+
+        // Execute pipeline if there are commands
+        if !batch_indices.is_empty() {
+            match pipe.query_async::<()>(conn).await {
+                Ok(_) => keys_written += batch_indices.len(),
+                Err(_) => keys_failed += batch_indices.len(),
             }
         }
     }
@@ -179,7 +211,7 @@ pub fn write_json(
     })
 }
 
-/// Async implementation of JSON writing.
+/// Async implementation of JSON writing with pipelining.
 async fn write_json_async(
     conn: &mut redis::aio::MultiplexedConnection,
     keys: Vec<String>,
@@ -191,33 +223,53 @@ async fn write_json_async(
     let mut keys_failed = 0;
     let mut keys_skipped = 0;
 
-    for (key, json_str) in keys.iter().zip(json_strings.iter()) {
-        // Check if key exists when mode is Fail
-        if if_exists == WriteMode::Fail {
-            let exists: bool = conn.exists(key).await.unwrap_or(false);
-            if exists {
+    let items: Vec<_> = keys.iter().zip(json_strings.iter()).collect();
+
+    // Process in batches for better performance
+    for batch_start in (0..items.len()).step_by(DEFAULT_WRITE_BATCH_SIZE) {
+        let batch_end = (batch_start + DEFAULT_WRITE_BATCH_SIZE).min(items.len());
+        let batch_items = &items[batch_start..batch_end];
+
+        // For Fail mode, check existence of all keys in batch first
+        let existing_keys: HashSet<usize> = if if_exists == WriteMode::Fail {
+            let mut pipe = redis::pipe();
+            for (key, _) in batch_items {
+                pipe.exists(*key);
+            }
+            let exists_results: Vec<bool> = pipe.query_async(conn).await.unwrap_or_default();
+            exists_results
+                .into_iter()
+                .enumerate()
+                .filter_map(|(i, exists)| if exists { Some(i) } else { None })
+                .collect()
+        } else {
+            HashSet::new()
+        };
+
+        // Build pipeline for JSON.SET operations
+        let mut pipe = redis::pipe();
+        let mut batch_count = 0;
+
+        for (batch_idx, (key, json_str)) in batch_items.iter().enumerate() {
+            // Skip if key exists and mode is Fail
+            if existing_keys.contains(&batch_idx) {
                 keys_skipped += 1;
                 continue;
             }
+
+            pipe.cmd("JSON.SET").arg(*key).arg("$").arg(*json_str);
+            if let Some(seconds) = ttl {
+                pipe.expire(*key, seconds);
+            }
+            batch_count += 1;
         }
 
-        // JSON.SET with NX option for Fail mode could be used, but we already checked above
-        // For Replace and Append, JSON.SET overwrites the entire document
-        match redis::cmd("JSON.SET")
-            .arg(key)
-            .arg("$")
-            .arg(json_str)
-            .query_async::<Option<String>>(conn)
-            .await
-        {
-            Ok(_) => {
-                // Set TTL if provided
-                if let Some(seconds) = ttl {
-                    let _ = conn.expire::<_, ()>(key, seconds).await;
-                }
-                keys_written += 1;
+        // Execute pipeline if there are commands
+        if batch_count > 0 {
+            match pipe.query_async::<()>(conn).await {
+                Ok(_) => keys_written += batch_count,
+                Err(_) => keys_failed += batch_count,
             }
-            Err(_) => keys_failed += 1,
         }
     }
 
@@ -257,7 +309,7 @@ pub fn write_strings(
     })
 }
 
-/// Async implementation of string writing.
+/// Async implementation of string writing with pipelining.
 async fn write_strings_async(
     conn: &mut redis::aio::MultiplexedConnection,
     keys: Vec<String>,
@@ -269,34 +321,63 @@ async fn write_strings_async(
     let mut keys_failed = 0;
     let mut keys_skipped = 0;
 
-    for (key, value) in keys.iter().zip(values.iter()) {
-        // Skip null values
-        let Some(val) = value else {
-            continue;
+    // Collect non-null items
+    let items: Vec<_> = keys
+        .iter()
+        .zip(values.iter())
+        .filter_map(|(k, v)| v.as_ref().map(|val| (k, val)))
+        .collect();
+
+    // Process in batches for better performance
+    for batch_start in (0..items.len()).step_by(DEFAULT_WRITE_BATCH_SIZE) {
+        let batch_end = (batch_start + DEFAULT_WRITE_BATCH_SIZE).min(items.len());
+        let batch_items = &items[batch_start..batch_end];
+
+        // For Fail mode, check existence of all keys in batch first
+        let existing_keys: HashSet<usize> = if if_exists == WriteMode::Fail {
+            let mut pipe = redis::pipe();
+            for (key, _) in batch_items {
+                pipe.exists(*key);
+            }
+            let exists_results: Vec<bool> = pipe.query_async(conn).await.unwrap_or_default();
+            exists_results
+                .into_iter()
+                .enumerate()
+                .filter_map(|(i, exists)| if exists { Some(i) } else { None })
+                .collect()
+        } else {
+            HashSet::new()
         };
 
-        // Check if key exists when mode is Fail
-        if if_exists == WriteMode::Fail {
-            let exists: bool = conn.exists(key).await.unwrap_or(false);
-            if exists {
+        // Build pipeline for SET operations
+        let mut pipe = redis::pipe();
+        let mut batch_count = 0;
+
+        for (batch_idx, (key, val)) in batch_items.iter().enumerate() {
+            // Skip if key exists and mode is Fail
+            if existing_keys.contains(&batch_idx) {
                 keys_skipped += 1;
                 continue;
             }
+
+            // For Append mode on strings, we could use APPEND command,
+            // but that concatenates strings which is probably not what users want.
+            // So we treat Append same as Replace for strings.
+            if let Some(seconds) = ttl {
+                // SETEX for atomic set with TTL
+                pipe.cmd("SETEX").arg(*key).arg(seconds).arg(*val);
+            } else {
+                pipe.set(*key, *val);
+            }
+            batch_count += 1;
         }
 
-        // For Append mode on strings, we could use APPEND command,
-        // but that concatenates strings which is probably not what users want.
-        // So we treat Append same as Replace for strings.
-        // Use SETEX for atomic set with TTL, or SET without TTL
-        let result = if let Some(seconds) = ttl {
-            conn.set_ex::<_, _, ()>(key, val, seconds as u64).await
-        } else {
-            conn.set::<_, _, ()>(key, val).await
-        };
-
-        match result {
-            Ok(_) => keys_written += 1,
-            Err(_) => keys_failed += 1,
+        // Execute pipeline if there are commands
+        if batch_count > 0 {
+            match pipe.query_async::<()>(conn).await {
+                Ok(_) => keys_written += batch_count,
+                Err(_) => keys_failed += batch_count,
+            }
         }
     }
 
