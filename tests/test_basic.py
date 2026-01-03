@@ -47,10 +47,13 @@ def test_scan_json_requires_schema():
         polars_redis.scan_json("redis://localhost:6379", pattern="test:*")
 
 
-def test_scan_strings_not_implemented():
-    """Test that scan_strings raises NotImplementedError."""
-    with pytest.raises(NotImplementedError):
-        polars_redis.scan_strings("redis://localhost:6379", pattern="test:*")
+def test_scan_strings_returns_lazyframe():
+    """Test that scan_strings returns a LazyFrame."""
+    lf = polars_redis.scan_strings("redis://localhost:6379", pattern="test:*")
+    # Should return a LazyFrame (collection won't work without Redis)
+    import polars as pl
+
+    assert isinstance(lf, pl.LazyFrame)
 
 
 @pytest.mark.skipif(
