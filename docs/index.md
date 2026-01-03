@@ -1,8 +1,45 @@
 # polars-redis
 
-A [Polars](https://pola.rs/) IO plugin for Redis.
+Query Redis like a database. Transform with Polars. Write back without ETL.
 
-Scan Redis data structures as LazyFrames with projection pushdown, or write DataFrames back to Redis.
+polars-redis brings Redis into your Polars analytics workflows as a first-class data source - scan hashes, JSON, strings, sets, lists, and sorted sets directly into LazyFrames with projection pushdown and batched iteration.
+
+## What is polars-redis?
+
+polars-redis makes Redis just another connector alongside Parquet, CSV, and databases:
+
+```python
+import polars as pl
+import polars_redis as redis
+
+url = "redis://localhost:6379"
+
+# Enrich Redis data with external source, write back
+users = redis.read_hashes(url, "user:*", {"user_id": pl.Utf8, "region": pl.Utf8})
+purchases = pl.read_parquet("purchases.parquet")
+
+high_value = (
+    users.join(purchases, on="user_id")
+    .group_by("user_id")
+    .agg(pl.col("amount").sum().alias("lifetime_value"))
+    .filter(pl.col("lifetime_value") > 1000)
+)
+
+redis.write_hashes(high_value, url, key_prefix="whale:")
+```
+
+## When to Use What
+
+| Your data | Use | Why |
+|-----------|-----|-----|
+| User profiles, configs | `scan_hashes()` | Field-level access, projection pushdown |
+| Nested documents | `scan_json()` | Full document structure |
+| Counters, flags, caches | `scan_strings()` | Simple key-value |
+| Tags, memberships | `scan_sets()` | Unique members |
+| Queues, recent items | `scan_lists()` | Ordered elements |
+| Leaderboards, rankings | `scan_zsets()` | Score-based ordering |
+| Event logs | `scan_streams()` | Timestamped entries |
+| Metrics | `scan_timeseries()` | Server-side aggregation |
 
 ## Features
 
@@ -30,24 +67,26 @@ Scan Redis data structures as LazyFrames with projection pushdown, or write Data
 | Stream | Yes | No | One row per entry with timestamp |
 | TimeSeries | Yes | No | Server-side aggregation support |
 
-## Quick Example
+## Quick Start
 
 ```python
 import polars as pl
 import polars_redis as redis
 
-# Scan hashes matching a pattern
+url = "redis://localhost:6379"
+
+# Scan with schema
 lf = redis.scan_hashes(
-    "redis://localhost:6379",
+    url,
     pattern="user:*",
-    schema={"name": pl.Utf8, "age": pl.Int64},
+    schema={"name": pl.Utf8, "age": pl.Int64, "active": pl.Boolean},
 )
 
-# Filter and collect (lazy evaluation)
-df = lf.filter(pl.col("age") > 30).collect()
+# Filter and collect (projection pushdown applies)
+active_users = lf.filter(pl.col("active")).select(["name", "age"]).collect()
 
-# Write back to Redis
-redis.write_hashes(df, "redis://localhost:6379", key_prefix="user:")
+# Write with TTL (1 hour)
+redis.write_hashes(active_users, url, key_prefix="cache:user:", ttl=3600)
 ```
 
 ## Requirements
