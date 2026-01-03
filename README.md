@@ -1,9 +1,32 @@
 # polars-redis
 
-A [Polars](https://pola.rs/) IO plugin for Redis. Scan Redis data structures as LazyFrames with projection pushdown, or write DataFrames back to Redis.
+Query Redis like a database. Transform with Polars. Write back without ETL.
 
 [![CI](https://github.com/joshrotenberg/polars-redis/actions/workflows/ci.yml/badge.svg)](https://github.com/joshrotenberg/polars-redis/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
+
+## What is polars-redis?
+
+polars-redis makes Redis a first-class data source in your Polars workflows. Query, transform, and write back - Redis becomes just another connector alongside Parquet, CSV, and databases.
+
+```python
+import polars as pl
+import polars_redis as redis
+
+# Redis is just another source
+users = redis.read_hashes(url, "user:*", schema)
+orders = pl.read_parquet("s3://bucket/orders.parquet")
+
+# Full Polars transformation power
+result = (
+    users.join(orders, on="user_id")
+    .group_by("region")
+    .agg(pl.col("amount").sum())
+)
+
+# Write back to Redis
+redis.write_hashes(result, url, key_prefix="region_stats:")
+```
 
 ## Installation
 
@@ -11,40 +34,58 @@ A [Polars](https://pola.rs/) IO plugin for Redis. Scan Redis data structures as 
 pip install polars-redis
 ```
 
+## When to Use What
+
+| Your data | Use | Why |
+|-----------|-----|-----|
+| User profiles, configs | `scan_hashes()` | Field-level access, projection pushdown |
+| Nested documents | `scan_json()` | Full document structure |
+| Counters, flags, caches | `scan_strings()` | Simple key-value |
+| Tags, memberships | `scan_sets()` | Unique members |
+| Queues, recent items | `scan_lists()` | Ordered elements |
+| Leaderboards, rankings | `scan_zsets()` | Score-based ordering |
+
 ## Quick Start
 
 ```python
 import polars as pl
 import polars_redis as redis
 
-# Scan hashes
-lf = redis.scan_hashes(
-    "redis://localhost:6379",
-    pattern="user:*",
-    schema={"name": pl.Utf8, "age": pl.Int64},
-)
-df = lf.filter(pl.col("age") > 30).collect()
+url = "redis://localhost:6379"
 
-# Write back
-redis.write_hashes(df, "redis://localhost:6379", key_prefix="user:")
+# Scan with schema
+lf = redis.scan_hashes(
+    url,
+    pattern="user:*",
+    schema={"name": pl.Utf8, "age": pl.Int64, "active": pl.Boolean},
+)
+
+# Filter and collect (projection pushdown applies)
+active_users = lf.filter(pl.col("active")).select(["name", "age"]).collect()
+
+# Write with TTL
+redis.write_hashes(active_users, url, key_prefix="cache:user:", ttl=3600)
 ```
 
 ## Features
 
 **Read:**
 - `scan_hashes()` / `read_hashes()` - Redis hashes
-- `scan_json()` / `read_json()` - RedisJSON documents
+- `scan_json()` / `read_json()` - RedisJSON documents  
 - `scan_strings()` / `read_strings()` - Redis strings
-- Projection pushdown (HMGET vs HGETALL)
+- `scan_sets()` / `read_sets()` - Redis sets
+- `scan_lists()` / `read_lists()` - Redis lists
+- `scan_zsets()` / `read_zsets()` - Redis sorted sets
+- Projection pushdown (fetch only requested fields)
 - Schema inference (`infer_hash_schema()`, `infer_json_schema()`)
-- TTL and row index columns
+- Metadata columns (key, TTL, row index)
 
 **Write:**
 - `write_hashes()`, `write_json()`, `write_strings()`
+- `write_sets()`, `write_lists()`, `write_zsets()`
 - TTL support
 - Key prefix
 - Write modes: fail, replace, append
-- Auto-generate keys from row index
 
 ## Supported Types
 
@@ -61,6 +102,10 @@ redis.write_hashes(df, "redis://localhost:6379", key_prefix="user:")
 
 - Python 3.9+
 - Redis 7.0+ (RedisJSON module for JSON support)
+
+## Documentation
+
+Full documentation at [joshrotenberg.github.io/polars-redis](https://joshrotenberg.github.io/polars-redis/)
 
 ## License
 
