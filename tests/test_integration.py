@@ -556,3 +556,93 @@ class TestPyHashBatchIterator:
             total_rows += len(pl.read_ipc(ipc_bytes))
 
         assert total_rows == 15
+
+
+class TestReadEager:
+    """Tests for eager read functions (read_hashes, read_json)."""
+
+    def test_read_hashes_basic(self, redis_url: str) -> None:
+        """Test basic eager hash reading."""
+        df = polars_redis.read_hashes(
+            redis_url,
+            pattern="test:user:*",
+            schema={
+                "name": pl.Utf8,
+                "age": pl.Int64,
+            },
+        )
+
+        # Should return a DataFrame, not a LazyFrame
+        assert isinstance(df, pl.DataFrame)
+        assert len(df) == 50
+        assert "_key" in df.columns
+        assert "name" in df.columns
+        assert "age" in df.columns
+
+    def test_read_hashes_without_key(self, redis_url: str) -> None:
+        """Test eager hash reading without key column."""
+        df = polars_redis.read_hashes(
+            redis_url,
+            pattern="test:user:*",
+            schema={"name": pl.Utf8},
+            include_key=False,
+        )
+
+        assert isinstance(df, pl.DataFrame)
+        assert "_key" not in df.columns
+        assert df.columns == ["name"]
+
+    def test_read_hashes_empty_result(self, redis_url: str) -> None:
+        """Test eager hash reading with no matches."""
+        df = polars_redis.read_hashes(
+            redis_url,
+            pattern="nonexistent:*",
+            schema={"name": pl.Utf8},
+        )
+
+        assert isinstance(df, pl.DataFrame)
+        assert len(df) == 0
+
+    def test_read_hashes_requires_schema(self, redis_url: str) -> None:
+        """Test that read_hashes requires a schema."""
+        with pytest.raises(ValueError, match="schema is required"):
+            polars_redis.read_hashes(redis_url, pattern="test:*")
+
+    def test_read_json_basic(self, redis_url: str) -> None:
+        """Test basic eager JSON reading."""
+        # Set up test JSON data
+        import subprocess
+
+        for i in range(1, 6):
+            json_data = f'{{"name":"Item{i}","value":{i * 10}}}'
+            subprocess.run(
+                ["redis-cli", "JSON.SET", f"test:eager:json:{i}", "$", json_data],
+                capture_output=True,
+            )
+
+        try:
+            df = polars_redis.read_json(
+                redis_url,
+                pattern="test:eager:json:*",
+                schema={
+                    "name": pl.Utf8,
+                    "value": pl.Int64,
+                },
+            )
+
+            assert isinstance(df, pl.DataFrame)
+            assert len(df) == 5
+            assert "_key" in df.columns
+            assert "name" in df.columns
+            assert "value" in df.columns
+        finally:
+            for i in range(1, 6):
+                subprocess.run(
+                    ["redis-cli", "DEL", f"test:eager:json:{i}"],
+                    capture_output=True,
+                )
+
+    def test_read_json_requires_schema(self, redis_url: str) -> None:
+        """Test that read_json requires a schema."""
+        with pytest.raises(ValueError, match="schema is required"):
+            polars_redis.read_json(redis_url, pattern="test:*")
