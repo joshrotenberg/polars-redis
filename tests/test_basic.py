@@ -1,0 +1,63 @@
+"""Basic tests for polars-redis."""
+
+from __future__ import annotations
+
+import polars_redis
+import pytest
+
+
+def test_version():
+    """Test that version is defined."""
+    assert polars_redis.__version__ == "0.1.0"
+
+
+def test_scanner_creation():
+    """Test RedisScanner can be created."""
+    scanner = polars_redis.RedisScanner(
+        connection_url="redis://localhost:6379",
+        pattern="test:*",
+        batch_size=500,
+        count_hint=50,
+    )
+    assert scanner.connection_url == "redis://localhost:6379"
+    assert scanner.pattern == "test:*"
+    assert scanner.batch_size == 500
+    assert scanner.count_hint == 50
+
+
+def test_scanner_defaults():
+    """Test RedisScanner default values."""
+    scanner = polars_redis.RedisScanner(
+        connection_url="redis://localhost:6379",
+        pattern="*",
+    )
+    assert scanner.batch_size == 1000
+    assert scanner.count_hint == 100
+
+
+def test_scan_hashes_requires_schema():
+    """Test that scan_hashes requires a schema."""
+    with pytest.raises(ValueError, match="schema is required"):
+        polars_redis.scan_hashes("redis://localhost:6379", pattern="test:*")
+
+
+def test_scan_json_requires_schema():
+    """Test that scan_json requires a schema."""
+    with pytest.raises(ValueError, match="schema is required"):
+        polars_redis.scan_json("redis://localhost:6379", pattern="test:*")
+
+
+def test_scan_strings_not_implemented():
+    """Test that scan_strings raises NotImplementedError."""
+    with pytest.raises(NotImplementedError):
+        polars_redis.scan_strings("redis://localhost:6379", pattern="test:*")
+
+
+@pytest.mark.skipif(
+    True,  # Will be replaced with redis_available check
+    reason="Redis not available",
+)
+def test_scan_keys_with_redis(redis_url: str):
+    """Test scan_keys with a real Redis connection."""
+    keys = polars_redis.scan_keys(redis_url, "*", count=5)
+    assert isinstance(keys, list)

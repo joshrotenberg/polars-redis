@@ -1,0 +1,57 @@
+[package]
+name = "polars-redis"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Redis IO plugin for Polars"
+repository = "https://github.com/joshrotenberg/polars-redis"
+keywords = ["polars", "redis", "dataframe", "io"]
+categories = ["database", "data-structures"]
+
+[lib]
+name = "polars_redis"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Redis client
+redis = { version = "0.27", features = ["tokio-comp", "json", "cluster-async"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
+
+# Polars / Arrow
+polars = { version = "0.46", default-features = false, features = [
+    "dtype-struct",
+    "strings",
+    "lazy",
+] }
+arrow = { version = "54", default-features = false, features = ["ipc"] }
+
+# Python bindings (optional for pure Rust usage)
+pyo3 = { version = "0.23", features = ["extension-module"], optional = true }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "2.0"
+
+[build-dependencies]
+pyo3-build-config = "0.23"
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[features]
+default = ["json", "search"]
+python = ["pyo3"]
+json = []
+search = []
+cluster = []
+
+[[example]]
+name = "scan_hashes"
+path = "examples/rust/scan_hashes.rs"
+
+[[example]]
+name = "scan_json"
+path = "examples/rust/scan_json.rs"
