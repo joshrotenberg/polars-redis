@@ -56,11 +56,9 @@ def test_scan_strings_returns_lazyframe():
     assert isinstance(lf, pl.LazyFrame)
 
 
-@pytest.mark.skipif(
-    True,  # Will be replaced with redis_available check
-    reason="Redis not available",
-)
-def test_scan_keys_with_redis(redis_url: str):
+def test_scan_keys_with_redis(redis_url: str, redis_available: bool):
     """Test scan_keys with a real Redis connection."""
+    if not redis_available:
+        pytest.skip("Redis not available")
     keys = polars_redis.scan_keys(redis_url, "*", count=5)
     assert isinstance(keys, list)
