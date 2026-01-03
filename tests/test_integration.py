@@ -1543,3 +1543,166 @@ class TestWriteStrings:
         finally:
             subprocess.run(["redis-cli", "DEL", "test:write:str:float:1"], capture_output=True)
             subprocess.run(["redis-cli", "DEL", "test:write:str:float:2"], capture_output=True)
+
+
+class TestWriteTTL:
+    """Tests for TTL (time-to-live) support in write operations."""
+
+    def test_write_hashes_with_ttl(self, redis_url: str) -> None:
+        """Test writing hashes with TTL."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:ttl:hash:1", "test:ttl:hash:2"],
+                "name": ["Alice", "Bob"],
+                "age": [30, 25],
+            }
+        )
+
+        try:
+            count = polars_redis.write_hashes(df, redis_url, ttl=60)
+            assert count == 2
+
+            # Verify TTL was set (should be > 0 and <= 60)
+            result = subprocess.run(
+                ["redis-cli", "TTL", "test:ttl:hash:1"],
+                capture_output=True,
+                text=True,
+            )
+            ttl = int(result.stdout.strip())
+            assert 0 < ttl <= 60
+
+            result = subprocess.run(
+                ["redis-cli", "TTL", "test:ttl:hash:2"],
+                capture_output=True,
+                text=True,
+            )
+            ttl = int(result.stdout.strip())
+            assert 0 < ttl <= 60
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:ttl:hash:1"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", "test:ttl:hash:2"], capture_output=True)
+
+    def test_write_hashes_without_ttl(self, redis_url: str) -> None:
+        """Test writing hashes without TTL (no expiration)."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:no:ttl:hash:1"],
+                "name": ["Alice"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_hashes(df, redis_url, ttl=None)
+            assert count == 1
+
+            # TTL should be -1 (no expiration)
+            result = subprocess.run(
+                ["redis-cli", "TTL", "test:no:ttl:hash:1"],
+                capture_output=True,
+                text=True,
+            )
+            ttl = int(result.stdout.strip())
+            assert ttl == -1
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:no:ttl:hash:1"], capture_output=True)
+
+    def test_write_json_with_ttl(self, redis_url: str) -> None:
+        """Test writing JSON with TTL."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:ttl:json:1", "test:ttl:json:2"],
+                "title": ["Hello", "World"],
+                "views": [100, 200],
+            }
+        )
+
+        try:
+            count = polars_redis.write_json(df, redis_url, ttl=120)
+            assert count == 2
+
+            # Verify TTL was set
+            result = subprocess.run(
+                ["redis-cli", "TTL", "test:ttl:json:1"],
+                capture_output=True,
+                text=True,
+            )
+            ttl = int(result.stdout.strip())
+            assert 0 < ttl <= 120
+
+            result = subprocess.run(
+                ["redis-cli", "TTL", "test:ttl:json:2"],
+                capture_output=True,
+                text=True,
+            )
+            ttl = int(result.stdout.strip())
+            assert 0 < ttl <= 120
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:ttl:json:1"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", "test:ttl:json:2"], capture_output=True)
+
+    def test_write_strings_with_ttl(self, redis_url: str) -> None:
+        """Test writing strings with TTL (uses SETEX)."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:ttl:str:1", "test:ttl:str:2"],
+                "value": ["hello", "world"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_strings(df, redis_url, ttl=90)
+            assert count == 2
+
+            # Verify TTL was set
+            result = subprocess.run(
+                ["redis-cli", "TTL", "test:ttl:str:1"],
+                capture_output=True,
+                text=True,
+            )
+            ttl = int(result.stdout.strip())
+            assert 0 < ttl <= 90
+
+            result = subprocess.run(
+                ["redis-cli", "TTL", "test:ttl:str:2"],
+                capture_output=True,
+                text=True,
+            )
+            ttl = int(result.stdout.strip())
+            assert 0 < ttl <= 90
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:ttl:str:1"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", "test:ttl:str:2"], capture_output=True)
+
+    def test_write_strings_without_ttl(self, redis_url: str) -> None:
+        """Test writing strings without TTL (no expiration)."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:no:ttl:str:1"],
+                "value": ["hello"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_strings(df, redis_url, ttl=None)
+            assert count == 1
+
+            # TTL should be -1 (no expiration)
+            result = subprocess.run(
+                ["redis-cli", "TTL", "test:no:ttl:str:1"],
+                capture_output=True,
+                text=True,
+            )
+            ttl = int(result.stdout.strip())
+            assert ttl == -1
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:no:ttl:str:1"], capture_output=True)
