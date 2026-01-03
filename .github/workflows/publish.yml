@@ -79,6 +79,8 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest
+    # Run even if some wheel builds failed - publish what we have
+    if: always() && needs.build-sdist.result == 'success'
     needs: [build-wheels, build-sdist]
     environment:
       name: pypi
@@ -90,6 +92,9 @@ jobs:
           pattern: wheels-*
           path: dist
           merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la dist/
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
