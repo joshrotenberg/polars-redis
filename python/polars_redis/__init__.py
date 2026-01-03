@@ -728,6 +728,7 @@ def write_hashes(
     url: str,
     key_column: str = "_key",
     ttl: int | None = None,
+    key_prefix: str = "",
 ) -> int:
     """Write a DataFrame to Redis as hashes.
 
@@ -739,6 +740,7 @@ def write_hashes(
         url: Redis connection URL (e.g., "redis://localhost:6379").
         key_column: Column containing Redis keys (default: "_key").
         ttl: Optional TTL in seconds for each key (default: None, no expiration).
+        key_prefix: Prefix to prepend to all keys (default: "").
 
     Returns:
         Number of keys successfully written.
@@ -756,12 +758,14 @@ def write_hashes(
         >>> print(f"Wrote {count} hashes")
         >>> # With TTL (expires in 1 hour)
         >>> count = write_hashes(df, "redis://localhost:6379", ttl=3600)
+        >>> # With key prefix (keys become "prod:user:1", "prod:user:2")
+        >>> count = write_hashes(df, "redis://localhost:6379", key_prefix="prod:")
     """
     if key_column not in df.columns:
         raise ValueError(f"Key column '{key_column}' not found in DataFrame")
 
-    # Extract keys
-    keys = df[key_column].to_list()
+    # Extract keys and apply prefix
+    keys = [f"{key_prefix}{k}" for k in df[key_column].to_list()]
 
     # Get field columns (all columns except the key column)
     field_columns = [c for c in df.columns if c != key_column]
@@ -788,6 +792,7 @@ def write_json(
     url: str,
     key_column: str = "_key",
     ttl: int | None = None,
+    key_prefix: str = "",
 ) -> int:
     """Write a DataFrame to Redis as JSON documents.
 
@@ -800,6 +805,7 @@ def write_json(
         url: Redis connection URL (e.g., "redis://localhost:6379").
         key_column: Column containing Redis keys (default: "_key").
         ttl: Optional TTL in seconds for each key (default: None, no expiration).
+        key_prefix: Prefix to prepend to all keys (default: "").
 
     Returns:
         Number of keys successfully written.
@@ -817,14 +823,16 @@ def write_json(
         >>> print(f"Wrote {count} JSON documents")
         >>> # With TTL (expires in 1 hour)
         >>> count = write_json(df, "redis://localhost:6379", ttl=3600)
+        >>> # With key prefix (keys become "prod:doc:1", "prod:doc:2")
+        >>> count = write_json(df, "redis://localhost:6379", key_prefix="prod:")
     """
     import json
 
     if key_column not in df.columns:
         raise ValueError(f"Key column '{key_column}' not found in DataFrame")
 
-    # Extract keys
-    keys = df[key_column].to_list()
+    # Extract keys and apply prefix
+    keys = [f"{key_prefix}{k}" for k in df[key_column].to_list()]
 
     # Get field columns (all columns except the key column)
     field_columns = [c for c in df.columns if c != key_column]
@@ -851,6 +859,7 @@ def write_strings(
     key_column: str = "_key",
     value_column: str = "value",
     ttl: int | None = None,
+    key_prefix: str = "",
 ) -> int:
     """Write a DataFrame to Redis as string values.
 
@@ -863,6 +872,7 @@ def write_strings(
         key_column: Column containing Redis keys (default: "_key").
         value_column: Column containing values to write (default: "value").
         ttl: Optional TTL in seconds for each key (default: None, no expiration).
+        key_prefix: Prefix to prepend to all keys (default: "").
 
     Returns:
         Number of keys successfully written.
@@ -879,6 +889,8 @@ def write_strings(
         >>> print(f"Wrote {count} strings")
         >>> # With TTL (expires in 1 hour)
         >>> count = write_strings(df, "redis://localhost:6379", ttl=3600)
+        >>> # With key prefix (keys become "prod:counter:1", "prod:counter:2")
+        >>> count = write_strings(df, "redis://localhost:6379", key_prefix="prod:")
     """
     if key_column not in df.columns:
         raise ValueError(f"Key column '{key_column}' not found in DataFrame")
@@ -886,8 +898,8 @@ def write_strings(
     if value_column not in df.columns:
         raise ValueError(f"Value column '{value_column}' not found in DataFrame")
 
-    # Extract keys
-    keys = df[key_column].to_list()
+    # Extract keys and apply prefix
+    keys = [f"{key_prefix}{k}" for k in df[key_column].to_list()]
 
     # Extract values, converting to strings
     values = []
