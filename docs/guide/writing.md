@@ -1,6 +1,6 @@
 # Writing Data
 
-polars-redis provides three write functions for different Redis data types.
+polars-redis provides write functions for six Redis data types: hashes, JSON, strings, sets, lists, and sorted sets.
 
 ## Writing Hashes
 
@@ -169,6 +169,79 @@ redis.write_hashes(df, url, ttl=86400)
 # No expiration (default)
 redis.write_hashes(df, url, ttl=None)
 ```
+
+## Writing Sets
+
+`write_sets` writes DataFrame rows as Redis sets:
+
+```python
+df = pl.DataFrame({
+    "_key": ["tags:post:1", "tags:post:2"],
+    "member": ["python", "redis"],
+})
+
+count = redis.write_sets(df, "redis://localhost:6379")
+```
+
+Multiple members per key can be written by having multiple rows with the same key:
+
+```python
+df = pl.DataFrame({
+    "_key": ["tags:post:1", "tags:post:1", "tags:post:1"],
+    "member": ["python", "redis", "polars"],
+})
+
+# Creates one set with 3 members
+count = redis.write_sets(df, url)
+```
+
+### Set-specific Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `member_column` | str | `"member"` | Column with member values |
+
+## Writing Lists
+
+`write_lists` writes DataFrame rows as Redis lists:
+
+```python
+df = pl.DataFrame({
+    "_key": ["queue:tasks", "queue:tasks", "queue:tasks"],
+    "element": ["task1", "task2", "task3"],
+})
+
+count = redis.write_lists(df, "redis://localhost:6379")
+```
+
+Elements are written in DataFrame row order using `RPUSH`.
+
+### List-specific Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `element_column` | str | `"element"` | Column with element values |
+
+## Writing Sorted Sets
+
+`write_zsets` writes DataFrame rows as Redis sorted sets:
+
+```python
+df = pl.DataFrame({
+    "_key": ["leaderboard:game1", "leaderboard:game1", "leaderboard:game1"],
+    "member": ["alice", "bob", "carol"],
+    "score": [100.0, 85.5, 92.0],
+})
+
+count = redis.write_zsets(df, "redis://localhost:6379")
+```
+
+### Sorted Set-specific Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `member_column` | str | `"member"` | Column with member values |
+| `score_column` | str | `"score"` | Column with score values |
 
 ## Batch Pipelining
 

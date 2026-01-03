@@ -99,6 +99,121 @@ Scan Redis string values matching a pattern and return a LazyFrame.
 
 ---
 
+### scan_sets
+
+```python
+def scan_sets(
+    url: str,
+    pattern: str = "*",
+    *,
+    include_key: bool = True,
+    key_column_name: str = "_key",
+    member_column_name: str = "member",
+    include_row_index: bool = False,
+    row_index_column_name: str = "_index",
+    batch_size: int = 1000,
+    count_hint: int = 100,
+) -> pl.LazyFrame
+```
+
+Scan Redis sets matching a pattern and return a LazyFrame with one row per member.
+
+**Parameters:**
+
+- `url`: Redis connection URL
+- `pattern`: Key pattern to match
+- `include_key`: Include Redis key as a column
+- `key_column_name`: Name of the key column
+- `member_column_name`: Name of the member column
+- `include_row_index`: Include row index column
+- `row_index_column_name`: Name of the index column
+- `batch_size`: Keys per batch
+- `count_hint`: Redis SCAN COUNT hint
+
+**Returns:** `pl.LazyFrame`
+
+---
+
+### scan_lists
+
+```python
+def scan_lists(
+    url: str,
+    pattern: str = "*",
+    *,
+    include_key: bool = True,
+    key_column_name: str = "_key",
+    element_column_name: str = "element",
+    include_position: bool = False,
+    position_column_name: str = "position",
+    include_row_index: bool = False,
+    row_index_column_name: str = "_index",
+    batch_size: int = 1000,
+    count_hint: int = 100,
+) -> pl.LazyFrame
+```
+
+Scan Redis lists matching a pattern and return a LazyFrame with one row per element.
+
+**Parameters:**
+
+- `url`: Redis connection URL
+- `pattern`: Key pattern to match
+- `include_key`: Include Redis key as a column
+- `key_column_name`: Name of the key column
+- `element_column_name`: Name of the element column
+- `include_position`: Include position index
+- `position_column_name`: Name of the position column
+- `include_row_index`: Include row index column
+- `row_index_column_name`: Name of the index column
+- `batch_size`: Keys per batch
+- `count_hint`: Redis SCAN COUNT hint
+
+**Returns:** `pl.LazyFrame`
+
+---
+
+### scan_zsets
+
+```python
+def scan_zsets(
+    url: str,
+    pattern: str = "*",
+    *,
+    include_key: bool = True,
+    key_column_name: str = "_key",
+    member_column_name: str = "member",
+    score_column_name: str = "score",
+    include_rank: bool = False,
+    rank_column_name: str = "rank",
+    include_row_index: bool = False,
+    row_index_column_name: str = "_index",
+    batch_size: int = 1000,
+    count_hint: int = 100,
+) -> pl.LazyFrame
+```
+
+Scan Redis sorted sets matching a pattern and return a LazyFrame with one row per member.
+
+**Parameters:**
+
+- `url`: Redis connection URL
+- `pattern`: Key pattern to match
+- `include_key`: Include Redis key as a column
+- `key_column_name`: Name of the key column
+- `member_column_name`: Name of the member column
+- `score_column_name`: Name of the score column
+- `include_rank`: Include rank index
+- `rank_column_name`: Name of the rank column
+- `include_row_index`: Include row index column
+- `row_index_column_name`: Name of the index column
+- `batch_size`: Keys per batch
+- `count_hint`: Redis SCAN COUNT hint
+
+**Returns:** `pl.LazyFrame`
+
+---
+
 ## Read Functions (Eager)
 
 ### read_hashes
@@ -124,6 +239,30 @@ def read_strings(...) -> pl.DataFrame
 ```
 
 Eager version of `scan_strings`. Parameters are identical.
+
+### read_sets
+
+```python
+def read_sets(...) -> pl.DataFrame
+```
+
+Eager version of `scan_sets`. Parameters are identical.
+
+### read_lists
+
+```python
+def read_lists(...) -> pl.DataFrame
+```
+
+Eager version of `scan_lists`. Parameters are identical.
+
+### read_zsets
+
+```python
+def read_zsets(...) -> pl.DataFrame
+```
+
+Eager version of `scan_zsets`. Parameters are identical.
 
 ---
 
@@ -198,6 +337,98 @@ Write a DataFrame to Redis as string values.
 - `url`: Redis connection URL
 - `key_column`: Column with Redis keys, or `None` for auto-generated
 - `value_column`: Column with values to write
+- `ttl`: TTL in seconds (optional)
+- `key_prefix`: Prefix for all keys
+- `if_exists`: `"fail"`, `"replace"`, or `"append"`
+
+**Returns:** Number of keys written
+
+---
+
+### write_sets
+
+```python
+def write_sets(
+    df: pl.DataFrame,
+    url: str,
+    key_column: str | None = "_key",
+    member_column: str = "member",
+    ttl: int | None = None,
+    key_prefix: str = "",
+    if_exists: str = "replace",
+) -> int
+```
+
+Write a DataFrame to Redis as sets.
+
+**Parameters:**
+
+- `df`: DataFrame to write
+- `url`: Redis connection URL
+- `key_column`: Column with Redis keys, or `None` for auto-generated
+- `member_column`: Column with member values
+- `ttl`: TTL in seconds (optional)
+- `key_prefix`: Prefix for all keys
+- `if_exists`: `"fail"`, `"replace"`, or `"append"`
+
+**Returns:** Number of keys written
+
+---
+
+### write_lists
+
+```python
+def write_lists(
+    df: pl.DataFrame,
+    url: str,
+    key_column: str | None = "_key",
+    element_column: str = "element",
+    ttl: int | None = None,
+    key_prefix: str = "",
+    if_exists: str = "replace",
+) -> int
+```
+
+Write a DataFrame to Redis as lists.
+
+**Parameters:**
+
+- `df`: DataFrame to write
+- `url`: Redis connection URL
+- `key_column`: Column with Redis keys, or `None` for auto-generated
+- `element_column`: Column with element values
+- `ttl`: TTL in seconds (optional)
+- `key_prefix`: Prefix for all keys
+- `if_exists`: `"fail"`, `"replace"`, or `"append"`
+
+**Returns:** Number of keys written
+
+---
+
+### write_zsets
+
+```python
+def write_zsets(
+    df: pl.DataFrame,
+    url: str,
+    key_column: str | None = "_key",
+    member_column: str = "member",
+    score_column: str = "score",
+    ttl: int | None = None,
+    key_prefix: str = "",
+    if_exists: str = "replace",
+) -> int
+```
+
+Write a DataFrame to Redis as sorted sets.
+
+**Parameters:**
+
+- `df`: DataFrame to write
+- `url`: Redis connection URL
+- `key_column`: Column with Redis keys, or `None` for auto-generated
+- `member_column`: Column with member values
+- `score_column`: Column with score values
 - `ttl`: TTL in seconds (optional)
 - `key_prefix`: Prefix for all keys
 - `if_exists`: `"fail"`, `"replace"`, or `"append"`

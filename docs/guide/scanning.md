@@ -1,6 +1,6 @@
 # Scanning Data
 
-polars-redis provides three scan functions for different Redis data types.
+polars-redis provides scan functions for six Redis data types: hashes, JSON, strings, sets, lists, and sorted sets.
 
 ## Scanning Hashes
 
@@ -151,6 +151,103 @@ lf = redis.scan_hashes(
     row_index_column_name="_index",
 )
 ```
+
+## Scanning Sets
+
+`scan_sets` scans Redis sets, returning one row per member:
+
+```python
+lf = redis.scan_sets(
+    "redis://localhost:6379",
+    pattern="tags:*",
+)
+```
+
+### Set-specific Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `member_column_name` | str | `"member"` | Name of member column |
+
+### Output Schema
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `_key` | Utf8 | Redis key (if `include_key=True`) |
+| `member` | Utf8 | Set member value |
+| `_index` | UInt64 | Row index (if `include_row_index=True`) |
+
+## Scanning Lists
+
+`scan_lists` scans Redis lists, returning one row per element:
+
+```python
+lf = redis.scan_lists(
+    "redis://localhost:6379",
+    pattern="queue:*",
+)
+
+# Include position index
+lf = redis.scan_lists(
+    "redis://localhost:6379",
+    pattern="queue:*",
+    include_position=True,
+)
+```
+
+### List-specific Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `element_column_name` | str | `"element"` | Name of element column |
+| `include_position` | bool | `False` | Include position index |
+| `position_column_name` | str | `"position"` | Name of position column |
+
+### Output Schema
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `_key` | Utf8 | Redis key (if `include_key=True`) |
+| `element` | Utf8 | List element value |
+| `position` | Int64 | 0-based position (if `include_position=True`) |
+| `_index` | UInt64 | Row index (if `include_row_index=True`) |
+
+## Scanning Sorted Sets
+
+`scan_zsets` scans Redis sorted sets, returning one row per member with its score:
+
+```python
+lf = redis.scan_zsets(
+    "redis://localhost:6379",
+    pattern="leaderboard:*",
+)
+
+# Include rank (0-based position by score)
+lf = redis.scan_zsets(
+    "redis://localhost:6379",
+    pattern="leaderboard:*",
+    include_rank=True,
+)
+```
+
+### Sorted Set-specific Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `member_column_name` | str | `"member"` | Name of member column |
+| `score_column_name` | str | `"score"` | Name of score column |
+| `include_rank` | bool | `False` | Include rank index |
+| `rank_column_name` | str | `"rank"` | Name of rank column |
+
+### Output Schema
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `_key` | Utf8 | Redis key (if `include_key=True`) |
+| `member` | Utf8 | Sorted set member |
+| `score` | Float64 | Member's score |
+| `rank` | Int64 | 0-based rank by score (if `include_rank=True`) |
+| `_index` | UInt64 | Row index (if `include_row_index=True`) |
 
 ## Batching
 

@@ -388,6 +388,346 @@ async fn write_strings_async(
     })
 }
 
+/// Write list elements to Redis.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `keys` - List of Redis keys to write to
+/// * `elements` - 2D list of elements for each list
+/// * `ttl` - Optional TTL in seconds for each key
+/// * `if_exists` - How to handle existing keys (fail, replace, append)
+///
+/// # Returns
+/// A `WriteResult` with the number of keys written.
+pub fn write_lists(
+    url: &str,
+    keys: Vec<String>,
+    elements: Vec<Vec<String>>,
+    ttl: Option<i64>,
+    if_exists: WriteMode,
+) -> Result<WriteResult> {
+    let runtime =
+        Runtime::new().map_err(|e| Error::Runtime(format!("Failed to create runtime: {}", e)))?;
+
+    let connection = RedisConnection::new(url)?;
+
+    runtime.block_on(async {
+        let mut conn = connection.get_async_connection().await?;
+        write_lists_async(&mut conn, keys, elements, ttl, if_exists).await
+    })
+}
+
+/// Async implementation of list writing with pipelining.
+async fn write_lists_async(
+    conn: &mut redis::aio::MultiplexedConnection,
+    keys: Vec<String>,
+    elements: Vec<Vec<String>>,
+    ttl: Option<i64>,
+    if_exists: WriteMode,
+) -> Result<WriteResult> {
+    let mut keys_written = 0;
+    let mut keys_failed = 0;
+    let mut keys_skipped = 0;
+
+    let items: Vec<_> = keys.iter().zip(elements.iter()).collect();
+
+    // Process in batches for better performance
+    for batch_start in (0..items.len()).step_by(DEFAULT_WRITE_BATCH_SIZE) {
+        let batch_end = (batch_start + DEFAULT_WRITE_BATCH_SIZE).min(items.len());
+        let batch_items = &items[batch_start..batch_end];
+
+        // For Fail mode, check existence of all keys in batch first
+        let existing_keys: HashSet<usize> = if if_exists == WriteMode::Fail {
+            let mut pipe = redis::pipe();
+            for (key, _) in batch_items {
+                pipe.exists(*key);
+            }
+            let exists_results: Vec<bool> = pipe.query_async(conn).await.unwrap_or_default();
+            exists_results
+                .into_iter()
+                .enumerate()
+                .filter_map(|(i, exists)| if exists { Some(i) } else { None })
+                .collect()
+        } else {
+            HashSet::new()
+        };
+
+        // For Replace mode, delete existing keys in batch
+        if if_exists == WriteMode::Replace {
+            let mut del_pipe = redis::pipe();
+            for (key, _) in batch_items {
+                del_pipe.del(*key).ignore();
+            }
+            let _ = del_pipe.query_async::<()>(conn).await;
+        }
+
+        // Build pipeline for RPUSH operations
+        let mut pipe = redis::pipe();
+        let mut batch_count = 0;
+
+        for (batch_idx, (key, list_elements)) in batch_items.iter().enumerate() {
+            // Skip if key exists and mode is Fail
+            if existing_keys.contains(&batch_idx) {
+                keys_skipped += 1;
+                continue;
+            }
+
+            // Skip empty lists
+            if list_elements.is_empty() {
+                continue;
+            }
+
+            pipe.rpush(*key, *list_elements);
+            if let Some(seconds) = ttl {
+                pipe.expire(*key, seconds);
+            }
+            batch_count += 1;
+        }
+
+        // Execute pipeline if there are commands
+        if batch_count > 0 {
+            match pipe.query_async::<()>(conn).await {
+                Ok(_) => keys_written += batch_count,
+                Err(_) => keys_failed += batch_count,
+            }
+        }
+    }
+
+    Ok(WriteResult {
+        keys_written,
+        keys_failed,
+        keys_skipped,
+    })
+}
+
+/// Write set members to Redis.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `keys` - List of Redis keys to write to
+/// * `members` - 2D list of members for each set
+/// * `ttl` - Optional TTL in seconds for each key
+/// * `if_exists` - How to handle existing keys (fail, replace, append)
+///
+/// # Returns
+/// A `WriteResult` with the number of keys written.
+pub fn write_sets(
+    url: &str,
+    keys: Vec<String>,
+    members: Vec<Vec<String>>,
+    ttl: Option<i64>,
+    if_exists: WriteMode,
+) -> Result<WriteResult> {
+    let runtime =
+        Runtime::new().map_err(|e| Error::Runtime(format!("Failed to create runtime: {}", e)))?;
+
+    let connection = RedisConnection::new(url)?;
+
+    runtime.block_on(async {
+        let mut conn = connection.get_async_connection().await?;
+        write_sets_async(&mut conn, keys, members, ttl, if_exists).await
+    })
+}
+
+/// Async implementation of set writing with pipelining.
+async fn write_sets_async(
+    conn: &mut redis::aio::MultiplexedConnection,
+    keys: Vec<String>,
+    members: Vec<Vec<String>>,
+    ttl: Option<i64>,
+    if_exists: WriteMode,
+) -> Result<WriteResult> {
+    let mut keys_written = 0;
+    let mut keys_failed = 0;
+    let mut keys_skipped = 0;
+
+    let items: Vec<_> = keys.iter().zip(members.iter()).collect();
+
+    // Process in batches for better performance
+    for batch_start in (0..items.len()).step_by(DEFAULT_WRITE_BATCH_SIZE) {
+        let batch_end = (batch_start + DEFAULT_WRITE_BATCH_SIZE).min(items.len());
+        let batch_items = &items[batch_start..batch_end];
+
+        // For Fail mode, check existence of all keys in batch first
+        let existing_keys: HashSet<usize> = if if_exists == WriteMode::Fail {
+            let mut pipe = redis::pipe();
+            for (key, _) in batch_items {
+                pipe.exists(*key);
+            }
+            let exists_results: Vec<bool> = pipe.query_async(conn).await.unwrap_or_default();
+            exists_results
+                .into_iter()
+                .enumerate()
+                .filter_map(|(i, exists)| if exists { Some(i) } else { None })
+                .collect()
+        } else {
+            HashSet::new()
+        };
+
+        // For Replace mode, delete existing keys in batch
+        if if_exists == WriteMode::Replace {
+            let mut del_pipe = redis::pipe();
+            for (key, _) in batch_items {
+                del_pipe.del(*key).ignore();
+            }
+            let _ = del_pipe.query_async::<()>(conn).await;
+        }
+
+        // Build pipeline for SADD operations
+        let mut pipe = redis::pipe();
+        let mut batch_count = 0;
+
+        for (batch_idx, (key, set_members)) in batch_items.iter().enumerate() {
+            // Skip if key exists and mode is Fail
+            if existing_keys.contains(&batch_idx) {
+                keys_skipped += 1;
+                continue;
+            }
+
+            // Skip empty sets
+            if set_members.is_empty() {
+                continue;
+            }
+
+            pipe.sadd(*key, *set_members);
+            if let Some(seconds) = ttl {
+                pipe.expire(*key, seconds);
+            }
+            batch_count += 1;
+        }
+
+        // Execute pipeline if there are commands
+        if batch_count > 0 {
+            match pipe.query_async::<()>(conn).await {
+                Ok(_) => keys_written += batch_count,
+                Err(_) => keys_failed += batch_count,
+            }
+        }
+    }
+
+    Ok(WriteResult {
+        keys_written,
+        keys_failed,
+        keys_skipped,
+    })
+}
+
+/// Write sorted set members to Redis.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `keys` - List of Redis keys to write to
+/// * `members` - 2D list of (member, score) pairs for each sorted set
+/// * `ttl` - Optional TTL in seconds for each key
+/// * `if_exists` - How to handle existing keys (fail, replace, append)
+///
+/// # Returns
+/// A `WriteResult` with the number of keys written.
+pub fn write_zsets(
+    url: &str,
+    keys: Vec<String>,
+    members: Vec<Vec<(String, f64)>>,
+    ttl: Option<i64>,
+    if_exists: WriteMode,
+) -> Result<WriteResult> {
+    let runtime =
+        Runtime::new().map_err(|e| Error::Runtime(format!("Failed to create runtime: {}", e)))?;
+
+    let connection = RedisConnection::new(url)?;
+
+    runtime.block_on(async {
+        let mut conn = connection.get_async_connection().await?;
+        write_zsets_async(&mut conn, keys, members, ttl, if_exists).await
+    })
+}
+
+/// Async implementation of sorted set writing with pipelining.
+async fn write_zsets_async(
+    conn: &mut redis::aio::MultiplexedConnection,
+    keys: Vec<String>,
+    members: Vec<Vec<(String, f64)>>,
+    ttl: Option<i64>,
+    if_exists: WriteMode,
+) -> Result<WriteResult> {
+    let mut keys_written = 0;
+    let mut keys_failed = 0;
+    let mut keys_skipped = 0;
+
+    let items: Vec<_> = keys.iter().zip(members.iter()).collect();
+
+    // Process in batches for better performance
+    for batch_start in (0..items.len()).step_by(DEFAULT_WRITE_BATCH_SIZE) {
+        let batch_end = (batch_start + DEFAULT_WRITE_BATCH_SIZE).min(items.len());
+        let batch_items = &items[batch_start..batch_end];
+
+        // For Fail mode, check existence of all keys in batch first
+        let existing_keys: HashSet<usize> = if if_exists == WriteMode::Fail {
+            let mut pipe = redis::pipe();
+            for (key, _) in batch_items {
+                pipe.exists(*key);
+            }
+            let exists_results: Vec<bool> = pipe.query_async(conn).await.unwrap_or_default();
+            exists_results
+                .into_iter()
+                .enumerate()
+                .filter_map(|(i, exists)| if exists { Some(i) } else { None })
+                .collect()
+        } else {
+            HashSet::new()
+        };
+
+        // For Replace mode, delete existing keys in batch
+        if if_exists == WriteMode::Replace {
+            let mut del_pipe = redis::pipe();
+            for (key, _) in batch_items {
+                del_pipe.del(*key).ignore();
+            }
+            let _ = del_pipe.query_async::<()>(conn).await;
+        }
+
+        // Build pipeline for ZADD operations
+        let mut pipe = redis::pipe();
+        let mut batch_count = 0;
+
+        for (batch_idx, (key, zset_members)) in batch_items.iter().enumerate() {
+            // Skip if key exists and mode is Fail
+            if existing_keys.contains(&batch_idx) {
+                keys_skipped += 1;
+                continue;
+            }
+
+            // Skip empty sorted sets
+            if zset_members.is_empty() {
+                continue;
+            }
+
+            // ZADD expects (score, member) pairs
+            let score_members: Vec<(f64, &str)> =
+                zset_members.iter().map(|(m, s)| (*s, m.as_str())).collect();
+
+            pipe.zadd_multiple(*key, &score_members);
+            if let Some(seconds) = ttl {
+                pipe.expire(*key, seconds);
+            }
+            batch_count += 1;
+        }
+
+        // Execute pipeline if there are commands
+        if batch_count > 0 {
+            match pipe.query_async::<()>(conn).await {
+                Ok(_) => keys_written += batch_count,
+                Err(_) => keys_failed += batch_count,
+            }
+        }
+    }
+
+    Ok(WriteResult {
+        keys_written,
+        keys_failed,
+        keys_skipped,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
