@@ -810,3 +810,265 @@ class TestReadEager:
         """Test that read_json requires a schema."""
         with pytest.raises(ValueError, match="schema is required"):
             polars_redis.read_json(redis_url, pattern="test:*")
+
+
+class TestWriteHashes:
+    """Tests for write_hashes function."""
+
+    def test_write_hashes_basic(self, redis_url: str) -> None:
+        """Test basic hash writing."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:write:hash:1", "test:write:hash:2"],
+                "name": ["Alice", "Bob"],
+                "age": [30, 25],
+            }
+        )
+
+        try:
+            count = polars_redis.write_hashes(df, redis_url)
+            assert count == 2
+
+            # Verify data was written
+            result = subprocess.run(
+                ["redis-cli", "HGETALL", "test:write:hash:1"],
+                capture_output=True,
+                text=True,
+            )
+            output = result.stdout.strip().split("\n")
+            # Should have name and age fields
+            assert "name" in output
+            assert "Alice" in output
+            assert "age" in output
+            assert "30" in output
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:write:hash:1"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", "test:write:hash:2"], capture_output=True)
+
+    def test_write_hashes_custom_key_column(self, redis_url: str) -> None:
+        """Test writing hashes with custom key column."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "redis_key": ["test:write:custom:1"],
+                "value": ["test_value"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_hashes(df, redis_url, key_column="redis_key")
+            assert count == 1
+
+            result = subprocess.run(
+                ["redis-cli", "HGET", "test:write:custom:1", "value"],
+                capture_output=True,
+                text=True,
+            )
+            assert result.stdout.strip() == "test_value"
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:write:custom:1"], capture_output=True)
+
+    def test_write_hashes_missing_key_column(self, redis_url: str) -> None:
+        """Test that missing key column raises error."""
+        df = pl.DataFrame({"name": ["Alice"], "age": [30]})
+
+        with pytest.raises(ValueError, match="Key column '_key' not found"):
+            polars_redis.write_hashes(df, redis_url)
+
+    def test_write_hashes_with_nulls(self, redis_url: str) -> None:
+        """Test writing hashes with null values."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:write:null:1"],
+                "name": ["Alice"],
+                "optional": [None],
+            }
+        )
+
+        try:
+            count = polars_redis.write_hashes(df, redis_url)
+            assert count == 1
+
+            # Null fields should not be written
+            result = subprocess.run(
+                ["redis-cli", "HGET", "test:write:null:1", "optional"],
+                capture_output=True,
+                text=True,
+            )
+            # Empty string means field doesn't exist
+            assert result.stdout.strip() == ""
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:write:null:1"], capture_output=True)
+
+    def test_write_hashes_roundtrip(self, redis_url: str) -> None:
+        """Test write then read roundtrip."""
+        import subprocess
+
+        original = pl.DataFrame(
+            {
+                "_key": ["test:roundtrip:hash:1", "test:roundtrip:hash:2"],
+                "name": ["Alice", "Bob"],
+                "score": [95, 87],
+            }
+        )
+
+        try:
+            # Write
+            count = polars_redis.write_hashes(original, redis_url)
+            assert count == 2
+
+            # Read back
+            result = polars_redis.read_hashes(
+                redis_url,
+                pattern="test:roundtrip:hash:*",
+                schema={"name": pl.Utf8, "score": pl.Int64},
+            )
+
+            assert len(result) == 2
+            # Sort to compare
+            result = result.sort("_key")
+            assert result["name"].to_list() == ["Alice", "Bob"]
+            assert result["score"].to_list() == [95, 87]
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:roundtrip:hash:1"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", "test:roundtrip:hash:2"], capture_output=True)
+
+
+class TestWriteJson:
+    """Tests for write_json function."""
+
+    def test_write_json_basic(self, redis_url: str) -> None:
+        """Test basic JSON writing."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:write:json:1", "test:write:json:2"],
+                "title": ["Hello", "World"],
+                "views": [100, 200],
+            }
+        )
+
+        try:
+            count = polars_redis.write_json(df, redis_url)
+            assert count == 2
+
+            # Verify data was written
+            result = subprocess.run(
+                ["redis-cli", "JSON.GET", "test:write:json:1"],
+                capture_output=True,
+                text=True,
+            )
+            import json
+
+            data = json.loads(result.stdout.strip())
+            assert data["title"] == "Hello"
+            assert data["views"] == 100
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:write:json:1"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", "test:write:json:2"], capture_output=True)
+
+    def test_write_json_custom_key_column(self, redis_url: str) -> None:
+        """Test writing JSON with custom key column."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "doc_key": ["test:write:json:custom:1"],
+                "content": ["test_content"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_json(df, redis_url, key_column="doc_key")
+            assert count == 1
+
+            result = subprocess.run(
+                ["redis-cli", "JSON.GET", "test:write:json:custom:1", "$.content"],
+                capture_output=True,
+                text=True,
+            )
+            import json
+
+            data = json.loads(result.stdout.strip())
+            assert data[0] == "test_content"
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:write:json:custom:1"], capture_output=True)
+
+    def test_write_json_missing_key_column(self, redis_url: str) -> None:
+        """Test that missing key column raises error."""
+        df = pl.DataFrame({"title": ["Hello"], "views": [100]})
+
+        with pytest.raises(ValueError, match="Key column '_key' not found"):
+            polars_redis.write_json(df, redis_url)
+
+    def test_write_json_preserves_types(self, redis_url: str) -> None:
+        """Test that JSON writing preserves native types."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:write:json:types:1"],
+                "string_val": ["hello"],
+                "int_val": [42],
+                "float_val": [3.14],
+                "bool_val": [True],
+            }
+        )
+
+        try:
+            count = polars_redis.write_json(df, redis_url)
+            assert count == 1
+
+            result = subprocess.run(
+                ["redis-cli", "JSON.GET", "test:write:json:types:1"],
+                capture_output=True,
+                text=True,
+            )
+            import json
+
+            data = json.loads(result.stdout.strip())
+            assert data["string_val"] == "hello"
+            assert data["int_val"] == 42
+            assert data["float_val"] == 3.14
+            assert data["bool_val"] is True
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:write:json:types:1"], capture_output=True)
+
+    def test_write_json_roundtrip(self, redis_url: str) -> None:
+        """Test write then read roundtrip."""
+        import subprocess
+
+        original = pl.DataFrame(
+            {
+                "_key": ["test:roundtrip:json:1", "test:roundtrip:json:2"],
+                "title": ["Doc1", "Doc2"],
+                "count": [10, 20],
+            }
+        )
+
+        try:
+            # Write
+            count = polars_redis.write_json(original, redis_url)
+            assert count == 2
+
+            # Read back
+            result = polars_redis.read_json(
+                redis_url,
+                pattern="test:roundtrip:json:*",
+                schema={"title": pl.Utf8, "count": pl.Int64},
+            )
+
+            assert len(result) == 2
+            # Sort to compare
+            result = result.sort("_key")
+            assert result["title"].to_list() == ["Doc1", "Doc2"]
+            assert result["count"].to_list() == [10, 20]
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:roundtrip:json:1"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", "test:roundtrip:json:2"], capture_output=True)

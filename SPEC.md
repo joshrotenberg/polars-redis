@@ -49,12 +49,15 @@ polars-redis is a Polars IO plugin that enables scanning Redis data structures (
 
 ## Current Status
 
-### Implemented (Phase 1)
+### Implemented (Phases 1-3)
 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | `scan_hashes()` | ✅ Done | LazyFrame from Redis hashes |
 | `scan_json()` | ✅ Done | LazyFrame from RedisJSON documents |
+| `read_hashes()` / `read_json()` | ✅ Done | Eager versions (call `.collect()`) |
+| `write_hashes()` / `write_json()` | ✅ Done | Write DataFrames to Redis |
+| `infer_hash_schema()` / `infer_json_schema()` | ✅ Done | Sample keys to detect schema |
 | Projection pushdown | ✅ Done | HMGET vs HGETALL, JSON.GET with paths |
 | n_rows pushdown | ✅ Done | `.head()` / `.limit()` stops iteration early |
 | Client-side predicate filtering | ✅ Done | Filter applied after fetch |
@@ -63,6 +66,8 @@ polars-redis is a Polars IO plugin that enables scanning Redis data structures (
 | Batched iteration | ✅ Done | Configurable batch_size and count_hint |
 | Include/exclude key column | ✅ Done | `include_key`, `key_column_name` options |
 | Python API (`register_io_source`) | ✅ Done | Full LazyFrame integration |
+| Integration tests | ✅ Done | 50+ Python tests, 42 Rust tests |
+| CI/CD pipeline | ✅ Done | GitHub Actions with Redis service |
 | Rust examples | ✅ Done | IPC serialization, projection examples |
 | Python examples | ✅ Done | 9 comprehensive examples |
 
@@ -70,13 +75,16 @@ polars-redis is a Polars IO plugin that enables scanning Redis data structures (
 
 | Feature | Priority | Phase |
 |---------|----------|-------|
-| Integration tests | High | 1 |
-| `read_hashes()` / `read_json()` eager | Medium | 2 |
-| Schema inference | High | 2 |
-| `write_hashes()` / `write_json()` | High | 3 |
+| TTL column support | Low | 2 |
+| Write modes (fail/replace/append) | Medium | 3 |
+| TTL on write | Medium | 3 |
+| Key generation strategies | Medium | 3 |
 | RediSearch predicate pushdown | High | 4 |
+| RedisTimeSeries support | High | 4 |
 | Redis Streams support | Medium | 4 |
-| Connection pooling | Medium | 4 |
+| Sorted Sets support | Medium | 4 |
+| Connection pooling | Low | 4 |
+| Cluster support | Low | 4 |
 
 ---
 
@@ -781,30 +789,31 @@ client-side for millions of members.
 
 ## Roadmap
 
-### Phase 1: Core (Current)
+### Phase 1: Core (Done)
 - [x] scan_hashes with projection pushdown
 - [x] scan_json with path projection
 - [x] n_rows pushdown
 - [x] Schema-based type conversion
 - [x] Python API via register_io_source
-- [ ] Integration tests with real Redis
-- [ ] CI/CD pipeline
-- [ ] Documentation polish
+- [x] Integration tests with real Redis
+- [x] CI/CD pipeline (GitHub Actions)
+- [x] README with examples
 
-### Phase 2: Enhanced Read
-- [ ] `read_hashes()` / `read_json()` eager functions
-- [ ] `infer_hash_schema()` / `infer_json_schema()`
+### Phase 2: Enhanced Read (Done)
+- [x] `read_hashes()` / `read_json()` eager functions
+- [x] `infer_hash_schema()` / `infer_json_schema()`
 - [ ] TTL column support
 - [ ] Row index support
 - [ ] Better error messages
 - [ ] PyPI release
 
-### Phase 3: Write Support
-- [ ] `write_hashes()` with key strategies
-- [ ] `write_json()`
+### Phase 3: Write Support (Done)
+- [x] `write_hashes()` basic implementation
+- [x] `write_json()` basic implementation
 - [ ] Write modes (fail/replace/append)
 - [ ] TTL on write
 - [ ] Batch pipelining
+- [ ] Key generation strategies (prefix, auto-index)
 
 ### Phase 4: Advanced
 - [ ] RedisTimeSeries support (`scan_timeseries`, `scan_timeseries_multi`)

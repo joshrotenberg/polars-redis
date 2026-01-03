@@ -20,6 +20,7 @@ mod json_convert;
 mod json_reader;
 mod scanner;
 mod schema;
+mod write;
 
 pub use batch_iter::{BatchConfig, HashBatchIterator};
 pub use connection::RedisConnection;
@@ -28,6 +29,7 @@ pub use infer::{InferredSchema, infer_hash_schema, infer_json_schema};
 pub use json_batch_iter::JsonBatchIterator;
 pub use json_convert::JsonSchema;
 pub use schema::{HashSchema, RedisType};
+pub use write::{WriteResult, write_hashes, write_json};
 
 /// Serialize an Arrow RecordBatch to IPC format bytes.
 ///
@@ -70,6 +72,8 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(scan_keys, m)?)?;
     m.add_function(wrap_pyfunction!(py_infer_hash_schema, m)?)?;
     m.add_function(wrap_pyfunction!(py_infer_json_schema, m)?)?;
+    m.add_function(wrap_pyfunction!(py_write_hashes, m)?)?;
+    m.add_function(wrap_pyfunction!(py_write_json, m)?)?;
     Ok(())
 }
 
@@ -499,4 +503,50 @@ fn py_infer_json_schema(
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
     Ok((schema.to_type_strings(), schema.sample_count))
+}
+
+#[cfg(feature = "python")]
+/// Write hashes to Redis.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `keys` - List of Redis keys to write to
+/// * `fields` - List of field names
+/// * `values` - 2D list of values (rows x columns), same order as fields
+///
+/// # Returns
+/// A tuple of (keys_written, keys_failed).
+#[pyfunction]
+fn py_write_hashes(
+    url: &str,
+    keys: Vec<String>,
+    fields: Vec<String>,
+    values: Vec<Vec<Option<String>>>,
+) -> PyResult<(usize, usize)> {
+    let result = write_hashes(url, keys, fields, values)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    Ok((result.keys_written, result.keys_failed))
+}
+
+#[cfg(feature = "python")]
+/// Write JSON documents to Redis.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `keys` - List of Redis keys to write to
+/// * `json_strings` - List of JSON strings to write
+///
+/// # Returns
+/// A tuple of (keys_written, keys_failed).
+#[pyfunction]
+fn py_write_json(
+    url: &str,
+    keys: Vec<String>,
+    json_strings: Vec<String>,
+) -> PyResult<(usize, usize)> {
+    let result = write_json(url, keys, json_strings)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    Ok((result.keys_written, result.keys_failed))
 }
