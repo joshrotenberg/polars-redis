@@ -973,8 +973,8 @@ client-side for millions of members.
 - [x] Write modes (fail/replace/append)
 - [x] TTL on write
 - [x] Key prefix support
-- [ ] Batch pipelining for writes
-- [ ] Key generation from row index (auto-index)
+- [x] Batch pipelining for writes
+- [x] Key generation from row index (auto-index)
 
 ### Phase 4: Additional Data Types
 - [x] Redis Strings support (`scan_strings`, `read_strings`, `write_strings`)
@@ -987,6 +987,7 @@ client-side for millions of members.
 - [ ] Connection pooling
 - [ ] Cluster support
 - [ ] Lists support (`scan_list`)
+- [ ] Performance benchmarks (batch sizes, pipelining, etc.)
 
 ### Phase 6: Documentation
 - [ ] MkDocs Material site setup

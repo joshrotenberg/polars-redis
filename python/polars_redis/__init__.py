@@ -726,7 +726,7 @@ def _fields_to_schema(fields: list[tuple[str, str]]) -> dict[str, type[pl.DataTy
 def write_hashes(
     df: pl.DataFrame,
     url: str,
-    key_column: str = "_key",
+    key_column: str | None = "_key",
     ttl: int | None = None,
     key_prefix: str = "",
     if_exists: str = "replace",
@@ -740,8 +740,10 @@ def write_hashes(
         df: The DataFrame to write.
         url: Redis connection URL (e.g., "redis://localhost:6379").
         key_column: Column containing Redis keys (default: "_key").
+            If None, keys are auto-generated from row indices as "{key_prefix}{index}".
         ttl: Optional TTL in seconds for each key (default: None, no expiration).
         key_prefix: Prefix to prepend to all keys (default: "").
+            When key_column is None, this becomes required for meaningful keys.
         if_exists: How to handle existing keys (default: "replace").
             - "fail": Skip keys that already exist.
             - "replace": Delete existing keys before writing (clean replacement).
@@ -767,15 +769,22 @@ def write_hashes(
         >>> count = write_hashes(df, "redis://localhost:6379", key_prefix="prod:")
         >>> # Skip existing keys
         >>> count = write_hashes(df, "redis://localhost:6379", if_exists="fail")
+        >>> # Auto-generate keys from row index
+        >>> df = pl.DataFrame({"name": ["Alice", "Bob"], "age": [30, 25]})
+        >>> count = write_hashes(df, "redis://localhost:6379", key_column=None, key_prefix="user:")
+        >>> # Keys will be "user:0", "user:1"
     """
-    if key_column not in df.columns:
-        raise ValueError(f"Key column '{key_column}' not found in DataFrame")
-
-    # Extract keys and apply prefix
-    keys = [f"{key_prefix}{k}" for k in df[key_column].to_list()]
-
-    # Get field columns (all columns except the key column)
-    field_columns = [c for c in df.columns if c != key_column]
+    if key_column is None:
+        # Auto-generate keys from row indices
+        keys = [f"{key_prefix}{i}" for i in range(len(df))]
+        field_columns = list(df.columns)
+    else:
+        if key_column not in df.columns:
+            raise ValueError(f"Key column '{key_column}' not found in DataFrame")
+        # Extract keys and apply prefix
+        keys = [f"{key_prefix}{k}" for k in df[key_column].to_list()]
+        # Get field columns (all columns except the key column)
+        field_columns = [c for c in df.columns if c != key_column]
 
     # Convert all values to strings (Redis stores everything as strings)
     values = []
@@ -797,7 +806,7 @@ def write_hashes(
 def write_json(
     df: pl.DataFrame,
     url: str,
-    key_column: str = "_key",
+    key_column: str | None = "_key",
     ttl: int | None = None,
     key_prefix: str = "",
     if_exists: str = "replace",
@@ -812,8 +821,10 @@ def write_json(
         df: The DataFrame to write.
         url: Redis connection URL (e.g., "redis://localhost:6379").
         key_column: Column containing Redis keys (default: "_key").
+            If None, keys are auto-generated from row indices as "{key_prefix}{index}".
         ttl: Optional TTL in seconds for each key (default: None, no expiration).
         key_prefix: Prefix to prepend to all keys (default: "").
+            When key_column is None, this becomes required for meaningful keys.
         if_exists: How to handle existing keys (default: "replace").
             - "fail": Skip keys that already exist.
             - "replace": Overwrite existing documents.
@@ -839,17 +850,24 @@ def write_json(
         >>> count = write_json(df, "redis://localhost:6379", key_prefix="prod:")
         >>> # Skip existing keys
         >>> count = write_json(df, "redis://localhost:6379", if_exists="fail")
+        >>> # Auto-generate keys from row index
+        >>> df = pl.DataFrame({"title": ["Hello", "World"], "views": [100, 200]})
+        >>> count = write_json(df, "redis://localhost:6379", key_column=None, key_prefix="doc:")
+        >>> # Keys will be "doc:0", "doc:1"
     """
     import json
 
-    if key_column not in df.columns:
-        raise ValueError(f"Key column '{key_column}' not found in DataFrame")
-
-    # Extract keys and apply prefix
-    keys = [f"{key_prefix}{k}" for k in df[key_column].to_list()]
-
-    # Get field columns (all columns except the key column)
-    field_columns = [c for c in df.columns if c != key_column]
+    if key_column is None:
+        # Auto-generate keys from row indices
+        keys = [f"{key_prefix}{i}" for i in range(len(df))]
+        field_columns = list(df.columns)
+    else:
+        if key_column not in df.columns:
+            raise ValueError(f"Key column '{key_column}' not found in DataFrame")
+        # Extract keys and apply prefix
+        keys = [f"{key_prefix}{k}" for k in df[key_column].to_list()]
+        # Get field columns (all columns except the key column)
+        field_columns = [c for c in df.columns if c != key_column]
 
     # Build JSON strings for each row
     json_strings = []
@@ -870,7 +888,7 @@ def write_json(
 def write_strings(
     df: pl.DataFrame,
     url: str,
-    key_column: str = "_key",
+    key_column: str | None = "_key",
     value_column: str = "value",
     ttl: int | None = None,
     key_prefix: str = "",
@@ -885,9 +903,11 @@ def write_strings(
         df: The DataFrame to write.
         url: Redis connection URL (e.g., "redis://localhost:6379").
         key_column: Column containing Redis keys (default: "_key").
+            If None, keys are auto-generated from row indices as "{key_prefix}{index}".
         value_column: Column containing values to write (default: "value").
         ttl: Optional TTL in seconds for each key (default: None, no expiration).
         key_prefix: Prefix to prepend to all keys (default: "").
+            When key_column is None, this becomes required for meaningful keys.
         if_exists: How to handle existing keys (default: "replace").
             - "fail": Skip keys that already exist.
             - "replace": Overwrite existing values.
@@ -912,15 +932,22 @@ def write_strings(
         >>> count = write_strings(df, "redis://localhost:6379", key_prefix="prod:")
         >>> # Skip existing keys
         >>> count = write_strings(df, "redis://localhost:6379", if_exists="fail")
+        >>> # Auto-generate keys from row index
+        >>> df = pl.DataFrame({"value": ["100", "200", "300"]})
+        >>> count = write_strings(df, "redis://localhost:6379", key_column=None, key_prefix="counter:")
+        >>> # Keys will be "counter:0", "counter:1", "counter:2"
     """
-    if key_column not in df.columns:
-        raise ValueError(f"Key column '{key_column}' not found in DataFrame")
+    if key_column is None:
+        # Auto-generate keys from row indices
+        keys = [f"{key_prefix}{i}" for i in range(len(df))]
+    else:
+        if key_column not in df.columns:
+            raise ValueError(f"Key column '{key_column}' not found in DataFrame")
+        # Extract keys and apply prefix
+        keys = [f"{key_prefix}{k}" for k in df[key_column].to_list()]
 
     if value_column not in df.columns:
         raise ValueError(f"Value column '{value_column}' not found in DataFrame")
-
-    # Extract keys and apply prefix
-    keys = [f"{key_prefix}{k}" for k in df[key_column].to_list()]
 
     # Extract values, converting to strings
     values = []
