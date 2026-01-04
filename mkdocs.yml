@@ -69,6 +69,7 @@ nav:
   - Examples:
       - Python Examples: examples/python.md
       - Rust Examples: examples/rust.md
+  - Presentation: slides.md
 
 extra:
   social:
