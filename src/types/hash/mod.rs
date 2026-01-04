@@ -4,6 +4,11 @@
 
 mod batch_iter;
 mod convert;
-mod reader;
+pub(crate) mod reader;
+#[cfg(feature = "search")]
+mod search_iter;
 
 pub use batch_iter::{BatchConfig, HashBatchIterator};
+pub(crate) use reader::HashData;
+#[cfg(feature = "search")]
+pub use search_iter::{HashSearchIterator, SearchBatchConfig};

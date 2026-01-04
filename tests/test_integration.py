@@ -1706,3 +1706,242 @@ class TestWriteTTL:
             assert ttl == -1
         finally:
             subprocess.run(["redis-cli", "DEL", "test:no:ttl:str:1"], capture_output=True)
+
+
+def redisearch_available() -> bool:
+    """Check if RediSearch module is available."""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["redis-cli", "MODULE", "LIST"],
+            capture_output=True,
+            text=True,
+        )
+        return "search" in result.stdout.lower()
+    except Exception:
+        return False
+
+
+@pytest.mark.skipif(
+    not redisearch_available(),
+    reason="RediSearch module not available",
+)
+class TestSearchHashes:
+    """Tests for search_hashes function using RediSearch."""
+
+    @pytest.fixture(scope="class", autouse=True)
+    def setup_search_data(self, redis_url: str) -> None:
+        """Set up test data and index for RediSearch tests."""
+        import subprocess
+
+        # Create test hashes for search
+        for i in range(1, 21):
+            age = 20 + i
+            score = float(i * 10)
+            active = "true" if i % 2 == 0 else "false"
+            subprocess.run(
+                [
+                    "redis-cli",
+                    "HSET",
+                    f"search:user:{i}",
+                    "name",
+                    f"SearchUser{i}",
+                    "age",
+                    str(age),
+                    "score",
+                    str(score),
+                    "active",
+                    active,
+                ],
+                capture_output=True,
+            )
+
+        # Create RediSearch index on the hash prefix
+        # Drop index if it exists (ignore errors)
+        subprocess.run(
+            ["redis-cli", "FT.DROPINDEX", "search_users_idx"],
+            capture_output=True,
+        )
+
+        # Create new index
+        subprocess.run(
+            [
+                "redis-cli",
+                "FT.CREATE",
+                "search_users_idx",
+                "ON",
+                "HASH",
+                "PREFIX",
+                "1",
+                "search:user:",
+                "SCHEMA",
+                "name",
+                "TEXT",
+                "age",
+                "NUMERIC",
+                "SORTABLE",
+                "score",
+                "NUMERIC",
+                "SORTABLE",
+                "active",
+                "TAG",
+            ],
+            capture_output=True,
+        )
+
+        yield
+
+        # Cleanup
+        subprocess.run(
+            ["redis-cli", "FT.DROPINDEX", "search_users_idx"],
+            capture_output=True,
+        )
+        for i in range(1, 21):
+            subprocess.run(
+                ["redis-cli", "DEL", f"search:user:{i}"],
+                capture_output=True,
+            )
+
+    def test_search_hashes_all(self, redis_url: str) -> None:
+        """Test searching all documents with wildcard query."""
+        lf = polars_redis.search_hashes(
+            redis_url,
+            index="search_users_idx",
+            query="*",
+            schema={
+                "name": pl.Utf8,
+                "age": pl.Int64,
+                "score": pl.Float64,
+            },
+        )
+
+        df = lf.collect()
+        assert len(df) == 20
+        assert "_key" in df.columns
+        assert "name" in df.columns
+        assert "age" in df.columns
+        assert "score" in df.columns
+
+    def test_search_hashes_numeric_range(self, redis_url: str) -> None:
+        """Test searching with numeric range filter."""
+        # Search for users with age >= 30 (that's users 10-20 since age = 20 + i)
+        lf = polars_redis.search_hashes(
+            redis_url,
+            index="search_users_idx",
+            query="@age:[30 +inf]",
+            schema={
+                "name": pl.Utf8,
+                "age": pl.Int64,
+            },
+        )
+
+        df = lf.collect()
+        assert len(df) == 11  # Users 10-20 have age 30-40
+        assert all(df["age"] >= 30)
+
+    def test_search_hashes_text_search(self, redis_url: str) -> None:
+        """Test searching with text filter."""
+        # Search for user with name containing "SearchUser1"
+        # This should match SearchUser1, SearchUser10-19
+        lf = polars_redis.search_hashes(
+            redis_url,
+            index="search_users_idx",
+            query="@name:SearchUser1*",
+            schema={
+                "name": pl.Utf8,
+                "age": pl.Int64,
+            },
+        )
+
+        df = lf.collect()
+        # Should match SearchUser1, SearchUser10, SearchUser11, ..., SearchUser19
+        assert len(df) == 11
+
+    def test_search_hashes_with_sort(self, redis_url: str) -> None:
+        """Test searching with sort order."""
+        lf = polars_redis.search_hashes(
+            redis_url,
+            index="search_users_idx",
+            query="*",
+            schema={
+                "name": pl.Utf8,
+                "age": pl.Int64,
+                "score": pl.Float64,
+            },
+            sort_by="score",
+            sort_ascending=False,
+        )
+
+        df = lf.collect()
+        assert len(df) == 20
+        # Check that scores are in descending order
+        scores = df["score"].to_list()
+        assert scores == sorted(scores, reverse=True)
+
+    def test_search_hashes_with_sort_ascending(self, redis_url: str) -> None:
+        """Test searching with ascending sort order."""
+        lf = polars_redis.search_hashes(
+            redis_url,
+            index="search_users_idx",
+            query="*",
+            schema={
+                "name": pl.Utf8,
+                "age": pl.Int64,
+            },
+            sort_by="age",
+            sort_ascending=True,
+        )
+
+        df = lf.collect()
+        assert len(df) == 20
+        # Check that ages are in ascending order
+        ages = df["age"].to_list()
+        assert ages == sorted(ages)
+
+    def test_search_hashes_without_key(self, redis_url: str) -> None:
+        """Test searching without the key column."""
+        lf = polars_redis.search_hashes(
+            redis_url,
+            index="search_users_idx",
+            query="*",
+            schema={"name": pl.Utf8, "age": pl.Int64},
+            include_key=False,
+        )
+
+        df = lf.collect()
+        assert "_key" not in df.columns
+        assert df.columns == ["name", "age"]
+
+    def test_search_hashes_combined_query(self, redis_url: str) -> None:
+        """Test searching with combined filters."""
+        # Search for users with age >= 25 AND age <= 35
+        lf = polars_redis.search_hashes(
+            redis_url,
+            index="search_users_idx",
+            query="@age:[25 35]",
+            schema={
+                "name": pl.Utf8,
+                "age": pl.Int64,
+            },
+        )
+
+        df = lf.collect()
+        # Users 5-15 have ages 25-35
+        assert len(df) == 11
+        assert all((df["age"] >= 25) & (df["age"] <= 35))
+
+    def test_search_hashes_no_results(self, redis_url: str) -> None:
+        """Test searching with query that returns no results."""
+        lf = polars_redis.search_hashes(
+            redis_url,
+            index="search_users_idx",
+            query="@age:[100 200]",
+            schema={
+                "name": pl.Utf8,
+                "age": pl.Int64,
+            },
+        )
+
+        df = lf.collect()
+        assert len(df) == 0
