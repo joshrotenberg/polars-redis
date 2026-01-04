@@ -694,4 +694,166 @@ mod tests {
         // 1973-01-01 should be 730 + 366 (1972 is leap) = 1096
         assert_eq!(days_since_epoch(1973, 1, 1), Some(1096));
     }
+
+    // ========================================================================
+    // Edge Case Tests
+    // ========================================================================
+
+    #[test]
+    fn test_parse_int64_edge_cases() {
+        // Max/min i64
+        assert_eq!(
+            RedisType::Int64.parse("9223372036854775807").unwrap(),
+            TypedValue::Int64(i64::MAX)
+        );
+        assert_eq!(
+            RedisType::Int64.parse("-9223372036854775808").unwrap(),
+            TypedValue::Int64(i64::MIN)
+        );
+
+        // Overflow
+        assert!(RedisType::Int64.parse("9223372036854775808").is_err());
+        assert!(RedisType::Int64.parse("-9223372036854775809").is_err());
+
+        // Leading/trailing whitespace should fail
+        assert!(RedisType::Int64.parse(" 42").is_err());
+        assert!(RedisType::Int64.parse("42 ").is_err());
+
+        // Empty string
+        assert!(RedisType::Int64.parse("").is_err());
+
+        // Zero
+        assert_eq!(RedisType::Int64.parse("0").unwrap(), TypedValue::Int64(0));
+        assert_eq!(RedisType::Int64.parse("-0").unwrap(), TypedValue::Int64(0));
+    }
+
+    #[test]
+    fn test_parse_float64_edge_cases() {
+        // Very small/large values
+        assert!(matches!(
+            RedisType::Float64.parse("1e308").unwrap(),
+            TypedValue::Float64(_)
+        ));
+        assert!(matches!(
+            RedisType::Float64.parse("1e-308").unwrap(),
+            TypedValue::Float64(_)
+        ));
+
+        // Infinity (should parse but be infinity)
+        let inf = RedisType::Float64.parse("inf");
+        assert!(inf.is_ok());
+        if let TypedValue::Float64(v) = inf.unwrap() {
+            assert!(v.is_infinite() && v.is_sign_positive());
+        }
+
+        let neg_inf = RedisType::Float64.parse("-inf");
+        assert!(neg_inf.is_ok());
+        if let TypedValue::Float64(v) = neg_inf.unwrap() {
+            assert!(v.is_infinite() && v.is_sign_negative());
+        }
+
+        // NaN (should parse)
+        let nan = RedisType::Float64.parse("NaN");
+        assert!(nan.is_ok());
+        if let TypedValue::Float64(v) = nan.unwrap() {
+            assert!(v.is_nan());
+        }
+
+        // Empty string
+        assert!(RedisType::Float64.parse("").is_err());
+
+        // Scientific notation
+        assert_eq!(
+            RedisType::Float64.parse("1.5e2").unwrap(),
+            TypedValue::Float64(150.0)
+        );
+    }
+
+    #[test]
+    fn test_parse_utf8_edge_cases() {
+        // Empty string is valid UTF-8
+        assert_eq!(
+            RedisType::Utf8.parse("").unwrap(),
+            TypedValue::Utf8("".to_string())
+        );
+
+        // Unicode
+        assert_eq!(
+            RedisType::Utf8.parse("Hello").unwrap(),
+            TypedValue::Utf8("Hello".to_string())
+        );
+
+        // Very long string
+        let long_string = "x".repeat(100_000);
+        assert_eq!(
+            RedisType::Utf8.parse(&long_string).unwrap(),
+            TypedValue::Utf8(long_string)
+        );
+
+        // Special characters
+        assert_eq!(
+            RedisType::Utf8.parse("\n\t\r").unwrap(),
+            TypedValue::Utf8("\n\t\r".to_string())
+        );
+    }
+
+    #[test]
+    fn test_hash_schema_empty_fields() {
+        let schema = HashSchema::new(vec![]);
+        assert!(schema.fields().is_empty());
+
+        let arrow_schema = schema.to_arrow_schema();
+        // Should still have key column
+        assert_eq!(arrow_schema.fields().len(), 1);
+    }
+
+    #[test]
+    fn test_hash_schema_duplicate_field_names() {
+        // This is allowed at schema level (last one wins in HashMap lookup)
+        let schema = HashSchema::new(vec![
+            ("name".to_string(), RedisType::Utf8),
+            ("name".to_string(), RedisType::Int64),
+        ]);
+
+        // Fields list preserves duplicates
+        assert_eq!(schema.fields().len(), 2);
+    }
+
+    #[test]
+    fn test_hash_schema_special_field_names() {
+        // Field names with special characters
+        let schema = HashSchema::new(vec![
+            ("field-with-dashes".to_string(), RedisType::Utf8),
+            ("field.with.dots".to_string(), RedisType::Int64),
+            ("field:with:colons".to_string(), RedisType::Float64),
+            ("".to_string(), RedisType::Boolean), // Empty field name
+        ]);
+
+        assert_eq!(schema.fields().len(), 4);
+        assert_eq!(
+            schema.field_type("field-with-dashes"),
+            Some(RedisType::Utf8)
+        );
+    }
+
+    #[test]
+    fn test_projection_empty() {
+        let schema = HashSchema::new(vec![
+            ("name".to_string(), RedisType::Utf8),
+            ("age".to_string(), RedisType::Int64),
+        ]);
+
+        let projected = schema.project(&[]);
+        assert!(projected.fields().is_empty());
+        assert!(!projected.include_key());
+    }
+
+    #[test]
+    fn test_projection_nonexistent_fields() {
+        let schema = HashSchema::new(vec![("name".to_string(), RedisType::Utf8)]);
+
+        // Projecting non-existent field should not include it
+        let projected = schema.project(&["nonexistent".to_string()]);
+        assert!(projected.fields().is_empty());
+    }
 }
