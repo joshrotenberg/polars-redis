@@ -61,12 +61,13 @@ from polars_redis.options import (
 
 # RediSearch support (optional - requires search feature)
 try:
-    from polars_redis._internal import PyHashSearchIterator
+    from polars_redis._internal import PyHashSearchIterator, py_aggregate
 
     _HAS_SEARCH = True
 except ImportError:
     _HAS_SEARCH = False
     PyHashSearchIterator = None  # type: ignore[misc, assignment]
+    py_aggregate = None  # type: ignore[misc, assignment]
 
 if TYPE_CHECKING:
     from polars import DataFrame, Expr
@@ -83,6 +84,7 @@ __all__ = [
     "scan_json",
     "scan_strings",
     "search_hashes",
+    "aggregate_hashes",
     # Read functions (eager)
     "read_hashes",
     "read_json",
@@ -1307,6 +1309,128 @@ def write_json(
     # Call the Rust implementation
     keys_written, _, _ = py_write_json(url, keys, json_strings, ttl, if_exists)
     return keys_written
+
+
+def aggregate_hashes(
+    url: str,
+    index: str,
+    query: str = "*",
+    *,
+    group_by: list[str] | None = None,
+    reduce: list[tuple[str, list[str], str]] | None = None,
+    apply: list[tuple[str, str]] | None = None,
+    filter_expr: str | None = None,
+    sort_by: list[tuple[str, bool]] | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+    load: list[str] | None = None,
+) -> pl.DataFrame:
+    """Execute a RediSearch FT.AGGREGATE query and return results as a DataFrame.
+
+    FT.AGGREGATE performs aggregations on indexed data, supporting grouping,
+    reduce functions, computed fields, filtering, and sorting - all server-side.
+
+    Requires:
+        - RediSearch module installed on Redis server
+        - An existing RediSearch index on the hash data
+
+    Args:
+        url: Redis connection URL (e.g., "redis://localhost:6379").
+        index: RediSearch index name (e.g., "users_idx").
+        query: RediSearch query string (e.g., "@status:active", "*" for all).
+        group_by: Fields to group by (e.g., ["@department", "@role"]).
+        reduce: Reduce operations as (function, args, alias) tuples.
+            Examples:
+            - ("COUNT", [], "total")
+            - ("SUM", ["@salary"], "total_salary")
+            - ("AVG", ["@age"], "avg_age")
+            - ("MIN", ["@score"], "min_score")
+            - ("MAX", ["@score"], "max_score")
+            - ("FIRST_VALUE", ["@name"], "first_name")
+            - ("TOLIST", ["@name"], "names")
+            - ("QUANTILE", ["@salary", "0.5"], "median_salary")
+            - ("STDDEV", ["@score"], "score_stddev")
+        apply: Computed expressions as (expression, alias) tuples.
+            Example: ("@total_salary / @total", "avg_salary")
+        filter_expr: Filter expression after aggregation.
+            Example: "@total > 10"
+        sort_by: Sort specifications as (field, ascending) tuples.
+            Example: [("@total", False)] for descending by total.
+        limit: Maximum number of results to return.
+        offset: Number of results to skip (for pagination).
+        load: Fields to load from the source documents (before aggregation).
+
+    Returns:
+        A Polars DataFrame containing the aggregation results.
+
+    Example:
+        >>> # Count users by department
+        >>> df = aggregate_hashes(
+        ...     "redis://localhost:6379",
+        ...     index="users_idx",
+        ...     query="*",
+        ...     group_by=["@department"],
+        ...     reduce=[("COUNT", [], "count")],
+        ... )
+        >>> print(df)
+
+        >>> # Average salary by department, sorted by average
+        >>> df = aggregate_hashes(
+        ...     "redis://localhost:6379",
+        ...     index="users_idx",
+        ...     query="@status:active",
+        ...     group_by=["@department"],
+        ...     reduce=[
+        ...         ("COUNT", [], "employee_count"),
+        ...         ("AVG", ["@salary"], "avg_salary"),
+        ...     ],
+        ...     sort_by=[("@avg_salary", False)],
+        ...     limit=10,
+        ... )
+
+        >>> # Calculate computed fields with APPLY
+        >>> df = aggregate_hashes(
+        ...     "redis://localhost:6379",
+        ...     index="orders_idx",
+        ...     query="*",
+        ...     group_by=["@customer_id"],
+        ...     reduce=[
+        ...         ("SUM", ["@amount"], "total"),
+        ...         ("COUNT", [], "order_count"),
+        ...     ],
+        ...     apply=[("@total / @order_count", "avg_order")],
+        ...     filter_expr="@order_count > 5",
+        ... )
+
+    Raises:
+        RuntimeError: If RediSearch support is not available.
+    """
+    if not _HAS_SEARCH:
+        raise RuntimeError(
+            "RediSearch support is not available. "
+            "Ensure the 'search' feature is enabled when building polars-redis."
+        )
+
+    # Call the Rust implementation
+    results = py_aggregate(
+        url=url,
+        index=index,
+        query=query,
+        group_by=group_by or [],
+        reduce=reduce or [],
+        apply=apply,
+        filter=filter_expr,
+        sort_by=sort_by,
+        limit=limit,
+        offset=offset,
+        load=load,
+    )
+
+    # Convert list of dicts to DataFrame
+    if not results:
+        return pl.DataFrame()
+
+    return pl.DataFrame(results)
 
 
 def write_strings(

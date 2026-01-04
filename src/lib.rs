@@ -194,6 +194,8 @@ fn polars_redis_internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyTimeSeriesBatchIterator>()?;
     #[cfg(feature = "search")]
     m.add_class::<PyHashSearchIterator>()?;
+    #[cfg(feature = "search")]
+    m.add_function(wrap_pyfunction!(py_aggregate, m)?)?;
     m.add_function(wrap_pyfunction!(scan_keys, m)?)?;
     m.add_function(wrap_pyfunction!(py_infer_hash_schema, m)?)?;
     m.add_function(wrap_pyfunction!(py_infer_json_schema, m)?)?;
@@ -587,6 +589,137 @@ impl PyHashSearchIterator {
     fn total_results(&self) -> Option<usize> {
         self.inner.total_results()
     }
+}
+
+#[cfg(all(feature = "python", feature = "search"))]
+/// Execute FT.AGGREGATE and return aggregated results as a list of dictionaries.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `index` - RediSearch index name
+/// * `query` - RediSearch query string (e.g., "@status:active", "*" for all)
+/// * `group_by` - List of field names to group by
+/// * `reduce` - List of reduce operations as (function, args, alias) tuples
+/// * `apply` - Optional list of apply expressions as (expression, alias) tuples
+/// * `filter` - Optional post-aggregation filter expression
+/// * `sort_by` - Optional list of sort specifications as (field, ascending) tuples
+/// * `limit` - Optional maximum number of results
+/// * `offset` - Offset for pagination (default: 0)
+/// * `load` - Optional list of fields to load from documents
+///
+/// # Returns
+/// A list of dictionaries, where each dictionary represents an aggregated row.
+///
+/// # Example
+/// ```python
+/// result = py_aggregate(
+///     "redis://localhost:6379",
+///     "users_idx",
+///     "*",
+///     group_by=["city"],
+///     reduce=[("COUNT", [], "user_count"), ("AVG", ["age"], "avg_age")],
+///     sort_by=[("user_count", False)],
+///     limit=10,
+/// )
+/// for row in result:
+///     print(f"{row['city']}: {row['user_count']} users, avg age {row['avg_age']}")
+/// ```
+#[pyfunction]
+#[pyo3(signature = (
+    url,
+    index,
+    query,
+    group_by = vec![],
+    reduce = vec![],
+    apply = None,
+    filter = None,
+    sort_by = None,
+    limit = None,
+    offset = 0,
+    load = None
+))]
+#[allow(clippy::too_many_arguments)]
+fn py_aggregate(
+    url: &str,
+    index: &str,
+    query: &str,
+    group_by: Vec<String>,
+    reduce: Vec<(String, Vec<String>, String)>,
+    apply: Option<Vec<(String, String)>>,
+    filter: Option<String>,
+    sort_by: Option<Vec<(String, bool)>>,
+    limit: Option<usize>,
+    offset: usize,
+    load: Option<Vec<String>>,
+) -> PyResult<Vec<std::collections::HashMap<String, String>>> {
+    use crate::connection::RedisConnection;
+    use crate::search::{AggregateConfig, ApplyExpr, ReduceOp, SortBy, aggregate};
+
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    rt.block_on(async {
+        let connection = RedisConnection::new(url)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyConnectionError, _>(e.to_string()))?;
+
+        let mut conn = connection
+            .get_connection_manager()
+            .await
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyConnectionError, _>(e.to_string()))?;
+
+        // Build reduce operations
+        let reduce_ops: Vec<ReduceOp> = reduce
+            .into_iter()
+            .map(|(func, args, alias)| ReduceOp::new(func, args, alias))
+            .collect();
+
+        // Build apply expressions
+        let apply_exprs: Vec<ApplyExpr> = apply
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(expr, alias)| ApplyExpr::new(expr, alias))
+            .collect();
+
+        // Build sort specifications
+        let sort_specs: Vec<SortBy> = sort_by
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(field, ascending)| {
+                if ascending {
+                    SortBy::asc(field)
+                } else {
+                    SortBy::desc(field)
+                }
+            })
+            .collect();
+
+        // Build config
+        let mut config = AggregateConfig::new(index, query)
+            .with_group_by(group_by)
+            .with_reduce(reduce_ops)
+            .with_apply(apply_exprs)
+            .with_sort_by(sort_specs)
+            .with_offset(offset);
+
+        if let Some(f) = filter {
+            config = config.with_filter(f);
+        }
+
+        if let Some(l) = limit {
+            config = config.with_limit(l);
+        }
+
+        if let Some(fields) = load {
+            config = config.with_load(fields);
+        }
+
+        // Execute aggregate
+        let result = aggregate(&mut conn, &config)
+            .await
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        Ok(result.rows)
+    })
 }
 
 #[cfg(feature = "python")]

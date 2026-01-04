@@ -1970,3 +1970,246 @@ class TestSearchHashes:
 
         df = lf.collect()
         assert len(df) == 0
+
+
+@pytest.mark.skipif(
+    not redisearch_available(),
+    reason="RediSearch module not available",
+)
+class TestAggregateHashes:
+    """Tests for aggregate_hashes function using RediSearch FT.AGGREGATE."""
+
+    @pytest.fixture(scope="class", autouse=True)
+    def setup_aggregate_data(self, redis_url: str) -> None:
+        """Set up test data and index for FT.AGGREGATE tests."""
+        import subprocess
+
+        # Create test hashes for aggregation
+        # Department distribution: Engineering (10), Sales (5), Marketing (5)
+        departments = ["Engineering"] * 10 + ["Sales"] * 5 + ["Marketing"] * 5
+        for i in range(1, 21):
+            age = 25 + (i % 20)  # Ages 25-44
+            salary = 50000 + (i * 5000)  # Salaries 55000-150000
+            department = departments[i - 1]
+            subprocess.run(
+                [
+                    "redis-cli",
+                    "HSET",
+                    f"agg:employee:{i}",
+                    "name",
+                    f"Employee{i}",
+                    "age",
+                    str(age),
+                    "salary",
+                    str(salary),
+                    "department",
+                    department,
+                ],
+                capture_output=True,
+            )
+
+        # Drop index if it exists (ignore errors)
+        subprocess.run(
+            ["redis-cli", "FT.DROPINDEX", "agg_employees_idx"],
+            capture_output=True,
+        )
+
+        # Create new index
+        subprocess.run(
+            [
+                "redis-cli",
+                "FT.CREATE",
+                "agg_employees_idx",
+                "ON",
+                "HASH",
+                "PREFIX",
+                "1",
+                "agg:employee:",
+                "SCHEMA",
+                "name",
+                "TEXT",
+                "age",
+                "NUMERIC",
+                "SORTABLE",
+                "salary",
+                "NUMERIC",
+                "SORTABLE",
+                "department",
+                "TAG",
+                "SORTABLE",
+            ],
+            capture_output=True,
+        )
+
+        # Wait for RediSearch to index all documents
+        import time
+
+        for _ in range(50):  # Wait up to 5 seconds
+            result = subprocess.run(
+                ["redis-cli", "FT.INFO", "agg_employees_idx"],
+                capture_output=True,
+                text=True,
+            )
+            output = result.stdout
+            if "num_docs" in output:
+                lines = output.strip().split("\n")
+                for idx, line in enumerate(lines):
+                    if line == "num_docs" and idx + 1 < len(lines):
+                        num_docs = int(lines[idx + 1])
+                        if num_docs >= 20:
+                            break
+            time.sleep(0.1)
+        else:
+            time.sleep(0.5)
+
+        yield
+
+        # Cleanup
+        subprocess.run(
+            ["redis-cli", "FT.DROPINDEX", "agg_employees_idx"],
+            capture_output=True,
+        )
+        for i in range(1, 21):
+            subprocess.run(
+                ["redis-cli", "DEL", f"agg:employee:{i}"],
+                capture_output=True,
+            )
+
+    def test_aggregate_count_all(self, redis_url: str) -> None:
+        """Test counting all documents."""
+        df = polars_redis.aggregate_hashes(
+            redis_url,
+            index="agg_employees_idx",
+            query="*",
+            reduce=[("COUNT", [], "total")],
+        )
+
+        assert len(df) == 1
+        assert "total" in df.columns
+        assert int(df["total"][0]) == 20
+
+    def test_aggregate_group_by_department(self, redis_url: str) -> None:
+        """Test grouping by department with count."""
+        df = polars_redis.aggregate_hashes(
+            redis_url,
+            index="agg_employees_idx",
+            query="*",
+            group_by=["@department"],
+            reduce=[("COUNT", [], "count")],
+        )
+
+        assert len(df) == 3  # Engineering, Sales, Marketing
+        assert "department" in df.columns
+        assert "count" in df.columns
+
+        # Convert to dict for easier checking
+        # Note: RediSearch lowercases TAG values
+        dept_counts = dict(zip(df["department"].to_list(), df["count"].to_list()))
+        assert int(dept_counts.get("engineering", 0)) == 10
+        assert int(dept_counts.get("sales", 0)) == 5
+        assert int(dept_counts.get("marketing", 0)) == 5
+
+    def test_aggregate_avg_salary_by_department(self, redis_url: str) -> None:
+        """Test calculating average salary by department."""
+        df = polars_redis.aggregate_hashes(
+            redis_url,
+            index="agg_employees_idx",
+            query="*",
+            group_by=["@department"],
+            reduce=[
+                ("COUNT", [], "count"),
+                ("AVG", ["@salary"], "avg_salary"),
+            ],
+        )
+
+        assert len(df) == 3
+        assert "avg_salary" in df.columns
+        # Just verify we got numeric values
+        for val in df["avg_salary"].to_list():
+            assert float(val) > 0
+
+    def test_aggregate_sum_salary(self, redis_url: str) -> None:
+        """Test summing salaries."""
+        df = polars_redis.aggregate_hashes(
+            redis_url,
+            index="agg_employees_idx",
+            query="*",
+            reduce=[("SUM", ["@salary"], "total_salary")],
+        )
+
+        assert len(df) == 1
+        assert "total_salary" in df.columns
+        # Sum of salaries: 55000 + 60000 + ... + 150000 = sum of 55000 to 150000 step 5000
+        # = 20 terms, average = (55000 + 150000) / 2 = 102500, total = 102500 * 20 = 2050000
+        assert float(df["total_salary"][0]) == 2050000
+
+    def test_aggregate_min_max(self, redis_url: str) -> None:
+        """Test MIN and MAX aggregations."""
+        df = polars_redis.aggregate_hashes(
+            redis_url,
+            index="agg_employees_idx",
+            query="*",
+            reduce=[
+                ("MIN", ["@salary"], "min_salary"),
+                ("MAX", ["@salary"], "max_salary"),
+            ],
+        )
+
+        assert len(df) == 1
+        assert float(df["min_salary"][0]) == 55000
+        assert float(df["max_salary"][0]) == 150000
+
+    def test_aggregate_with_sort(self, redis_url: str) -> None:
+        """Test aggregation with sorting."""
+        df = polars_redis.aggregate_hashes(
+            redis_url,
+            index="agg_employees_idx",
+            query="*",
+            group_by=["@department"],
+            reduce=[("COUNT", [], "count")],
+            sort_by=[("@count", False)],  # Descending by count
+        )
+
+        assert len(df) == 3
+        counts = [int(c) for c in df["count"].to_list()]
+        assert counts == sorted(counts, reverse=True)
+        # Engineering should be first with 10 employees (lowercase due to TAG)
+        assert df["department"][0] == "engineering"
+
+    def test_aggregate_with_limit(self, redis_url: str) -> None:
+        """Test aggregation with limit."""
+        df = polars_redis.aggregate_hashes(
+            redis_url,
+            index="agg_employees_idx",
+            query="*",
+            group_by=["@department"],
+            reduce=[("COUNT", [], "count")],
+            sort_by=[("@count", False)],
+            limit=2,
+        )
+
+        assert len(df) == 2
+
+    def test_aggregate_with_filter_query(self, redis_url: str) -> None:
+        """Test aggregation with filtered query."""
+        df = polars_redis.aggregate_hashes(
+            redis_url,
+            index="agg_employees_idx",
+            query="@department:{Engineering}",
+            reduce=[("COUNT", [], "count")],
+        )
+
+        assert len(df) == 1
+        assert int(df["count"][0]) == 10
+
+    def test_aggregate_empty_result(self, redis_url: str) -> None:
+        """Test aggregation that returns no results."""
+        df = polars_redis.aggregate_hashes(
+            redis_url,
+            index="agg_employees_idx",
+            query="@salary:[1000000 2000000]",  # No one earns this much
+            reduce=[("COUNT", [], "count")],
+        )
+
+        # Empty result or count of 0
+        assert len(df) == 0 or int(df["count"][0]) == 0
