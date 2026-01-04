@@ -49,6 +49,10 @@ docker-wrapper = { version = "0.8", features = ["template-redis"] }
 name = "benchmarks"
 harness = false
 
+[[bench]]
+name = "redis_benchmarks"
+harness = false
+
 [features]
 default = ["json", "search"]
 python = ["pyo3"]
