@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.4](https://github.com/joshrotenberg/polars-redis/compare/polars-redis-v0.1.3...polars-redis-v0.1.4) (2026-01-04)
+
+
+### Features
+
+* add connection pooling with ConnectionManager ([#37](https://github.com/joshrotenberg/polars-redis/issues/37)) ([78c820f](https://github.com/joshrotenberg/polars-redis/commit/78c820f17e0db872bbc261a29467d06a7c426649))
+* add FT.AGGREGATE support for RediSearch ([#53](https://github.com/joshrotenberg/polars-redis/issues/53)) ([41367c3](https://github.com/joshrotenberg/polars-redis/commit/41367c37e270e642058bef231b6b8328e38f6899)), closes [#41](https://github.com/joshrotenberg/polars-redis/issues/41)
+* Add ParallelStrategy for concurrent batch processing ([#63](https://github.com/joshrotenberg/polars-redis/issues/63)) ([4611e41](https://github.com/joshrotenberg/polars-redis/commit/4611e414842b044ad15aebe4c8ef71ccfcbd0221))
+* add Python options classes and update scan functions ([#48](https://github.com/joshrotenberg/polars-redis/issues/48)) ([ae8db8a](https://github.com/joshrotenberg/polars-redis/commit/ae8db8a995f038ab7ff4057e9ee96f258f2f9bad))
+* add RediSearch predicate pushdown support ([#39](https://github.com/joshrotenberg/polars-redis/issues/39)) ([e02992a](https://github.com/joshrotenberg/polars-redis/commit/e02992aa08f508f9a75bef1b42432b1a29c5a643))
+* add schema_overwrite support for inference functions ([#51](https://github.com/joshrotenberg/polars-redis/issues/51)) ([e300f56](https://github.com/joshrotenberg/polars-redis/commit/e300f5698e381dd1d98898b8a60e8cfdfc926724))
+* Polars-like query builder for RediSearch predicate pushdown ([#62](https://github.com/joshrotenberg/polars-redis/issues/62)) ([4b6ef46](https://github.com/joshrotenberg/polars-redis/commit/4b6ef46272581345c18cbd48373d8403dbe65a71))
+
 ## [0.1.3](https://github.com/joshrotenberg/polars-redis/compare/polars-redis-v0.1.2...polars-redis-v0.1.3) (2026-01-04)
 
 
