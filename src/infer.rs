@@ -644,4 +644,178 @@ mod tests {
         let d = merged.fields.iter().find(|(n, _)| n == "d").unwrap();
         assert!(matches!(d.1, RedisType::Float64));
     }
+
+    // ========================================================================
+    // Property-Based Tests
+    // ========================================================================
+
+    /// Helper to infer type from a single value.
+    fn infer_single(s: &str) -> RedisType {
+        infer_type_from_values(&[Some(s.to_string())])
+    }
+
+    /// Helper to infer type from a single JSON value.
+    fn infer_single_json(v: &serde_json::Value) -> RedisType {
+        infer_type_from_json_values(&[Some(v.clone())])
+    }
+
+    mod proptest_tests {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            /// Any valid i64 should be inferred as Int64.
+            #[test]
+            fn prop_infer_int64(value in any::<i64>()) {
+                let result = infer_single(&value.to_string());
+                prop_assert_eq!(result, RedisType::Int64);
+            }
+
+            /// Any valid f64 with decimal should be inferred as Float64.
+            #[test]
+            fn prop_infer_float64(value in any::<f64>().prop_filter("Must be finite", |v| v.is_finite())) {
+                // Format with decimal to ensure it's recognized as float
+                let s = format!("{:.1}", value);
+                let result = infer_single(&s);
+                prop_assert_eq!(result, RedisType::Float64);
+            }
+
+            /// Arbitrary non-numeric, non-boolean strings should be inferred as Utf8.
+            #[test]
+            fn prop_infer_utf8(s in "[a-zA-Z]{2}[a-zA-Z0-9]*") {
+                // Exclude strings that could be booleans (t, f, y, n, true, false, yes, no)
+                let lower = s.to_lowercase();
+                prop_assume!(!matches!(lower.as_str(), "true" | "false" | "yes" | "no" | "t" | "f" | "y" | "n"));
+                let result = infer_single(&s);
+                prop_assert_eq!(result, RedisType::Utf8);
+            }
+
+            /// Boolean strings should be inferred as Boolean.
+            #[test]
+            fn prop_infer_boolean(b in prop::bool::ANY) {
+                let s = if b { "true" } else { "false" };
+                let result = infer_single(s);
+                prop_assert_eq!(result, RedisType::Boolean);
+            }
+
+            /// Schema overwrite should preserve sample_count.
+            #[test]
+            fn prop_overwrite_preserves_sample_count(count in 1usize..1000) {
+                let inferred = InferredSchema {
+                    fields: vec![("x".to_string(), RedisType::Utf8)],
+                    sample_count: count,
+                };
+                let merged = inferred.with_overwrite(&[("x".to_string(), RedisType::Int64)]);
+                prop_assert_eq!(merged.sample_count, count);
+            }
+
+            /// Schema overwrite should include all original fields.
+            #[test]
+            fn prop_overwrite_includes_originals(
+                field_count in 1usize..20,
+            ) {
+                let fields: Vec<(String, RedisType)> = (0..field_count)
+                    .map(|i| (format!("field_{}", i), RedisType::Utf8))
+                    .collect();
+
+                let inferred = InferredSchema {
+                    fields: fields.clone(),
+                    sample_count: 10,
+                };
+
+                let merged = inferred.with_overwrite(&[]);
+                prop_assert_eq!(merged.fields.len(), field_count);
+            }
+
+            /// Schema overwrite with same field should replace type.
+            #[test]
+            fn prop_overwrite_replaces_type(
+                field_name in "[a-z]+",
+            ) {
+                let inferred = InferredSchema {
+                    fields: vec![(field_name.clone(), RedisType::Utf8)],
+                    sample_count: 5,
+                };
+
+                let merged = inferred.with_overwrite(&[(field_name.clone(), RedisType::Int64)]);
+
+                let field = merged.fields.iter().find(|(n, _)| n == &field_name).unwrap();
+                prop_assert!(matches!(field.1, RedisType::Int64));
+            }
+        }
+    }
+
+    // ========================================================================
+    // Edge Case Tests
+    // ========================================================================
+
+    #[test]
+    fn test_infer_type_whitespace() {
+        // Whitespace-only strings should be Utf8
+        assert_eq!(infer_single("   "), RedisType::Utf8);
+        assert_eq!(infer_single("\t"), RedisType::Utf8);
+        assert_eq!(infer_single("\n"), RedisType::Utf8);
+    }
+
+    #[test]
+    fn test_infer_type_special_numbers() {
+        // Hexadecimal should be Utf8 (not parsed as number)
+        assert_eq!(infer_single("0xFF"), RedisType::Utf8);
+
+        // Octal notation should be Utf8
+        assert_eq!(infer_single("0o777"), RedisType::Utf8);
+
+        // Binary notation should be Utf8
+        assert_eq!(infer_single("0b1010"), RedisType::Utf8);
+    }
+
+    #[test]
+    fn test_infer_type_numeric_edge_cases() {
+        // Leading zeros - still valid integer
+        assert_eq!(infer_single("007"), RedisType::Int64);
+
+        // Plus sign prefix
+        assert_eq!(infer_single("+42"), RedisType::Int64);
+
+        // Scientific notation
+        assert_eq!(infer_single("1e10"), RedisType::Float64);
+        assert_eq!(infer_single("1E10"), RedisType::Float64);
+        assert_eq!(infer_single("1.5e-3"), RedisType::Float64);
+    }
+
+    #[test]
+    fn test_infer_type_boolean_variations() {
+        // Case insensitive - lowercase only for boolean detection
+        assert_eq!(infer_single("true"), RedisType::Boolean);
+        assert_eq!(infer_single("false"), RedisType::Boolean);
+        assert_eq!(infer_single("yes"), RedisType::Boolean);
+        assert_eq!(infer_single("no"), RedisType::Boolean);
+
+        // Not boolean (uppercase or unrecognized)
+        assert_eq!(infer_single("yep"), RedisType::Utf8);
+        assert_eq!(infer_single("nope"), RedisType::Utf8);
+    }
+
+    #[test]
+    fn test_infer_json_type_nested() {
+        // Nested objects should be Utf8 (we don't recurse)
+        let nested = serde_json::json!({"inner": {"deep": 123}});
+        assert_eq!(infer_single_json(&nested), RedisType::Utf8);
+
+        // Arrays should be Utf8
+        let arr = serde_json::json!([1, 2, 3]);
+        assert_eq!(infer_single_json(&arr), RedisType::Utf8);
+    }
+
+    #[test]
+    fn test_schema_overwrite_case_sensitive() {
+        let inferred = InferredSchema {
+            fields: vec![("Name".to_string(), RedisType::Utf8)],
+            sample_count: 5,
+        };
+
+        // Different case should add new field, not overwrite
+        let merged = inferred.with_overwrite(&[("name".to_string(), RedisType::Int64)]);
+        assert_eq!(merged.fields.len(), 2);
+    }
 }
