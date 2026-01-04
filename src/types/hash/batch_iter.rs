@@ -11,9 +11,26 @@ use super::convert::hashes_to_record_batch;
 use super::reader::{HashData, fetch_hashes};
 use crate::connection::RedisConnection;
 use crate::error::{Error, Result};
+use crate::options::{ScanOptions, get_default_batch_size, get_default_count_hint};
 use crate::schema::HashSchema;
 
 /// Configuration for batch iteration.
+///
+/// This struct configures how keys are scanned and batched when reading from Redis.
+/// It supports environment variable defaults:
+/// - `POLARS_REDIS_BATCH_SIZE`: Default batch size (default: 1000)
+/// - `POLARS_REDIS_COUNT_HINT`: Default SCAN COUNT hint (default: 100)
+///
+/// # Example
+///
+/// ```ignore
+/// use polars_redis::BatchConfig;
+///
+/// let config = BatchConfig::new("user:*")
+///     .with_batch_size(500)
+///     .with_count_hint(200)
+///     .with_max_rows(10000);
+/// ```
 #[derive(Debug, Clone)]
 pub struct BatchConfig {
     /// Key pattern to match (e.g., "user:*").
@@ -30,8 +47,8 @@ impl Default for BatchConfig {
     fn default() -> Self {
         Self {
             pattern: "*".to_string(),
-            batch_size: 1000,
-            count_hint: 100,
+            batch_size: get_default_batch_size(),
+            count_hint: get_default_count_hint(),
             max_rows: None,
         }
     }
@@ -62,6 +79,28 @@ impl BatchConfig {
     pub fn with_max_rows(mut self, max: usize) -> Self {
         self.max_rows = Some(max);
         self
+    }
+}
+
+impl From<ScanOptions> for BatchConfig {
+    fn from(opts: ScanOptions) -> Self {
+        Self {
+            pattern: opts.pattern,
+            batch_size: opts.batch_size,
+            count_hint: opts.count_hint,
+            max_rows: opts.n_rows,
+        }
+    }
+}
+
+impl From<BatchConfig> for ScanOptions {
+    fn from(config: BatchConfig) -> Self {
+        Self {
+            pattern: config.pattern,
+            batch_size: config.batch_size,
+            count_hint: config.count_hint,
+            n_rows: config.max_rows,
+        }
     }
 }
 
@@ -262,9 +301,41 @@ mod tests {
     fn test_batch_config_default() {
         let config = BatchConfig::default();
         assert_eq!(config.pattern, "*");
-        assert_eq!(config.batch_size, 1000);
-        assert_eq!(config.count_hint, 100);
+        assert_eq!(config.batch_size, get_default_batch_size());
+        assert_eq!(config.count_hint, get_default_count_hint());
         assert!(config.max_rows.is_none());
+    }
+
+    #[test]
+    fn test_batch_config_from_scan_options() {
+        use crate::options::ScanOptions;
+
+        let scan_opts = ScanOptions::new("user:*")
+            .with_batch_size(500)
+            .with_count_hint(50)
+            .with_n_rows(1000);
+
+        let config: BatchConfig = scan_opts.into();
+        assert_eq!(config.pattern, "user:*");
+        assert_eq!(config.batch_size, 500);
+        assert_eq!(config.count_hint, 50);
+        assert_eq!(config.max_rows, Some(1000));
+    }
+
+    #[test]
+    fn test_scan_options_from_batch_config() {
+        use crate::options::ScanOptions;
+
+        let config = BatchConfig::new("session:*")
+            .with_batch_size(250)
+            .with_count_hint(25)
+            .with_max_rows(500);
+
+        let scan_opts: ScanOptions = config.into();
+        assert_eq!(scan_opts.pattern, "session:*");
+        assert_eq!(scan_opts.batch_size, 250);
+        assert_eq!(scan_opts.count_hint, 25);
+        assert_eq!(scan_opts.n_rows, Some(500));
     }
 
     #[test]
