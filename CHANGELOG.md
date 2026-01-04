@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.3](https://github.com/joshrotenberg/polars-redis/compare/polars-redis-v0.1.2...polars-redis-v0.1.3) (2026-01-04)
+
+
+### Bug Fixes
+
+* update macOS runner and simplify wheel builds ([#34](https://github.com/joshrotenberg/polars-redis/issues/34)) ([9aa9e0d](https://github.com/joshrotenberg/polars-redis/commit/9aa9e0d41f888b44346ea1f061f4f1d0ecabc794))
+* use macos-14 for Intel cross-compile and make crates.io resilient ([#36](https://github.com/joshrotenberg/polars-redis/issues/36)) ([2fa0bea](https://github.com/joshrotenberg/polars-redis/commit/2fa0bea77618e74cc495d757d82bef1984e3ff9b))
+
 ## [0.1.2](https://github.com/joshrotenberg/polars-redis/compare/polars-redis-v0.1.1...polars-redis-v0.1.2) (2026-01-03)
 
 
