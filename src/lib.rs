@@ -117,6 +117,7 @@ mod connection;
 mod error;
 mod infer;
 pub mod options;
+pub mod parallel;
 #[cfg(feature = "search")]
 pub mod query_builder;
 mod scanner;
@@ -130,10 +131,11 @@ pub use connection::RedisConnection;
 pub use error::{Error, Result};
 pub use infer::{InferredSchema, infer_hash_schema, infer_json_schema};
 pub use options::{
-    HashScanOptions, JsonScanOptions, KeyColumn, RowIndex, RowIndexColumn, ScanOptions,
-    StreamScanOptions, StringScanOptions, TimeSeriesScanOptions, TtlColumn, get_default_batch_size,
-    get_default_count_hint, get_default_timeout_ms,
+    HashScanOptions, JsonScanOptions, KeyColumn, ParallelStrategy, RowIndex, RowIndexColumn,
+    ScanOptions, StreamScanOptions, StringScanOptions, TimeSeriesScanOptions, TtlColumn,
+    get_default_batch_size, get_default_count_hint, get_default_timeout_ms,
 };
+pub use parallel::{FetchResult, KeyBatch, ParallelConfig, ParallelFetch};
 #[cfg(feature = "search")]
 pub use query_builder::{Predicate, PredicateBuilder, Value};
 pub use schema::{HashSchema, RedisType};
