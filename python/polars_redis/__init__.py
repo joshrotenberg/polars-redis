@@ -44,6 +44,18 @@ from polars_redis._internal import (
     py_write_strings,
     scan_keys,
 )
+from polars_redis.options import (
+    HashScanOptions,
+    JsonScanOptions,
+    ScanOptions,
+    SearchOptions,
+    StreamScanOptions,
+    StringScanOptions,
+    TimeSeriesScanOptions,
+    get_default_batch_size,
+    get_default_count_hint,
+    get_default_timeout_ms,
+)
 
 # RediSearch support (optional - requires search feature)
 try:
@@ -59,23 +71,41 @@ if TYPE_CHECKING:
     from polars.type_aliases import SchemaDict
 
 __all__ = [
+    # Iterators
     "RedisScanner",
     "PyHashBatchIterator",
     "PyJsonBatchIterator",
     "PyStringBatchIterator",
+    # Scan functions
     "scan_hashes",
     "scan_json",
     "scan_strings",
     "search_hashes",
+    # Read functions (eager)
     "read_hashes",
     "read_json",
     "read_strings",
+    # Write functions
     "write_hashes",
     "write_json",
     "write_strings",
+    # Utilities
     "scan_keys",
     "infer_hash_schema",
     "infer_json_schema",
+    # Option classes
+    "ScanOptions",
+    "HashScanOptions",
+    "JsonScanOptions",
+    "StringScanOptions",
+    "StreamScanOptions",
+    "TimeSeriesScanOptions",
+    "SearchOptions",
+    # Environment defaults
+    "get_default_batch_size",
+    "get_default_count_hint",
+    "get_default_timeout_ms",
+    # Version
     "__version__",
 ]
 
@@ -121,6 +151,7 @@ def scan_hashes(
     pattern: str = "*",
     schema: dict | None = None,
     *,
+    options: HashScanOptions | None = None,
     include_key: bool = True,
     key_column_name: str = "_key",
     include_ttl: bool = False,
@@ -136,6 +167,8 @@ def scan_hashes(
         url: Redis connection URL (e.g., "redis://localhost:6379").
         pattern: Key pattern to match (e.g., "user:*").
         schema: Dictionary mapping field names to Polars dtypes.
+        options: HashScanOptions object for configuration. If provided,
+            individual keyword arguments are ignored.
         include_key: Whether to include the Redis key as a column.
         key_column_name: Name of the key column (default: "_key").
         include_ttl: Whether to include the TTL as a column.
@@ -149,13 +182,38 @@ def scan_hashes(
         A Polars LazyFrame that will scan Redis when collected.
 
     Example:
+        >>> # Using keyword arguments
         >>> lf = scan_hashes(
         ...     "redis://localhost:6379",
         ...     pattern="user:*",
         ...     schema={"name": pl.Utf8, "age": pl.Int64}
         ... )
         >>> df = lf.collect()
+
+        >>> # Using options object
+        >>> opts = HashScanOptions(
+        ...     pattern="user:*",
+        ...     batch_size=500,
+        ...     include_ttl=True,
+        ... )
+        >>> lf = scan_hashes(
+        ...     "redis://localhost:6379",
+        ...     schema={"name": pl.Utf8, "age": pl.Int64},
+        ...     options=opts,
+        ... )
+        >>> df = lf.collect()
     """
+    # If options object provided, use its values
+    if options is not None:
+        pattern = options.pattern
+        include_key = options.include_key
+        key_column_name = options.key_column_name
+        include_ttl = options.include_ttl
+        ttl_column_name = options.ttl_column_name
+        include_row_index = options.include_row_index
+        row_index_column_name = options.row_index_column_name
+        batch_size = options.batch_size
+        count_hint = options.count_hint
     if schema is None:
         raise ValueError("schema is required for scan_hashes")
 
@@ -251,6 +309,7 @@ def scan_json(
     pattern: str = "*",
     schema: dict | None = None,
     *,
+    options: JsonScanOptions | None = None,
     include_key: bool = True,
     key_column_name: str = "_key",
     include_ttl: bool = False,
@@ -266,6 +325,8 @@ def scan_json(
         url: Redis connection URL (e.g., "redis://localhost:6379").
         pattern: Key pattern to match (e.g., "doc:*").
         schema: Dictionary mapping field names to Polars dtypes.
+        options: JsonScanOptions object for configuration. If provided,
+            individual keyword arguments are ignored.
         include_key: Whether to include the Redis key as a column.
         key_column_name: Name of the key column (default: "_key").
         include_ttl: Whether to include the TTL as a column.
@@ -279,13 +340,38 @@ def scan_json(
         A Polars LazyFrame that will scan Redis when collected.
 
     Example:
+        >>> # Using keyword arguments
         >>> lf = scan_json(
         ...     "redis://localhost:6379",
         ...     pattern="doc:*",
         ...     schema={"title": pl.Utf8, "author": pl.Utf8}
         ... )
         >>> df = lf.collect()
+
+        >>> # Using options object
+        >>> opts = JsonScanOptions(
+        ...     pattern="doc:*",
+        ...     batch_size=500,
+        ...     include_ttl=True,
+        ... )
+        >>> lf = scan_json(
+        ...     "redis://localhost:6379",
+        ...     schema={"title": pl.Utf8, "author": pl.Utf8},
+        ...     options=opts,
+        ... )
+        >>> df = lf.collect()
     """
+    # If options object provided, use its values
+    if options is not None:
+        pattern = options.pattern
+        include_key = options.include_key
+        key_column_name = options.key_column_name
+        include_ttl = options.include_ttl
+        ttl_column_name = options.ttl_column_name
+        include_row_index = options.include_row_index
+        row_index_column_name = options.row_index_column_name
+        batch_size = options.batch_size
+        count_hint = options.count_hint
     if schema is None:
         raise ValueError("schema is required for scan_json")
 
@@ -376,6 +462,7 @@ def scan_strings(
     url: str,
     pattern: str = "*",
     *,
+    options: StringScanOptions | None = None,
     value_type: type[pl.DataType] = pl.Utf8,
     include_key: bool = True,
     key_column_name: str = "_key",
@@ -388,6 +475,8 @@ def scan_strings(
     Args:
         url: Redis connection URL (e.g., "redis://localhost:6379").
         pattern: Key pattern to match (e.g., "cache:*").
+        options: StringScanOptions object for configuration. If provided,
+            individual keyword arguments are ignored.
         value_type: Polars dtype for the value column (default: pl.Utf8).
             Supported: pl.Utf8, pl.Int64, pl.Float64, pl.Boolean.
         include_key: Whether to include the Redis key as a column.
@@ -414,7 +503,28 @@ def scan_strings(
         ...     value_type=pl.Int64
         ... )
         >>> total = lf.select(pl.col("value").sum()).collect()
+
+        >>> # Using options object
+        >>> opts = StringScanOptions(
+        ...     pattern="counter:*",
+        ...     batch_size=500,
+        ...     value_column_name="count",
+        ... )
+        >>> lf = scan_strings(
+        ...     "redis://localhost:6379",
+        ...     value_type=pl.Int64,
+        ...     options=opts,
+        ... )
+        >>> df = lf.collect()
     """
+    # If options object provided, use its values
+    if options is not None:
+        pattern = options.pattern
+        include_key = options.include_key
+        key_column_name = options.key_column_name
+        value_column_name = options.value_column_name
+        batch_size = options.batch_size
+        count_hint = options.count_hint
     # Convert value_type to internal string
     value_type_str = _polars_dtype_to_internal(value_type)
 
@@ -477,10 +587,11 @@ def scan_strings(
 
 def search_hashes(
     url: str,
-    index: str,
-    query: str,
+    index: str = "",
+    query: str = "*",
     schema: dict | None = None,
     *,
+    options: SearchOptions | None = None,
     include_key: bool = True,
     key_column_name: str = "_key",
     include_ttl: bool = False,
@@ -506,6 +617,8 @@ def search_hashes(
         index: RediSearch index name (e.g., "users_idx").
         query: RediSearch query string (e.g., "@age:[30 +inf]", "*" for all).
         schema: Dictionary mapping field names to Polars dtypes.
+        options: SearchOptions object for configuration. If provided,
+            individual keyword arguments are ignored.
         include_key: Whether to include the Redis key as a column.
         key_column_name: Name of the key column (default: "_key").
         include_ttl: Whether to include the TTL as a column.
@@ -540,9 +653,36 @@ def search_hashes(
         ... )
         >>> top_users = lf.head(10).collect()
 
+        >>> # Using options object
+        >>> opts = SearchOptions(
+        ...     index="users_idx",
+        ...     query="@age:[30 +inf]",
+        ...     sort_by="name",
+        ...     sort_ascending=True,
+        ... )
+        >>> lf = search_hashes(
+        ...     "redis://localhost:6379",
+        ...     schema={"name": pl.Utf8, "age": pl.Int64},
+        ...     options=opts,
+        ... )
+        >>> df = lf.collect()
+
     Raises:
         RuntimeError: If RediSearch support is not available.
     """
+    # If options object provided, use its values
+    if options is not None:
+        index = options.index
+        query = options.query
+        include_key = options.include_key
+        key_column_name = options.key_column_name
+        include_ttl = options.include_ttl
+        ttl_column_name = options.ttl_column_name
+        include_row_index = options.include_row_index
+        row_index_column_name = options.row_index_column_name
+        batch_size = options.batch_size
+        sort_by = options.sort_by
+        sort_ascending = options.sort_ascending
     if not _HAS_SEARCH:
         raise RuntimeError(
             "RediSearch support is not available. "
