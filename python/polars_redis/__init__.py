@@ -69,6 +69,9 @@ except ImportError:
     PyHashSearchIterator = None  # type: ignore[misc, assignment]
     py_aggregate = None  # type: ignore[misc, assignment]
 
+# Query builder for predicate pushdown
+from polars_redis.query import col, raw
+
 if TYPE_CHECKING:
     from polars import DataFrame, Expr
     from polars.type_aliases import SchemaDict
@@ -107,6 +110,9 @@ __all__ = [
     "StreamScanOptions",
     "TimeSeriesScanOptions",
     "SearchOptions",
+    # Query builder (predicate pushdown)
+    "col",
+    "raw",
     # Environment defaults
     "get_default_batch_size",
     "get_default_count_hint",
@@ -594,7 +600,7 @@ def scan_strings(
 def search_hashes(
     url: str,
     index: str = "",
-    query: str = "*",
+    query: str | "Expr" = "*",
     schema: dict | None = None,
     *,
     options: SearchOptions | None = None,
@@ -621,7 +627,8 @@ def search_hashes(
     Args:
         url: Redis connection URL (e.g., "redis://localhost:6379").
         index: RediSearch index name (e.g., "users_idx").
-        query: RediSearch query string (e.g., "@age:[30 +inf]", "*" for all).
+        query: RediSearch query - either a string (e.g., "@age:[30 +inf]")
+            or a query expression built with col() (e.g., col("age") > 30).
         schema: Dictionary mapping field names to Polars dtypes.
         options: SearchOptions object for configuration. If provided,
             individual keyword arguments are ignored.
@@ -639,7 +646,7 @@ def search_hashes(
         A Polars LazyFrame that will search Redis when collected.
 
     Example:
-        >>> # Search for users over 30 years old
+        >>> # Search with raw RediSearch query
         >>> lf = search_hashes(
         ...     "redis://localhost:6379",
         ...     index="users_idx",
@@ -648,11 +655,21 @@ def search_hashes(
         ... )
         >>> df = lf.collect()
 
+        >>> # Search with Polars-like syntax (predicate pushdown)
+        >>> from polars_redis import col
+        >>> lf = search_hashes(
+        ...     "redis://localhost:6379",
+        ...     index="users_idx",
+        ...     query=(col("age") > 30) & (col("status") == "active"),
+        ...     schema={"name": pl.Utf8, "age": pl.Int64, "status": pl.Utf8}
+        ... )
+        >>> df = lf.collect()
+
         >>> # Search with sorting
         >>> lf = search_hashes(
         ...     "redis://localhost:6379",
         ...     index="users_idx",
-        ...     query="@status:active",
+        ...     query=col("status") == "active",
         ...     schema={"name": pl.Utf8, "score": pl.Float64},
         ...     sort_by="score",
         ...     sort_ascending=False
@@ -697,6 +714,12 @@ def search_hashes(
 
     if schema is None:
         raise ValueError("schema is required for search_hashes")
+
+    # Convert Expr query to string if needed
+    from polars_redis.query import Expr as QueryExpr
+
+    if isinstance(query, QueryExpr):
+        query = query.to_redis()
 
     # Convert schema to internal format: list of (name, type_str) tuples
     internal_schema = [(name, _polars_dtype_to_internal(dtype)) for name, dtype in schema.items()]
