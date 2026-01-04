@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use redis::aio::ConnectionManager;
 
 use crate::error::Result;
+use crate::parallel::ParallelFetch;
 
 /// Result of fetching a single hash from Redis.
 #[derive(Debug, Clone)]
@@ -142,6 +143,77 @@ pub async fn fetch_hashes(
     match fields {
         Some(f) => fetch_hashes_fields(conn, keys, f, include_ttl).await,
         None => fetch_hashes_all(conn, keys, include_ttl).await,
+    }
+}
+
+// ============================================================================
+// Parallel fetch implementation
+// ============================================================================
+
+/// Fetcher for parallel hash operations.
+///
+/// Implements the `ParallelFetch` trait to enable parallel batch fetching
+/// of Redis hashes across multiple worker tasks.
+///
+/// # Example
+///
+/// ```ignore
+/// use polars_redis::parallel::{ParallelFetcher, ParallelConfig};
+/// use polars_redis::types::hash::reader::HashFetcher;
+///
+/// let fetcher = HashFetcher::new(None, false); // All fields, no TTL
+/// let mut parallel = ParallelFetcher::new(conn, fetcher, ParallelConfig::new(4));
+/// parallel.start();
+/// parallel.submit(keys).await?;
+/// ```
+#[derive(Debug, Clone)]
+pub struct HashFetcher {
+    /// Fields to fetch (None = all fields via HGETALL).
+    fields: Option<Vec<String>>,
+    /// Whether to include TTL information.
+    include_ttl: bool,
+}
+
+impl HashFetcher {
+    /// Create a new hash fetcher.
+    ///
+    /// # Arguments
+    ///
+    /// * `fields` - Specific fields to fetch, or None for all fields
+    /// * `include_ttl` - Whether to fetch TTL for each key
+    pub fn new(fields: Option<Vec<String>>, include_ttl: bool) -> Self {
+        Self {
+            fields,
+            include_ttl,
+        }
+    }
+
+    /// Create a fetcher for all fields.
+    pub fn all_fields() -> Self {
+        Self::new(None, false)
+    }
+
+    /// Create a fetcher with projection.
+    pub fn with_fields(fields: Vec<String>) -> Self {
+        Self::new(Some(fields), false)
+    }
+
+    /// Enable TTL fetching.
+    pub fn with_ttl(mut self) -> Self {
+        self.include_ttl = true;
+        self
+    }
+}
+
+impl ParallelFetch for HashFetcher {
+    type Output = HashData;
+
+    async fn fetch(
+        &self,
+        mut conn: ConnectionManager,
+        keys: Vec<String>,
+    ) -> Result<Vec<Self::Output>> {
+        fetch_hashes(&mut conn, &keys, self.fields.as_deref(), self.include_ttl).await
     }
 }
 

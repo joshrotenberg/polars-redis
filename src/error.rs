@@ -47,6 +47,10 @@ pub enum Error {
     /// Key already exists (when using WriteMode::Fail).
     #[error("Key already exists: {0}")]
     KeyExists(String),
+
+    /// Channel communication error.
+    #[error("Channel error: {0}")]
+    Channel(String),
 }
 
 #[cfg(feature = "python")]
@@ -67,6 +71,7 @@ impl From<Error> for pyo3::PyErr {
             }
             Error::InvalidInput(_) => pyo3::exceptions::PyValueError::new_err(err.to_string()),
             Error::KeyExists(_) => pyo3::exceptions::PyValueError::new_err(err.to_string()),
+            Error::Channel(_) => pyo3::exceptions::PyRuntimeError::new_err(err.to_string()),
         }
     }
 }

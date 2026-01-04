@@ -142,8 +142,54 @@ impl StringBatchIterator {
 
     /// Fetch string data for a batch of keys.
     fn fetch_batch(&mut self, keys: &[String]) -> Result<Vec<StringData>> {
-        let mut conn = self.conn.clone();
-        self.runtime.block_on(fetch_strings(&mut conn, keys))
+        let worker_count = self.config.parallel.worker_count();
+
+        // Use parallel fetching if configured
+        if worker_count > 1 && keys.len() > worker_count {
+            self.fetch_batch_parallel(keys, worker_count)
+        } else {
+            let mut conn = self.conn.clone();
+            self.runtime.block_on(fetch_strings(&mut conn, keys))
+        }
+    }
+
+    /// Fetch string data in parallel using multiple workers.
+    fn fetch_batch_parallel(
+        &mut self,
+        keys: &[String],
+        worker_count: usize,
+    ) -> Result<Vec<StringData>> {
+        // Split keys into chunks for parallel processing
+        let chunk_size = keys.len().div_ceil(worker_count);
+        let chunks: Vec<Vec<String>> = keys.chunks(chunk_size).map(|c| c.to_vec()).collect();
+
+        // Clone connection for async block
+        let conn = self.conn.clone();
+
+        self.runtime.block_on(async {
+            let mut handles = Vec::with_capacity(chunks.len());
+
+            for chunk in chunks {
+                let mut conn = conn.clone();
+
+                let handle = tokio::spawn(async move { fetch_strings(&mut conn, &chunk).await });
+                handles.push(handle);
+            }
+
+            // Collect results in order
+            let mut all_data = Vec::with_capacity(keys.len());
+            for handle in handles {
+                match handle.await {
+                    Ok(Ok(data)) => all_data.extend(data),
+                    Ok(Err(e)) => return Err(e),
+                    Err(e) => {
+                        return Err(Error::Runtime(format!("Task join error: {}", e)));
+                    }
+                }
+            }
+
+            Ok(all_data)
+        })
     }
 
     /// Check if iteration is complete.

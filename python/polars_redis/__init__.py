@@ -172,6 +172,7 @@ def scan_hashes(
     row_index_column_name: str = "_index",
     batch_size: int = 1000,
     count_hint: int = 100,
+    parallel: int | None = None,
 ) -> pl.LazyFrame:
     """Scan Redis hashes matching a pattern and return a LazyFrame.
 
@@ -189,6 +190,8 @@ def scan_hashes(
         row_index_column_name: Name of the row index column (default: "_index").
         batch_size: Number of keys to process per batch.
         count_hint: SCAN COUNT hint for Redis.
+        parallel: Number of parallel workers for fetching data (default: None).
+            When set, splits each batch across multiple workers for faster fetching.
 
     Returns:
         A Polars LazyFrame that will scan Redis when collected.
@@ -283,6 +286,7 @@ def scan_hashes(
             include_row_index=include_row_index,
             row_index_column_name=row_index_column_name,
             max_rows=n_rows,
+            parallel=parallel,
         )
 
         # Yield batches
@@ -330,6 +334,7 @@ def scan_json(
     row_index_column_name: str = "_index",
     batch_size: int = 1000,
     count_hint: int = 100,
+    parallel: int | None = None,
 ) -> pl.LazyFrame:
     """Scan RedisJSON documents matching a pattern and return a LazyFrame.
 
@@ -347,6 +352,8 @@ def scan_json(
         row_index_column_name: Name of the row index column (default: "_index").
         batch_size: Number of keys to process per batch.
         count_hint: SCAN COUNT hint for Redis.
+        parallel: Number of parallel workers for fetching data (default: None).
+            When set, splits each batch across multiple workers for faster fetching.
 
     Returns:
         A Polars LazyFrame that will scan Redis when collected.
@@ -439,6 +446,7 @@ def scan_json(
             include_row_index=include_row_index,
             row_index_column_name=row_index_column_name,
             max_rows=n_rows,
+            parallel=parallel,
         )
 
         # Yield batches
@@ -481,6 +489,7 @@ def scan_strings(
     value_column_name: str = "value",
     batch_size: int = 1000,
     count_hint: int = 100,
+    parallel: int | None = None,
 ) -> pl.LazyFrame:
     """Scan Redis string values matching a pattern and return a LazyFrame.
 
@@ -496,6 +505,8 @@ def scan_strings(
         value_column_name: Name of the value column (default: "value").
         batch_size: Number of keys to process per batch.
         count_hint: SCAN COUNT hint for Redis.
+        parallel: Number of parallel workers for fetching data (default: None).
+            When set, splits each batch across multiple workers for faster fetching.
 
     Returns:
         A Polars LazyFrame with key and value columns.
@@ -567,6 +578,7 @@ def scan_strings(
             key_column_name=key_column_name,
             value_column_name=value_column_name,
             max_rows=n_rows,
+            parallel=parallel,
         )
 
         # Yield batches

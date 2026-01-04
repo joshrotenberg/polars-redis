@@ -117,6 +117,7 @@ mod connection;
 mod error;
 mod infer;
 pub mod options;
+pub mod parallel;
 #[cfg(feature = "search")]
 pub mod query_builder;
 mod scanner;
@@ -130,14 +131,15 @@ pub use connection::RedisConnection;
 pub use error::{Error, Result};
 pub use infer::{InferredSchema, infer_hash_schema, infer_json_schema};
 pub use options::{
-    HashScanOptions, JsonScanOptions, KeyColumn, RowIndex, RowIndexColumn, ScanOptions,
-    StreamScanOptions, StringScanOptions, TimeSeriesScanOptions, TtlColumn, get_default_batch_size,
-    get_default_count_hint, get_default_timeout_ms,
+    HashScanOptions, JsonScanOptions, KeyColumn, ParallelStrategy, RowIndex, RowIndexColumn,
+    ScanOptions, StreamScanOptions, StringScanOptions, TimeSeriesScanOptions, TtlColumn,
+    get_default_batch_size, get_default_count_hint, get_default_timeout_ms,
 };
+pub use parallel::{FetchResult, KeyBatch, ParallelConfig, ParallelFetch};
 #[cfg(feature = "search")]
 pub use query_builder::{Predicate, PredicateBuilder, Value};
 pub use schema::{HashSchema, RedisType};
-pub use types::hash::{BatchConfig, HashBatchIterator};
+pub use types::hash::{BatchConfig, HashBatchIterator, HashFetcher};
 #[cfg(feature = "search")]
 pub use types::hash::{HashSearchIterator, SearchBatchConfig};
 pub use types::json::{JsonBatchIterator, JsonSchema};
@@ -289,6 +291,7 @@ impl PyHashBatchIterator {
     /// * `include_row_index` - Whether to include the row index as a column
     /// * `row_index_column_name` - Name of the row index column
     /// * `max_rows` - Optional maximum rows to return
+    /// * `parallel` - Optional number of parallel workers for fetching
     #[new]
     #[pyo3(signature = (
         url,
@@ -303,7 +306,8 @@ impl PyHashBatchIterator {
         ttl_column_name = "_ttl".to_string(),
         include_row_index = false,
         row_index_column_name = "_index".to_string(),
-        max_rows = None
+        max_rows = None,
+        parallel = None
     ))]
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -320,6 +324,7 @@ impl PyHashBatchIterator {
         include_row_index: bool,
         row_index_column_name: String,
         max_rows: Option<usize>,
+        parallel: Option<usize>,
     ) -> PyResult<Self> {
         // Parse schema from Python types
         let field_types: Vec<(String, RedisType)> = schema
@@ -355,6 +360,10 @@ impl PyHashBatchIterator {
 
         if let Some(max) = max_rows {
             config = config.with_max_rows(max);
+        }
+
+        if let Some(workers) = parallel {
+            config = config.with_parallel(ParallelStrategy::batches(workers));
         }
 
         let inner = HashBatchIterator::new(&url, hash_schema, config, projection)
@@ -921,6 +930,7 @@ impl PyJsonBatchIterator {
     /// * `include_row_index` - Whether to include the row index as a column
     /// * `row_index_column_name` - Name of the row index column
     /// * `max_rows` - Optional maximum rows to return
+    /// * `parallel` - Optional number of parallel workers for fetching
     #[new]
     #[pyo3(signature = (
         url,
@@ -935,7 +945,8 @@ impl PyJsonBatchIterator {
         ttl_column_name = "_ttl".to_string(),
         include_row_index = false,
         row_index_column_name = "_index".to_string(),
-        max_rows = None
+        max_rows = None,
+        parallel = None
     ))]
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -952,6 +963,7 @@ impl PyJsonBatchIterator {
         include_row_index: bool,
         row_index_column_name: String,
         max_rows: Option<usize>,
+        parallel: Option<usize>,
     ) -> PyResult<Self> {
         // Parse schema from Python type strings to Arrow DataTypes
         let field_types: Vec<(String, DataType)> = schema
@@ -987,6 +999,10 @@ impl PyJsonBatchIterator {
 
         if let Some(max) = max_rows {
             config = config.with_max_rows(max);
+        }
+
+        if let Some(workers) = parallel {
+            config = config.with_parallel(ParallelStrategy::batches(workers));
         }
 
         let inner = JsonBatchIterator::new(&url, json_schema, config, projection)
@@ -1078,6 +1094,7 @@ impl PyStringBatchIterator {
     /// * `key_column_name` - Name of the key column
     /// * `value_column_name` - Name of the value column
     /// * `max_rows` - Optional maximum rows to return
+    /// * `parallel` - Optional number of parallel workers for fetching
     #[new]
     #[pyo3(signature = (
         url,
@@ -1088,7 +1105,8 @@ impl PyStringBatchIterator {
         include_key = true,
         key_column_name = "_key".to_string(),
         value_column_name = "value".to_string(),
-        max_rows = None
+        max_rows = None,
+        parallel = None
     ))]
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -1101,6 +1119,7 @@ impl PyStringBatchIterator {
         key_column_name: String,
         value_column_name: String,
         max_rows: Option<usize>,
+        parallel: Option<usize>,
     ) -> PyResult<Self> {
         use arrow::datatypes::TimeUnit;
 
@@ -1131,6 +1150,10 @@ impl PyStringBatchIterator {
 
         if let Some(max) = max_rows {
             config = config.with_max_rows(max);
+        }
+
+        if let Some(workers) = parallel {
+            config = config.with_parallel(ParallelStrategy::batches(workers));
         }
 
         let inner = StringBatchIterator::new(&url, string_schema, config)
