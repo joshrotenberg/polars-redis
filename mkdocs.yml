@@ -62,6 +62,7 @@ nav:
       - Writing Data: guide/writing.md
       - Schema Inference: guide/schema-inference.md
       - Configuration: guide/configuration.md
+      - Migration Guide: guide/migration.md
   - API Reference:
       - Python API: api/python.md
       - Rust API: api/rust.md
