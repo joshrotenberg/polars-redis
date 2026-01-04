@@ -1,6 +1,7 @@
 //! Batch iterator for streaming Redis JSON data as Arrow RecordBatches.
 
 use arrow::array::RecordBatch;
+use redis::aio::ConnectionManager;
 use tokio::runtime::Runtime;
 
 use super::convert::{JsonSchema, json_to_record_batch};
@@ -13,8 +14,8 @@ use crate::types::hash::BatchConfig;
 pub struct JsonBatchIterator {
     /// Tokio runtime for async operations.
     runtime: Runtime,
-    /// Redis connection.
-    connection: RedisConnection,
+    /// Redis connection manager (cheap to clone, auto-reconnects).
+    conn: ConnectionManager,
     /// Schema for the JSON data.
     schema: JsonSchema,
     /// Batch configuration.
@@ -46,10 +47,11 @@ impl JsonBatchIterator {
         let runtime = Runtime::new()
             .map_err(|e| Error::Runtime(format!("Failed to create runtime: {}", e)))?;
         let connection = RedisConnection::new(url)?;
+        let conn = runtime.block_on(connection.get_connection_manager())?;
 
         Ok(Self {
             runtime,
-            connection,
+            conn,
             schema,
             config,
             projection,
@@ -136,8 +138,8 @@ impl JsonBatchIterator {
 
     /// Scan more keys from Redis.
     fn scan_more_keys(&mut self) -> Result<()> {
+        let mut conn = self.conn.clone();
         let (new_cursor, keys) = self.runtime.block_on(async {
-            let mut conn = self.connection.get_async_connection().await?;
             let result: (u64, Vec<String>) = redis::cmd("SCAN")
                 .arg(self.cursor)
                 .arg("MATCH")
@@ -160,11 +162,10 @@ impl JsonBatchIterator {
     fn fetch_batch(&mut self, keys: &[String]) -> Result<Vec<JsonData>> {
         let projection = self.projection.as_deref();
         let include_ttl = self.schema.include_ttl();
+        let mut conn = self.conn.clone();
 
-        self.runtime.block_on(async {
-            let mut conn = self.connection.get_async_connection().await?;
-            fetch_json(&mut conn, keys, projection, include_ttl).await
-        })
+        self.runtime
+            .block_on(fetch_json(&mut conn, keys, projection, include_ttl))
     }
 
     /// Check if iteration is complete.

@@ -1,7 +1,7 @@
 //! Batch iterator for streaming RedisTimeSeries data as Arrow RecordBatches.
 
 use arrow::array::RecordBatch;
-use redis::aio::MultiplexedConnection;
+use redis::aio::ConnectionManager;
 use tokio::runtime::Runtime;
 
 use super::convert::{TimeSeriesSchema, timeseries_to_record_batch};
@@ -14,8 +14,8 @@ use crate::types::hash::BatchConfig;
 pub struct TimeSeriesBatchIterator {
     /// Tokio runtime for async operations.
     runtime: Runtime,
-    /// Redis connection.
-    connection: RedisConnection,
+    /// Redis connection manager (cheap to clone, auto-reconnects).
+    conn: ConnectionManager,
     /// Schema for the time series data.
     schema: TimeSeriesSchema,
     /// Batch configuration.
@@ -55,10 +55,11 @@ impl TimeSeriesBatchIterator {
         let runtime = Runtime::new()
             .map_err(|e| Error::Runtime(format!("Failed to create runtime: {}", e)))?;
         let connection = RedisConnection::new(url)?;
+        let conn = runtime.block_on(connection.get_connection_manager())?;
 
         Ok(Self {
             runtime,
-            connection,
+            conn,
             schema,
             config,
             start: "-".to_string(),
@@ -179,16 +180,13 @@ impl TimeSeriesBatchIterator {
 
     /// Scan more keys from Redis.
     fn scan_more_keys(&mut self) -> Result<()> {
-        let (new_cursor, keys) = self.runtime.block_on(async {
-            let mut conn = self.connection.get_async_connection().await?;
-            scan_keys_batch(
-                &mut conn,
-                self.cursor,
-                &self.config.pattern,
-                self.config.count_hint,
-            )
-            .await
-        })?;
+        let mut conn = self.conn.clone();
+        let (new_cursor, keys) = self.runtime.block_on(scan_keys_batch(
+            &mut conn,
+            self.cursor,
+            &self.config.pattern,
+            self.config.count_hint,
+        ))?;
 
         self.key_buffer.extend(keys);
         self.cursor = new_cursor;
@@ -204,20 +202,17 @@ impl TimeSeriesBatchIterator {
         let count = self.count_per_series;
         let aggregation = self.aggregation.clone();
         let bucket_size_ms = self.bucket_size_ms;
+        let mut conn = self.conn.clone();
 
-        self.runtime.block_on(async {
-            let mut conn = self.connection.get_async_connection().await?;
-            fetch_timeseries_async(
-                &mut conn,
-                keys,
-                &start,
-                &end,
-                count,
-                aggregation,
-                bucket_size_ms,
-            )
-            .await
-        })
+        self.runtime.block_on(fetch_timeseries_async(
+            &mut conn,
+            keys,
+            &start,
+            &end,
+            count,
+            aggregation,
+            bucket_size_ms,
+        ))
     }
 
     /// Check if iteration is complete.
@@ -233,7 +228,7 @@ impl TimeSeriesBatchIterator {
 
 /// Scan a batch of keys from Redis.
 async fn scan_keys_batch(
-    conn: &mut MultiplexedConnection,
+    conn: &mut ConnectionManager,
     cursor: u64,
     pattern: &str,
     count: usize,
@@ -252,7 +247,7 @@ async fn scan_keys_batch(
 
 /// Fetch time series data for a batch of keys using async connection.
 async fn fetch_timeseries_async(
-    conn: &mut MultiplexedConnection,
+    conn: &mut ConnectionManager,
     keys: &[String],
     start: &str,
     end: &str,

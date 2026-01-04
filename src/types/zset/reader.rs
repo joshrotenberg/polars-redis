@@ -1,6 +1,6 @@
 //! Redis sorted set data fetching.
 
-use redis::aio::MultiplexedConnection;
+use redis::aio::ConnectionManager;
 
 use crate::error::Result;
 
@@ -14,10 +14,7 @@ pub struct ZSetData {
 }
 
 /// Fetch sorted set members for a batch of keys.
-pub async fn fetch_zsets(
-    conn: &mut MultiplexedConnection,
-    keys: &[String],
-) -> Result<Vec<ZSetData>> {
+pub async fn fetch_zsets(conn: &mut ConnectionManager, keys: &[String]) -> Result<Vec<ZSetData>> {
     if keys.is_empty() {
         return Ok(Vec::new());
     }

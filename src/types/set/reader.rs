@@ -1,6 +1,6 @@
 //! Redis set data fetching.
 
-use redis::aio::MultiplexedConnection;
+use redis::aio::ConnectionManager;
 
 use crate::error::Result;
 
@@ -14,7 +14,7 @@ pub struct SetData {
 }
 
 /// Fetch set members for a batch of keys.
-pub async fn fetch_sets(conn: &mut MultiplexedConnection, keys: &[String]) -> Result<Vec<SetData>> {
+pub async fn fetch_sets(conn: &mut ConnectionManager, keys: &[String]) -> Result<Vec<SetData>> {
     if keys.is_empty() {
         return Ok(Vec::new());
     }

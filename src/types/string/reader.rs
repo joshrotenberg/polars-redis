@@ -2,7 +2,7 @@
 //!
 //! This module provides functionality for reading Redis string values in batches.
 
-use redis::aio::MultiplexedConnection;
+use redis::aio::ConnectionManager;
 
 use crate::error::Result;
 
@@ -21,7 +21,7 @@ pub struct StringData {
 /// Returns data in the same order as the input keys.
 /// If a key doesn't exist, returns None for that key's value.
 pub async fn fetch_strings(
-    conn: &mut MultiplexedConnection,
+    conn: &mut ConnectionManager,
     keys: &[String],
 ) -> Result<Vec<StringData>> {
     if keys.is_empty() {

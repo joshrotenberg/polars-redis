@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use redis::aio::MultiplexedConnection;
+use redis::aio::ConnectionManager;
 
 use crate::error::Result;
 
@@ -25,7 +25,7 @@ pub struct HashData {
 /// Uses pipelining for efficiency. Returns data in the same order as the input keys.
 /// If a key doesn't exist or isn't a hash, returns an empty HashMap for that key.
 pub async fn fetch_hashes_all(
-    conn: &mut MultiplexedConnection,
+    conn: &mut ConnectionManager,
     keys: &[String],
     include_ttl: bool,
 ) -> Result<Vec<HashData>> {
@@ -65,7 +65,7 @@ pub async fn fetch_hashes_all(
 /// Uses pipelining for efficiency. Returns data in the same order as the input keys.
 /// Missing fields are represented as None.
 pub async fn fetch_hashes_fields(
-    conn: &mut MultiplexedConnection,
+    conn: &mut ConnectionManager,
     keys: &[String],
     fields: &[String],
     include_ttl: bool,
@@ -115,7 +115,7 @@ pub async fn fetch_hashes_fields(
 /// - Some(ttl) where ttl >= 0: key has TTL in seconds
 /// - Some(-1): key exists but has no expiry
 /// - Some(-2): key doesn't exist
-async fn fetch_ttls(conn: &mut MultiplexedConnection, keys: &[String]) -> Result<Vec<Option<i64>>> {
+async fn fetch_ttls(conn: &mut ConnectionManager, keys: &[String]) -> Result<Vec<Option<i64>>> {
     if keys.is_empty() {
         return Ok(Vec::new());
     }
@@ -134,7 +134,7 @@ async fn fetch_ttls(conn: &mut MultiplexedConnection, keys: &[String]) -> Result
 /// If `fields` is Some, uses HMGET to fetch only those fields.
 /// If `fields` is None, uses HGETALL to fetch all fields.
 pub async fn fetch_hashes(
-    conn: &mut MultiplexedConnection,
+    conn: &mut ConnectionManager,
     keys: &[String],
     fields: Option<&[String]>,
     include_ttl: bool,
