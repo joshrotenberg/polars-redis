@@ -40,6 +40,75 @@ impl InferredSchema {
             })
             .collect()
     }
+
+    /// Apply schema overwrite - merge user-specified types with inferred types.
+    ///
+    /// User-specified types take precedence over inferred types. Fields that
+    /// exist in the overwrite but not in the inferred schema are added.
+    ///
+    /// # Arguments
+    /// * `overwrite` - User-specified field types that override inferred types
+    ///
+    /// # Returns
+    /// A new `InferredSchema` with merged fields.
+    ///
+    /// # Example
+    /// ```
+    /// use polars_redis::infer::InferredSchema;
+    /// use polars_redis::schema::RedisType;
+    ///
+    /// let inferred = InferredSchema {
+    ///     fields: vec![
+    ///         ("name".to_string(), RedisType::Utf8),
+    ///         ("age".to_string(), RedisType::Utf8),  // Inferred as string
+    ///         ("score".to_string(), RedisType::Float64),
+    ///     ],
+    ///     sample_count: 10,
+    /// };
+    ///
+    /// // Override age to be Int64
+    /// let overwrite = vec![
+    ///     ("age".to_string(), RedisType::Int64),
+    /// ];
+    ///
+    /// let merged = inferred.with_overwrite(&overwrite);
+    /// // merged.fields now has age as Int64
+    /// ```
+    pub fn with_overwrite(self, overwrite: &[(String, RedisType)]) -> Self {
+        let overwrite_map: HashMap<&str, &RedisType> =
+            overwrite.iter().map(|(k, v)| (k.as_str(), v)).collect();
+
+        // Track which fields exist in the original schema
+        let existing_fields: HashSet<String> = self.fields.iter().map(|(k, _)| k.clone()).collect();
+
+        // Start with existing fields, applying overwrites
+        let mut fields: Vec<(String, RedisType)> = self
+            .fields
+            .into_iter()
+            .map(|(name, dtype)| {
+                if let Some(&override_type) = overwrite_map.get(name.as_str()) {
+                    (name, *override_type)
+                } else {
+                    (name, dtype)
+                }
+            })
+            .collect();
+
+        // Add any fields from overwrite that weren't in the inferred schema
+        for (name, dtype) in overwrite {
+            if !existing_fields.contains(name) {
+                fields.push((name.clone(), *dtype));
+            }
+        }
+
+        // Re-sort alphabetically
+        fields.sort_by(|a, b| a.0.cmp(&b.0));
+
+        Self {
+            fields,
+            sample_count: self.sample_count,
+        }
+    }
 }
 
 /// Infer schema from Redis hashes.
@@ -476,5 +545,103 @@ mod tests {
             infer_type_from_json_values(&values),
             RedisType::Utf8
         ));
+    }
+
+    #[test]
+    fn test_schema_overwrite_basic() {
+        let inferred = InferredSchema {
+            fields: vec![
+                ("age".to_string(), RedisType::Utf8),
+                ("name".to_string(), RedisType::Utf8),
+                ("score".to_string(), RedisType::Float64),
+            ],
+            sample_count: 10,
+        };
+
+        // Override age to Int64
+        let overwrite = vec![("age".to_string(), RedisType::Int64)];
+        let merged = inferred.with_overwrite(&overwrite);
+
+        assert_eq!(merged.fields.len(), 3);
+        assert_eq!(merged.sample_count, 10);
+
+        // Find age and verify it's Int64
+        let age_field = merged.fields.iter().find(|(n, _)| n == "age").unwrap();
+        assert!(matches!(age_field.1, RedisType::Int64));
+
+        // name should still be Utf8
+        let name_field = merged.fields.iter().find(|(n, _)| n == "name").unwrap();
+        assert!(matches!(name_field.1, RedisType::Utf8));
+    }
+
+    #[test]
+    fn test_schema_overwrite_adds_new_fields() {
+        let inferred = InferredSchema {
+            fields: vec![("name".to_string(), RedisType::Utf8)],
+            sample_count: 5,
+        };
+
+        // Add a field that wasn't inferred
+        let overwrite = vec![("extra_field".to_string(), RedisType::Int64)];
+        let merged = inferred.with_overwrite(&overwrite);
+
+        assert_eq!(merged.fields.len(), 2);
+
+        // extra_field should be added
+        let extra = merged
+            .fields
+            .iter()
+            .find(|(n, _)| n == "extra_field")
+            .unwrap();
+        assert!(matches!(extra.1, RedisType::Int64));
+    }
+
+    #[test]
+    fn test_schema_overwrite_empty() {
+        let inferred = InferredSchema {
+            fields: vec![
+                ("a".to_string(), RedisType::Utf8),
+                ("b".to_string(), RedisType::Int64),
+            ],
+            sample_count: 10,
+        };
+
+        let overwrite: Vec<(String, RedisType)> = vec![];
+        let merged = inferred.with_overwrite(&overwrite);
+
+        assert_eq!(merged.fields.len(), 2);
+    }
+
+    #[test]
+    fn test_schema_overwrite_multiple() {
+        let inferred = InferredSchema {
+            fields: vec![
+                ("a".to_string(), RedisType::Utf8),
+                ("b".to_string(), RedisType::Utf8),
+                ("c".to_string(), RedisType::Utf8),
+            ],
+            sample_count: 10,
+        };
+
+        let overwrite = vec![
+            ("a".to_string(), RedisType::Int64),
+            ("c".to_string(), RedisType::Boolean),
+            ("d".to_string(), RedisType::Float64),
+        ];
+        let merged = inferred.with_overwrite(&overwrite);
+
+        assert_eq!(merged.fields.len(), 4);
+
+        let a = merged.fields.iter().find(|(n, _)| n == "a").unwrap();
+        assert!(matches!(a.1, RedisType::Int64));
+
+        let b = merged.fields.iter().find(|(n, _)| n == "b").unwrap();
+        assert!(matches!(b.1, RedisType::Utf8));
+
+        let c = merged.fields.iter().find(|(n, _)| n == "c").unwrap();
+        assert!(matches!(c.1, RedisType::Boolean));
+
+        let d = merged.fields.iter().find(|(n, _)| n == "d").unwrap();
+        assert!(matches!(d.1, RedisType::Float64));
     }
 }

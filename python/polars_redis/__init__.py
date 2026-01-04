@@ -38,7 +38,9 @@ from polars_redis._internal import (
     PyStringBatchIterator,
     RedisScanner,
     py_infer_hash_schema,
+    py_infer_hash_schema_with_overwrite,
     py_infer_json_schema,
+    py_infer_json_schema_with_overwrite,
     py_write_hashes,
     py_write_json,
     py_write_strings,
@@ -93,6 +95,8 @@ __all__ = [
     "scan_keys",
     "infer_hash_schema",
     "infer_json_schema",
+    "infer_hash_schema_with_overwrite",
+    "infer_json_schema_with_overwrite",
     # Option classes
     "ScanOptions",
     "HashScanOptions",
@@ -1033,6 +1037,114 @@ def _fields_to_schema(fields: list[tuple[str, str]]) -> dict[str, type[pl.DataTy
         "datetime": pl.Datetime,
     }
     return {name: type_map.get(type_str, pl.Utf8) for name, type_str in fields}
+
+
+def _schema_to_overwrite(schema: dict) -> list[tuple[str, str]]:
+    """Convert Polars schema dict to overwrite format."""
+    result = []
+    for name, dtype in schema.items():
+        type_str = _polars_dtype_to_internal(dtype)
+        result.append((name, type_str))
+    return result
+
+
+def infer_hash_schema_with_overwrite(
+    url: str,
+    pattern: str = "*",
+    *,
+    schema_overwrite: dict | None = None,
+    sample_size: int = 100,
+    type_inference: bool = True,
+) -> dict[str, type[pl.DataType]]:
+    """Infer schema from Redis hashes with optional type overrides.
+
+    This function infers a schema by sampling Redis hashes, then applies
+    user-specified type overrides. This is useful when you want to infer
+    most fields but explicitly set types for specific ones.
+
+    Args:
+        url: Redis connection URL (e.g., "redis://localhost:6379").
+        pattern: Key pattern to match (e.g., "user:*").
+        schema_overwrite: Dictionary mapping field names to Polars dtypes
+            that override inferred types. Fields not in inferred schema
+            will be added.
+        sample_size: Maximum number of keys to sample (default: 100).
+        type_inference: Whether to infer types (default: True).
+            If False, all fields will be Utf8 before overwrites are applied.
+
+    Returns:
+        A dictionary mapping field names to Polars dtypes, suitable
+        for passing to scan_hashes() or read_hashes().
+
+    Example:
+        >>> # Infer schema but force 'age' to Int64 and 'created_at' to Datetime
+        >>> schema = infer_hash_schema_with_overwrite(
+        ...     "redis://localhost:6379",
+        ...     pattern="user:*",
+        ...     schema_overwrite={"age": pl.Int64, "created_at": pl.Datetime}
+        ... )
+        >>> print(schema)
+        {'age': Int64, 'created_at': Datetime, 'email': Utf8, 'name': Utf8}
+        >>> df = read_hashes(
+        ...     "redis://localhost:6379",
+        ...     pattern="user:*",
+        ...     schema=schema
+        ... )
+    """
+    overwrite_list = None
+    if schema_overwrite is not None:
+        overwrite_list = _schema_to_overwrite(schema_overwrite)
+
+    fields, _ = py_infer_hash_schema_with_overwrite(
+        url, pattern, overwrite_list, sample_size, type_inference
+    )
+    return _fields_to_schema(fields)
+
+
+def infer_json_schema_with_overwrite(
+    url: str,
+    pattern: str = "*",
+    *,
+    schema_overwrite: dict | None = None,
+    sample_size: int = 100,
+) -> dict[str, type[pl.DataType]]:
+    """Infer schema from RedisJSON documents with optional type overrides.
+
+    This function infers a schema by sampling RedisJSON documents, then applies
+    user-specified type overrides. This is useful when you want to infer
+    most fields but explicitly set types for specific ones.
+
+    Args:
+        url: Redis connection URL (e.g., "redis://localhost:6379").
+        pattern: Key pattern to match (e.g., "doc:*").
+        schema_overwrite: Dictionary mapping field names to Polars dtypes
+            that override inferred types. Fields not in inferred schema
+            will be added.
+        sample_size: Maximum number of keys to sample (default: 100).
+
+    Returns:
+        A dictionary mapping field names to Polars dtypes, suitable
+        for passing to scan_json() or read_json().
+
+    Example:
+        >>> # Infer schema but force 'timestamp' to Datetime
+        >>> schema = infer_json_schema_with_overwrite(
+        ...     "redis://localhost:6379",
+        ...     pattern="doc:*",
+        ...     schema_overwrite={"timestamp": pl.Datetime}
+        ... )
+        >>> df = read_json(
+        ...     "redis://localhost:6379",
+        ...     pattern="doc:*",
+        ...     schema=schema
+        ... )
+    """
+    overwrite_list = None
+    if schema_overwrite is not None:
+        overwrite_list = _schema_to_overwrite(schema_overwrite)
+
+    fields, _ = py_infer_json_schema_with_overwrite(url, pattern, overwrite_list, sample_size)
+    return _fields_to_schema(fields)
 
 
 def write_hashes(
