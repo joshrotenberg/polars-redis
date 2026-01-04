@@ -116,6 +116,7 @@ use pyo3::prelude::*;
 mod connection;
 mod error;
 mod infer;
+pub mod options;
 mod scanner;
 mod schema;
 #[cfg(feature = "search")]
@@ -126,6 +127,11 @@ mod write;
 pub use connection::RedisConnection;
 pub use error::{Error, Result};
 pub use infer::{InferredSchema, infer_hash_schema, infer_json_schema};
+pub use options::{
+    HashScanOptions, JsonScanOptions, KeyColumn, RowIndex, RowIndexColumn, ScanOptions,
+    StreamScanOptions, StringScanOptions, TimeSeriesScanOptions, TtlColumn, get_default_batch_size,
+    get_default_count_hint, get_default_timeout_ms,
+};
 pub use schema::{HashSchema, RedisType};
 pub use types::hash::{BatchConfig, HashBatchIterator};
 #[cfg(feature = "search")]
