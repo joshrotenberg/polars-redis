@@ -117,6 +117,8 @@ mod connection;
 mod error;
 mod infer;
 pub mod options;
+#[cfg(feature = "search")]
+pub mod query_builder;
 mod scanner;
 mod schema;
 #[cfg(feature = "search")]
@@ -132,6 +134,8 @@ pub use options::{
     StreamScanOptions, StringScanOptions, TimeSeriesScanOptions, TtlColumn, get_default_batch_size,
     get_default_count_hint, get_default_timeout_ms,
 };
+#[cfg(feature = "search")]
+pub use query_builder::{Predicate, PredicateBuilder, Value};
 pub use schema::{HashSchema, RedisType};
 pub use types::hash::{BatchConfig, HashBatchIterator};
 #[cfg(feature = "search")]
