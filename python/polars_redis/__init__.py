@@ -45,6 +45,15 @@ from polars_redis._internal import (
     scan_keys,
 )
 
+# RediSearch support (optional - requires search feature)
+try:
+    from polars_redis._internal import PyHashSearchIterator
+
+    _HAS_SEARCH = True
+except ImportError:
+    _HAS_SEARCH = False
+    PyHashSearchIterator = None  # type: ignore[misc, assignment]
+
 if TYPE_CHECKING:
     from polars import DataFrame, Expr
     from polars.type_aliases import SchemaDict
@@ -57,6 +66,7 @@ __all__ = [
     "scan_hashes",
     "scan_json",
     "scan_strings",
+    "search_hashes",
     "read_hashes",
     "read_json",
     "read_strings",
@@ -461,6 +471,168 @@ def scan_strings(
 
     return register_io_source(
         io_source=_string_source,
+        schema=polars_schema,
+    )
+
+
+def search_hashes(
+    url: str,
+    index: str,
+    query: str,
+    schema: dict | None = None,
+    *,
+    include_key: bool = True,
+    key_column_name: str = "_key",
+    include_ttl: bool = False,
+    ttl_column_name: str = "_ttl",
+    include_row_index: bool = False,
+    row_index_column_name: str = "_index",
+    batch_size: int = 1000,
+    sort_by: str | None = None,
+    sort_ascending: bool = True,
+) -> pl.LazyFrame:
+    """Search Redis hashes using RediSearch and return a LazyFrame.
+
+    This function uses RediSearch's FT.SEARCH command to perform server-side
+    filtering (predicate pushdown), which is much more efficient than scanning
+    all keys and filtering client-side.
+
+    Requires:
+        - RediSearch module installed on Redis server
+        - An existing RediSearch index on the hash data
+
+    Args:
+        url: Redis connection URL (e.g., "redis://localhost:6379").
+        index: RediSearch index name (e.g., "users_idx").
+        query: RediSearch query string (e.g., "@age:[30 +inf]", "*" for all).
+        schema: Dictionary mapping field names to Polars dtypes.
+        include_key: Whether to include the Redis key as a column.
+        key_column_name: Name of the key column (default: "_key").
+        include_ttl: Whether to include the TTL as a column.
+        ttl_column_name: Name of the TTL column (default: "_ttl").
+        include_row_index: Whether to include the row index as a column.
+        row_index_column_name: Name of the row index column (default: "_index").
+        batch_size: Number of documents to fetch per batch.
+        sort_by: Optional field name to sort results by.
+        sort_ascending: Sort direction (default: True for ascending).
+
+    Returns:
+        A Polars LazyFrame that will search Redis when collected.
+
+    Example:
+        >>> # Search for users over 30 years old
+        >>> lf = search_hashes(
+        ...     "redis://localhost:6379",
+        ...     index="users_idx",
+        ...     query="@age:[30 +inf]",
+        ...     schema={"name": pl.Utf8, "age": pl.Int64}
+        ... )
+        >>> df = lf.collect()
+
+        >>> # Search with sorting
+        >>> lf = search_hashes(
+        ...     "redis://localhost:6379",
+        ...     index="users_idx",
+        ...     query="@status:active",
+        ...     schema={"name": pl.Utf8, "score": pl.Float64},
+        ...     sort_by="score",
+        ...     sort_ascending=False
+        ... )
+        >>> top_users = lf.head(10).collect()
+
+    Raises:
+        RuntimeError: If RediSearch support is not available.
+    """
+    if not _HAS_SEARCH:
+        raise RuntimeError(
+            "RediSearch support is not available. "
+            "Ensure the 'search' feature is enabled when building polars-redis."
+        )
+
+    if schema is None:
+        raise ValueError("schema is required for search_hashes")
+
+    # Convert schema to internal format: list of (name, type_str) tuples
+    internal_schema = [(name, _polars_dtype_to_internal(dtype)) for name, dtype in schema.items()]
+
+    # Build the full Polars schema (for register_io_source)
+    polars_schema: SchemaDict = {}
+    if include_row_index:
+        polars_schema[row_index_column_name] = pl.UInt64
+    if include_key:
+        polars_schema[key_column_name] = pl.Utf8
+    if include_ttl:
+        polars_schema[ttl_column_name] = pl.Int64
+    for name, dtype in schema.items():
+        polars_schema[name] = dtype
+
+    def _search_source(
+        with_columns: list[str] | None,
+        predicate: Expr | None,
+        n_rows: int | None,
+        batch_size_hint: int | None,
+    ) -> Iterator[DataFrame]:
+        """Generator that yields DataFrames from RediSearch results."""
+        # Determine projection
+        projection = None
+        if with_columns is not None:
+            projection = [
+                c
+                for c in with_columns
+                if c in schema
+                or c == key_column_name
+                or c == ttl_column_name
+                or c == row_index_column_name
+            ]
+
+        # Use batch_size_hint if provided, otherwise use configured batch_size
+        effective_batch_size = batch_size_hint if batch_size_hint is not None else batch_size
+
+        # Create the iterator
+        iterator = PyHashSearchIterator(
+            url=url,
+            index=index,
+            query=query,
+            schema=internal_schema,
+            batch_size=effective_batch_size,
+            projection=projection,
+            include_key=include_key,
+            key_column_name=key_column_name,
+            include_ttl=include_ttl,
+            ttl_column_name=ttl_column_name,
+            include_row_index=include_row_index,
+            row_index_column_name=row_index_column_name,
+            max_rows=n_rows,
+            sort_by=sort_by,
+            sort_ascending=sort_ascending,
+        )
+
+        # Yield batches
+        while not iterator.is_done():
+            ipc_bytes = iterator.next_batch_ipc()
+            if ipc_bytes is None:
+                break
+
+            df = pl.read_ipc(ipc_bytes)
+
+            # Apply additional predicate filter if provided
+            # Note: The query parameter already does server-side filtering,
+            # but additional predicates can be applied client-side
+            if predicate is not None:
+                df = df.filter(predicate)
+
+            # Apply column selection if needed
+            if with_columns is not None:
+                available = [c for c in with_columns if c in df.columns]
+                if available:
+                    df = df.select(available)
+
+            # Don't yield empty batches
+            if len(df) > 0:
+                yield df
+
+    return register_io_source(
+        io_source=_search_source,
         schema=polars_schema,
     )
 

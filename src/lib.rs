@@ -118,6 +118,8 @@ mod error;
 mod infer;
 mod scanner;
 mod schema;
+#[cfg(feature = "search")]
+pub mod search;
 mod types;
 mod write;
 
@@ -126,6 +128,8 @@ pub use error::{Error, Result};
 pub use infer::{InferredSchema, infer_hash_schema, infer_json_schema};
 pub use schema::{HashSchema, RedisType};
 pub use types::hash::{BatchConfig, HashBatchIterator};
+#[cfg(feature = "search")]
+pub use types::hash::{HashSearchIterator, SearchBatchConfig};
 pub use types::json::{JsonBatchIterator, JsonSchema};
 pub use types::list::{ListBatchIterator, ListSchema};
 pub use types::set::{SetBatchIterator, SetSchema};
@@ -182,6 +186,8 @@ fn polars_redis_internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyZSetBatchIterator>()?;
     m.add_class::<PyStreamBatchIterator>()?;
     m.add_class::<PyTimeSeriesBatchIterator>()?;
+    #[cfg(feature = "search")]
+    m.add_class::<PyHashSearchIterator>()?;
     m.add_function(wrap_pyfunction!(scan_keys, m)?)?;
     m.add_function(wrap_pyfunction!(py_infer_hash_schema, m)?)?;
     m.add_function(wrap_pyfunction!(py_infer_json_schema, m)?)?;
@@ -398,6 +404,180 @@ impl PyHashBatchIterator {
     /// Get the number of rows yielded so far.
     fn rows_yielded(&self) -> usize {
         self.inner.rows_yielded()
+    }
+}
+
+#[cfg(all(feature = "python", feature = "search"))]
+/// Python wrapper for HashSearchIterator.
+///
+/// This class is used to iterate over RediSearch `FT.SEARCH` results
+/// and yield Arrow RecordBatches, enabling server-side filtering.
+#[pyclass]
+pub struct PyHashSearchIterator {
+    inner: HashSearchIterator,
+}
+
+#[cfg(all(feature = "python", feature = "search"))]
+#[pymethods]
+impl PyHashSearchIterator {
+    /// Create a new PyHashSearchIterator.
+    ///
+    /// # Arguments
+    /// * `url` - Redis connection URL
+    /// * `index` - RediSearch index name
+    /// * `query` - RediSearch query string (e.g., "@age:[30 +inf]", "*" for all)
+    /// * `schema` - List of (field_name, type_name) tuples
+    /// * `batch_size` - Documents per batch
+    /// * `projection` - Optional list of columns to fetch
+    /// * `include_key` - Whether to include the Redis key as a column
+    /// * `key_column_name` - Name of the key column
+    /// * `include_ttl` - Whether to include the TTL as a column
+    /// * `ttl_column_name` - Name of the TTL column
+    /// * `include_row_index` - Whether to include the row index as a column
+    /// * `row_index_column_name` - Name of the row index column
+    /// * `max_rows` - Optional maximum rows to return
+    /// * `sort_by` - Optional field to sort by
+    /// * `sort_ascending` - Sort direction (default: true)
+    #[new]
+    #[pyo3(signature = (
+        url,
+        index,
+        query,
+        schema,
+        batch_size = 1000,
+        projection = None,
+        include_key = true,
+        key_column_name = "_key".to_string(),
+        include_ttl = false,
+        ttl_column_name = "_ttl".to_string(),
+        include_row_index = false,
+        row_index_column_name = "_index".to_string(),
+        max_rows = None,
+        sort_by = None,
+        sort_ascending = true
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        url: String,
+        index: String,
+        query: String,
+        schema: Vec<(String, String)>,
+        batch_size: usize,
+        projection: Option<Vec<String>>,
+        include_key: bool,
+        key_column_name: String,
+        include_ttl: bool,
+        ttl_column_name: String,
+        include_row_index: bool,
+        row_index_column_name: String,
+        max_rows: Option<usize>,
+        sort_by: Option<String>,
+        sort_ascending: bool,
+    ) -> PyResult<Self> {
+        // Parse schema from Python types
+        let field_types: Vec<(String, RedisType)> = schema
+            .into_iter()
+            .map(|(name, type_str)| {
+                let redis_type = match type_str.to_lowercase().as_str() {
+                    "utf8" | "str" | "string" => RedisType::Utf8,
+                    "int64" | "int" | "integer" => RedisType::Int64,
+                    "float64" | "float" | "double" => RedisType::Float64,
+                    "bool" | "boolean" => RedisType::Boolean,
+                    _ => {
+                        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                            "Unknown type '{}' for field '{}'. Supported: utf8, int64, float64, bool",
+                            type_str, name
+                        )));
+                    }
+                };
+                Ok((name, redis_type))
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+
+        let hash_schema = HashSchema::new(field_types)
+            .with_key(include_key)
+            .with_key_column_name(key_column_name)
+            .with_ttl(include_ttl)
+            .with_ttl_column_name(ttl_column_name)
+            .with_row_index(include_row_index)
+            .with_row_index_column_name(row_index_column_name);
+
+        let mut config = SearchBatchConfig::new(index, query).with_batch_size(batch_size);
+
+        if let Some(max) = max_rows {
+            config = config.with_max_rows(max);
+        }
+
+        if let Some(field) = sort_by {
+            config = config.with_sort_by(field, sort_ascending);
+        }
+
+        let inner = HashSearchIterator::new(&url, hash_schema, config, projection)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        Ok(Self { inner })
+    }
+
+    /// Get the next batch as Arrow IPC bytes.
+    ///
+    /// Returns None when iteration is complete.
+    /// Returns the RecordBatch serialized as Arrow IPC format.
+    fn next_batch_ipc(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let batch = self
+            .inner
+            .next_batch()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        match batch {
+            Some(record_batch) => {
+                // Serialize to Arrow IPC format
+                let mut buf = Vec::new();
+                {
+                    let mut writer = arrow::ipc::writer::FileWriter::try_new(
+                        &mut buf,
+                        record_batch.schema().as_ref(),
+                    )
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to create IPC writer: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.write(&record_batch).map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to write batch: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.finish().map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to finish IPC: {}",
+                            e
+                        ))
+                    })?;
+                }
+
+                Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Check if iteration is complete.
+    fn is_done(&self) -> bool {
+        self.inner.is_done()
+    }
+
+    /// Get the number of rows yielded so far.
+    fn rows_yielded(&self) -> usize {
+        self.inner.rows_yielded()
+    }
+
+    /// Get the total number of matching documents (available after first batch).
+    fn total_results(&self) -> Option<usize> {
+        self.inner.total_results()
     }
 }
 
