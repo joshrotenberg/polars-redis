@@ -43,6 +43,7 @@ pyo3-build-config = "0.27"
 tokio-test = "0.4"
 proptest = "1.5"
 criterion = { version = "0.5", features = ["html_reports"] }
+docker-wrapper = { version = "0.8", features = ["template-redis"] }
 
 [[bench]]
 name = "benchmarks"
