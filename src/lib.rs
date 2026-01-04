@@ -197,6 +197,8 @@ fn polars_redis_internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(scan_keys, m)?)?;
     m.add_function(wrap_pyfunction!(py_infer_hash_schema, m)?)?;
     m.add_function(wrap_pyfunction!(py_infer_json_schema, m)?)?;
+    m.add_function(wrap_pyfunction!(py_infer_hash_schema_with_overwrite, m)?)?;
+    m.add_function(wrap_pyfunction!(py_infer_json_schema_with_overwrite, m)?)?;
     m.add_function(wrap_pyfunction!(py_write_hashes, m)?)?;
     m.add_function(wrap_pyfunction!(py_write_json, m)?)?;
     m.add_function(wrap_pyfunction!(py_write_strings, m)?)?;
@@ -1148,6 +1150,120 @@ fn py_infer_json_schema(
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
     Ok((schema.to_type_strings(), schema.sample_count))
+}
+
+#[cfg(feature = "python")]
+/// Infer schema from Redis hashes with optional schema overwrite.
+///
+/// This function infers a schema by sampling Redis hashes, then applies
+/// user-specified type overrides. This is useful when you want to infer
+/// most fields but override specific ones.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `pattern` - Key pattern to match
+/// * `schema_overwrite` - Optional list of (field_name, type_string) tuples to override
+/// * `sample_size` - Maximum number of keys to sample (default: 100)
+/// * `type_inference` - Whether to infer types (default: true)
+///
+/// # Returns
+/// A tuple of (fields, sample_count) where fields is a list of (name, type) tuples.
+///
+/// # Example
+/// ```python
+/// # Infer schema but force 'age' to be int64 and 'created_at' to be datetime
+/// schema, count = py_infer_hash_schema_with_overwrite(
+///     "redis://localhost",
+///     "user:*",
+///     [("age", "int64"), ("created_at", "datetime")],
+/// )
+/// ```
+#[pyfunction]
+#[pyo3(signature = (url, pattern, schema_overwrite = None, sample_size = 100, type_inference = true))]
+fn py_infer_hash_schema_with_overwrite(
+    url: &str,
+    pattern: &str,
+    schema_overwrite: Option<Vec<(String, String)>>,
+    sample_size: usize,
+    type_inference: bool,
+) -> PyResult<(Vec<(String, String)>, usize)> {
+    use crate::schema::RedisType;
+
+    let schema = infer_hash_schema(url, pattern, sample_size, type_inference)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    // Apply overwrite if provided
+    let final_schema = if let Some(overwrite) = schema_overwrite {
+        let overwrite_typed: Vec<(String, RedisType)> = overwrite
+            .into_iter()
+            .map(|(name, type_str)| {
+                let redis_type = match type_str.as_str() {
+                    "utf8" | "string" => RedisType::Utf8,
+                    "int64" | "integer" => RedisType::Int64,
+                    "float64" | "float" => RedisType::Float64,
+                    "bool" | "boolean" => RedisType::Boolean,
+                    "date" => RedisType::Date,
+                    "datetime" => RedisType::Datetime,
+                    _ => RedisType::Utf8,
+                };
+                (name, redis_type)
+            })
+            .collect();
+        schema.with_overwrite(&overwrite_typed)
+    } else {
+        schema
+    };
+
+    Ok((final_schema.to_type_strings(), final_schema.sample_count))
+}
+
+#[cfg(feature = "python")]
+/// Infer schema from RedisJSON documents with optional schema overwrite.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `pattern` - Key pattern to match
+/// * `schema_overwrite` - Optional list of (field_name, type_string) tuples to override
+/// * `sample_size` - Maximum number of keys to sample (default: 100)
+///
+/// # Returns
+/// A tuple of (fields, sample_count) where fields is a list of (name, type) tuples.
+#[pyfunction]
+#[pyo3(signature = (url, pattern, schema_overwrite = None, sample_size = 100))]
+fn py_infer_json_schema_with_overwrite(
+    url: &str,
+    pattern: &str,
+    schema_overwrite: Option<Vec<(String, String)>>,
+    sample_size: usize,
+) -> PyResult<(Vec<(String, String)>, usize)> {
+    use crate::schema::RedisType;
+
+    let schema = infer_json_schema(url, pattern, sample_size)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    // Apply overwrite if provided
+    let final_schema = if let Some(overwrite) = schema_overwrite {
+        let overwrite_typed: Vec<(String, RedisType)> = overwrite
+            .into_iter()
+            .map(|(name, type_str)| {
+                let redis_type = match type_str.as_str() {
+                    "utf8" | "string" => RedisType::Utf8,
+                    "int64" | "integer" => RedisType::Int64,
+                    "float64" | "float" => RedisType::Float64,
+                    "bool" | "boolean" => RedisType::Boolean,
+                    "date" => RedisType::Date,
+                    "datetime" => RedisType::Datetime,
+                    _ => RedisType::Utf8,
+                };
+                (name, redis_type)
+            })
+            .collect();
+        schema.with_overwrite(&overwrite_typed)
+    } else {
+        schema
+    };
+
+    Ok((final_schema.to_type_strings(), final_schema.sample_count))
 }
 
 #[cfg(feature = "python")]
