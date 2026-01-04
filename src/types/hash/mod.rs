@@ -10,5 +10,6 @@ mod search_iter;
 
 pub use batch_iter::{BatchConfig, HashBatchIterator};
 pub(crate) use reader::HashData;
+pub use reader::HashFetcher;
 #[cfg(feature = "search")]
 pub use search_iter::{HashSearchIterator, SearchBatchConfig};

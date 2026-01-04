@@ -139,7 +139,7 @@ pub use parallel::{FetchResult, KeyBatch, ParallelConfig, ParallelFetch};
 #[cfg(feature = "search")]
 pub use query_builder::{Predicate, PredicateBuilder, Value};
 pub use schema::{HashSchema, RedisType};
-pub use types::hash::{BatchConfig, HashBatchIterator};
+pub use types::hash::{BatchConfig, HashBatchIterator, HashFetcher};
 #[cfg(feature = "search")]
 pub use types::hash::{HashSearchIterator, SearchBatchConfig};
 pub use types::json::{JsonBatchIterator, JsonSchema};
