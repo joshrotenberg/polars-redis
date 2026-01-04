@@ -1,6 +1,20 @@
 name: Benchmarks
 
 on:
+  push:
+    branches: [master]
+    paths:
+      - "src/**"
+      - "benches/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  pull_request:
+    branches: [master]
+    paths:
+      - "src/**"
+      - "benches/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
   schedule:
     # Run daily at 2 AM UTC
     - cron: "0 2 * * *"
@@ -8,6 +22,10 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
   benchmarks:
@@ -31,11 +49,32 @@ jobs:
             ${{ runner.os }}-cargo-bench-
 
       - name: Run benchmarks
-        run: cargo bench --features search -- --noplot
+        run: cargo bench --bench benchmarks --features search -- --noplot --output-format bencher | tee output.txt
+
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: Rust Benchmarks
+          tool: cargo
+          output-file-path: output.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Only push to gh-pages on master
+          auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+          # Alert if performance regresses by more than 15%
+          alert-threshold: "115%"
+          # Comment on commit/PR when alert threshold exceeded
+          comment-on-alert: true
+          # Don't fail the workflow on regression (just warn)
+          fail-on-alert: false
+          # Store benchmark data in gh-pages branch
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: dev/bench
 
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-results
-          path: target/criterion
+          path: |
+            target/criterion
+            output.txt
           retention-days: 30
