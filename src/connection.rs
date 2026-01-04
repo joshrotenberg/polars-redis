@@ -2,7 +2,7 @@
 
 use crate::error::{Error, Result};
 use redis::Client;
-use redis::aio::MultiplexedConnection;
+use redis::aio::{ConnectionManager, MultiplexedConnection};
 
 /// Redis connection wrapper that manages connection lifecycle.
 pub struct RedisConnection {
@@ -28,6 +28,17 @@ impl RedisConnection {
     pub async fn get_async_connection(&self) -> Result<MultiplexedConnection> {
         self.client
             .get_multiplexed_async_connection()
+            .await
+            .map_err(Error::Connection)
+    }
+
+    /// Get a ConnectionManager for async operations with auto-reconnection.
+    ///
+    /// ConnectionManager is cheap to clone and provides automatic reconnection
+    /// on connection failures. Preferred over `get_async_connection()` for
+    /// long-running operations.
+    pub async fn get_connection_manager(&self) -> Result<ConnectionManager> {
+        ConnectionManager::new(self.client.clone())
             .await
             .map_err(Error::Connection)
     }

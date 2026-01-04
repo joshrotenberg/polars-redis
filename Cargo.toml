@@ -13,7 +13,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # Redis client
-redis = { version = "1.0", features = ["tokio-comp", "json", "cluster-async"] }
+redis = { version = "1.0", features = ["tokio-comp", "json", "cluster-async", "connection-manager"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
 
 # Polars / Arrow

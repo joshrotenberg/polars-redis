@@ -1,7 +1,7 @@
 //! Batch iterator for streaming Redis list data as Arrow RecordBatches.
 
 use arrow::array::RecordBatch;
-use redis::aio::MultiplexedConnection;
+use redis::aio::ConnectionManager;
 use tokio::runtime::Runtime;
 
 use super::convert::{ListSchema, lists_to_record_batch};
@@ -14,8 +14,8 @@ use crate::types::hash::BatchConfig;
 pub struct ListBatchIterator {
     /// Tokio runtime for async operations.
     runtime: Runtime,
-    /// Redis connection.
-    connection: RedisConnection,
+    /// Redis connection manager (cheap to clone, auto-reconnects).
+    conn: ConnectionManager,
     /// Schema for the list data.
     schema: ListSchema,
     /// Batch configuration.
@@ -40,10 +40,11 @@ impl ListBatchIterator {
         let runtime = Runtime::new()
             .map_err(|e| Error::Runtime(format!("Failed to create runtime: {}", e)))?;
         let connection = RedisConnection::new(url)?;
+        let conn = runtime.block_on(connection.get_connection_manager())?;
 
         Ok(Self {
             runtime,
-            connection,
+            conn,
             schema,
             config,
             cursor: 0,
@@ -127,16 +128,13 @@ impl ListBatchIterator {
 
     /// Scan more keys from Redis.
     fn scan_more_keys(&mut self) -> Result<()> {
-        let (new_cursor, keys) = self.runtime.block_on(async {
-            let mut conn = self.connection.get_async_connection().await?;
-            scan_keys_batch(
-                &mut conn,
-                self.cursor,
-                &self.config.pattern,
-                self.config.count_hint,
-            )
-            .await
-        })?;
+        let mut conn = self.conn.clone();
+        let (new_cursor, keys) = self.runtime.block_on(scan_keys_batch(
+            &mut conn,
+            self.cursor,
+            &self.config.pattern,
+            self.config.count_hint,
+        ))?;
 
         self.key_buffer.extend(keys);
         self.cursor = new_cursor;
@@ -147,10 +145,8 @@ impl ListBatchIterator {
 
     /// Fetch list data for a batch of keys.
     fn fetch_batch(&mut self, keys: &[String]) -> Result<Vec<ListData>> {
-        self.runtime.block_on(async {
-            let mut conn = self.connection.get_async_connection().await?;
-            fetch_lists(&mut conn, keys).await
-        })
+        let mut conn = self.conn.clone();
+        self.runtime.block_on(fetch_lists(&mut conn, keys))
     }
 
     /// Check if iteration is complete.
@@ -166,7 +162,7 @@ impl ListBatchIterator {
 
 /// Scan a batch of keys from Redis.
 async fn scan_keys_batch(
-    conn: &mut MultiplexedConnection,
+    conn: &mut ConnectionManager,
     cursor: u64,
     pattern: &str,
     count: usize,

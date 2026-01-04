@@ -6,7 +6,7 @@
 use std::collections::{HashMap, HashSet};
 
 use redis::AsyncCommands;
-use redis::aio::MultiplexedConnection;
+use redis::aio::ConnectionManager;
 use tokio::runtime::Runtime;
 
 use crate::connection::RedisConnection;
@@ -62,16 +62,19 @@ pub fn infer_hash_schema(
         Runtime::new().map_err(|e| Error::Runtime(format!("Failed to create runtime: {}", e)))?;
 
     let connection = RedisConnection::new(url)?;
+    let mut conn = runtime.block_on(connection.get_connection_manager())?;
 
-    runtime.block_on(async {
-        let mut conn = connection.get_async_connection().await?;
-        infer_hash_schema_async(&mut conn, pattern, sample_size, type_inference).await
-    })
+    runtime.block_on(infer_hash_schema_async(
+        &mut conn,
+        pattern,
+        sample_size,
+        type_inference,
+    ))
 }
 
 /// Async implementation of hash schema inference.
 async fn infer_hash_schema_async(
-    conn: &mut MultiplexedConnection,
+    conn: &mut ConnectionManager,
     pattern: &str,
     sample_size: usize,
     type_inference: bool,
@@ -147,16 +150,14 @@ pub fn infer_json_schema(url: &str, pattern: &str, sample_size: usize) -> Result
         Runtime::new().map_err(|e| Error::Runtime(format!("Failed to create runtime: {}", e)))?;
 
     let connection = RedisConnection::new(url)?;
+    let mut conn = runtime.block_on(connection.get_connection_manager())?;
 
-    runtime.block_on(async {
-        let mut conn = connection.get_async_connection().await?;
-        infer_json_schema_async(&mut conn, pattern, sample_size).await
-    })
+    runtime.block_on(infer_json_schema_async(&mut conn, pattern, sample_size))
 }
 
 /// Async implementation of JSON schema inference.
 async fn infer_json_schema_async(
-    conn: &mut MultiplexedConnection,
+    conn: &mut ConnectionManager,
     pattern: &str,
     sample_size: usize,
 ) -> Result<InferredSchema> {
@@ -231,7 +232,7 @@ async fn infer_json_schema_async(
 
 /// Scan for sample keys matching a pattern.
 async fn scan_sample_keys(
-    conn: &mut MultiplexedConnection,
+    conn: &mut ConnectionManager,
     pattern: &str,
     max_keys: usize,
 ) -> Result<Vec<String>> {

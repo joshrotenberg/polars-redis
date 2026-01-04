@@ -1,6 +1,6 @@
 //! Redis list data fetching.
 
-use redis::aio::MultiplexedConnection;
+use redis::aio::ConnectionManager;
 
 use crate::error::Result;
 
@@ -14,10 +14,7 @@ pub struct ListData {
 }
 
 /// Fetch list elements for a batch of keys.
-pub async fn fetch_lists(
-    conn: &mut MultiplexedConnection,
-    keys: &[String],
-) -> Result<Vec<ListData>> {
+pub async fn fetch_lists(conn: &mut ConnectionManager, keys: &[String]) -> Result<Vec<ListData>> {
     if keys.is_empty() {
         return Ok(Vec::new());
     }

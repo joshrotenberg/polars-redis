@@ -3,7 +3,7 @@
 //! This module provides functionality for reading RedisJSON documents in batches,
 //! with support for JSONPath projection.
 
-use redis::aio::MultiplexedConnection;
+use redis::aio::ConnectionManager;
 
 use crate::error::Result;
 
@@ -23,7 +23,7 @@ pub struct JsonData {
 /// Uses pipelining for efficiency. Returns data in the same order as the input keys.
 /// If a key doesn't exist or isn't a JSON document, returns None for that key.
 pub async fn fetch_json_all(
-    conn: &mut MultiplexedConnection,
+    conn: &mut ConnectionManager,
     keys: &[String],
     include_ttl: bool,
 ) -> Result<Vec<JsonData>> {
@@ -62,7 +62,7 @@ pub async fn fetch_json_all(
 /// This enables projection pushdown - only fetching the paths we need.
 /// Uses pipelining for efficiency.
 pub async fn fetch_json_paths(
-    conn: &mut MultiplexedConnection,
+    conn: &mut ConnectionManager,
     keys: &[String],
     paths: &[String],
     include_ttl: bool,
@@ -108,7 +108,7 @@ pub async fn fetch_json_paths(
 /// - Some(ttl) where ttl >= 0: key has TTL in seconds
 /// - Some(-1): key exists but has no expiry
 /// - Some(-2): key doesn't exist
-async fn fetch_ttls(conn: &mut MultiplexedConnection, keys: &[String]) -> Result<Vec<Option<i64>>> {
+async fn fetch_ttls(conn: &mut ConnectionManager, keys: &[String]) -> Result<Vec<Option<i64>>> {
     if keys.is_empty() {
         return Ok(Vec::new());
     }
@@ -127,7 +127,7 @@ async fn fetch_ttls(conn: &mut MultiplexedConnection, keys: &[String]) -> Result
 /// If `paths` is Some, uses JSON.GET with specific paths.
 /// If `paths` is None, uses JSON.GET $ to fetch the full document.
 pub async fn fetch_json(
-    conn: &mut MultiplexedConnection,
+    conn: &mut ConnectionManager,
     keys: &[String],
     paths: Option<&[String]>,
     include_ttl: bool,

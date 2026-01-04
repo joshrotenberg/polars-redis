@@ -4,7 +4,7 @@
 //! It handles SCAN iteration, batching, and conversion to Arrow format.
 
 use arrow::array::RecordBatch;
-use redis::aio::MultiplexedConnection;
+use redis::aio::ConnectionManager;
 use tokio::runtime::Runtime;
 
 use super::convert::hashes_to_record_batch;
@@ -69,8 +69,8 @@ impl BatchConfig {
 pub struct HashBatchIterator {
     /// Tokio runtime for async operations.
     runtime: Runtime,
-    /// Redis connection.
-    connection: RedisConnection,
+    /// Redis connection manager (cheap to clone, auto-reconnects).
+    conn: ConnectionManager,
     /// Schema for the hash data.
     schema: HashSchema,
     /// Batch configuration.
@@ -102,10 +102,11 @@ impl HashBatchIterator {
         let runtime = Runtime::new()
             .map_err(|e| Error::Runtime(format!("Failed to create runtime: {}", e)))?;
         let connection = RedisConnection::new(url)?;
+        let conn = runtime.block_on(connection.get_connection_manager())?;
 
         Ok(Self {
             runtime,
-            connection,
+            conn,
             schema,
             config,
             projection,
@@ -197,16 +198,13 @@ impl HashBatchIterator {
 
     /// Scan more keys from Redis.
     fn scan_more_keys(&mut self) -> Result<()> {
-        let (new_cursor, keys) = self.runtime.block_on(async {
-            let mut conn = self.connection.get_async_connection().await?;
-            scan_keys_batch(
-                &mut conn,
-                self.cursor,
-                &self.config.pattern,
-                self.config.count_hint,
-            )
-            .await
-        })?;
+        let mut conn = self.conn.clone();
+        let (new_cursor, keys) = self.runtime.block_on(scan_keys_batch(
+            &mut conn,
+            self.cursor,
+            &self.config.pattern,
+            self.config.count_hint,
+        ))?;
 
         self.key_buffer.extend(keys);
         self.cursor = new_cursor;
@@ -219,11 +217,10 @@ impl HashBatchIterator {
     fn fetch_batch(&mut self, keys: &[String]) -> Result<Vec<HashData>> {
         let projection = self.projection.as_deref();
         let include_ttl = self.schema.include_ttl();
+        let mut conn = self.conn.clone();
 
-        self.runtime.block_on(async {
-            let mut conn = self.connection.get_async_connection().await?;
-            fetch_hashes(&mut conn, keys, projection, include_ttl).await
-        })
+        self.runtime
+            .block_on(fetch_hashes(&mut conn, keys, projection, include_ttl))
     }
 
     /// Check if iteration is complete.
@@ -239,7 +236,7 @@ impl HashBatchIterator {
 
 /// Scan a batch of keys from Redis.
 async fn scan_keys_batch(
-    conn: &mut MultiplexedConnection,
+    conn: &mut ConnectionManager,
     cursor: u64,
     pattern: &str,
     count: usize,
