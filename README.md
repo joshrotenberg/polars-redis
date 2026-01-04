@@ -3,6 +3,11 @@
 Query Redis like a database. Transform with Polars. Write back without ETL.
 
 [![CI](https://github.com/joshrotenberg/polars-redis/actions/workflows/ci.yml/badge.svg)](https://github.com/joshrotenberg/polars-redis/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/polars-redis.svg)](https://pypi.org/project/polars-redis/)
+[![Crates.io](https://img.shields.io/crates/v/polars-redis.svg)](https://crates.io/crates/polars-redis)
+[![Downloads](https://img.shields.io/pypi/dm/polars-redis.svg)](https://pypi.org/project/polars-redis/)
+[![Python](https://img.shields.io/pypi/pyversions/polars-redis.svg)](https://pypi.org/project/polars-redis/)
+[![Docs](https://img.shields.io/badge/docs-mkdocs-blue.svg)](https://joshrotenberg.github.io/polars-redis/)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
 
 ## What is polars-redis?

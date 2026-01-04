@@ -1,8 +1,112 @@
-//! polars-redis: Redis IO plugin for Polars
+//! # polars-redis
 //!
-//! This crate provides a Polars IO plugin that enables scanning Redis data structures
-//! (hashes, JSON documents, strings) as LazyFrames, with support for projection pushdown,
-//! predicate pushdown, and batched iteration.
+//! Query Redis like a database. Transform with Polars. Write back without ETL.
+//!
+//! This crate provides a Redis IO plugin for [Polars](https://pola.rs/), enabling you to
+//! scan Redis data structures as Arrow RecordBatches with support for projection pushdown
+//! and batched iteration.
+//!
+//! ## Supported Redis Types
+//!
+//! | Type | Read | Write | Description |
+//! |------|------|-------|-------------|
+//! | Hash | Yes | Yes | Field-level projection pushdown |
+//! | JSON | Yes | Yes | RedisJSON documents |
+//! | String | Yes | Yes | Simple key-value pairs |
+//! | Set | Yes | Yes | Unique members |
+//! | List | Yes | Yes | Ordered elements |
+//! | Sorted Set | Yes | Yes | Members with scores |
+//! | Stream | Yes | No | Timestamped entries |
+//! | TimeSeries | Yes | No | Server-side aggregation |
+//!
+//! ## Quick Start
+//!
+//! ### Reading Hashes
+//!
+//! ```no_run
+//! use polars_redis::{HashBatchIterator, HashSchema, BatchConfig, RedisType};
+//!
+//! // Define schema for hash fields
+//! let schema = HashSchema::new(vec![
+//!     ("name".to_string(), RedisType::Utf8),
+//!     ("age".to_string(), RedisType::Int64),
+//!     ("active".to_string(), RedisType::Boolean),
+//! ])
+//! .with_key(true)
+//! .with_key_column_name("_key".to_string());
+//!
+//! // Configure batch iteration
+//! let config = BatchConfig::new("user:*".to_string())
+//!     .with_batch_size(1000)
+//!     .with_count_hint(100);
+//!
+//! // Create iterator
+//! let mut iterator = HashBatchIterator::new(
+//!     "redis://localhost:6379",
+//!     schema,
+//!     config,
+//!     None, // projection
+//! ).unwrap();
+//!
+//! // Iterate over batches
+//! while let Some(batch) = iterator.next_batch().unwrap() {
+//!     println!("Got {} rows", batch.num_rows());
+//! }
+//! ```
+//!
+//! ### Writing Hashes
+//!
+//! ```no_run
+//! use polars_redis::{write_hashes, WriteMode};
+//!
+//! let keys = vec!["user:1".to_string(), "user:2".to_string()];
+//! let fields = vec!["name".to_string(), "age".to_string()];
+//! let values = vec![
+//!     vec![Some("Alice".to_string()), Some("30".to_string())],
+//!     vec![Some("Bob".to_string()), Some("25".to_string())],
+//! ];
+//!
+//! let result = write_hashes(
+//!     "redis://localhost:6379",
+//!     keys,
+//!     fields,
+//!     values,
+//!     Some(3600), // TTL in seconds
+//!     WriteMode::Replace,
+//! ).unwrap();
+//!
+//! println!("Wrote {} keys", result.keys_written);
+//! ```
+//!
+//! ### Schema Inference
+//!
+//! ```no_run
+//! use polars_redis::infer_hash_schema;
+//!
+//! // Sample keys to infer schema
+//! let schema = infer_hash_schema(
+//!     "redis://localhost:6379",
+//!     "user:*",
+//!     100,  // sample size
+//!     true, // type inference
+//! ).unwrap();
+//!
+//! for (name, dtype) in schema.fields {
+//!     println!("{}: {:?}", name, dtype);
+//! }
+//! ```
+//!
+//! ## Python Bindings
+//!
+//! This crate also provides Python bindings via PyO3 when built with the `python` feature.
+//! The Python package `polars-redis` wraps these bindings with a high-level API.
+//!
+//! ## Features
+//!
+//! - `python` - Enable Python bindings (PyO3)
+//! - `json` - Enable RedisJSON support (enabled by default)
+//! - `search` - Enable RediSearch support (enabled by default)
+//! - `cluster` - Enable Redis Cluster support
 
 #[cfg(feature = "python")]
 use arrow::datatypes::DataType;
