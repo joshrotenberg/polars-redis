@@ -100,6 +100,7 @@ impl From<BatchConfig> for ScanOptions {
             batch_size: config.batch_size,
             count_hint: config.count_hint,
             n_rows: config.max_rows,
+            parallel: Default::default(),
         }
     }
 }

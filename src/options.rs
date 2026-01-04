@@ -20,6 +20,87 @@
 
 use std::sync::LazyLock;
 
+// ============================================================================
+// Parallel processing configuration
+// ============================================================================
+
+/// Strategy for parallel processing of Redis operations.
+///
+/// Controls how batch fetching is parallelized to improve throughput
+/// on large datasets.
+///
+/// # Example
+///
+/// ```ignore
+/// use polars_redis::options::{ScanOptions, ParallelStrategy};
+///
+/// // Use 4 parallel workers for batch fetching
+/// let opts = ScanOptions::new("user:*")
+///     .with_parallel(ParallelStrategy::Batches(4));
+///
+/// // Let the library choose based on dataset size
+/// let opts = ScanOptions::new("user:*")
+///     .with_parallel(ParallelStrategy::Auto);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ParallelStrategy {
+    /// Sequential processing (default, current behavior).
+    ///
+    /// Keys are scanned and fetched one batch at a time.
+    /// Best for small datasets or when ordering matters.
+    #[default]
+    None,
+
+    /// Parallel batch fetching with N workers.
+    ///
+    /// A single SCAN operation feeds keys to N parallel fetch workers.
+    /// Each worker fetches data for a subset of keys concurrently.
+    ///
+    /// Recommended values: 2-8 workers depending on Redis server capacity.
+    Batches(usize),
+
+    /// Automatically select strategy based on hints.
+    ///
+    /// - Uses `None` for small datasets (< 1000 keys)
+    /// - Uses `Batches(4)` for larger datasets
+    Auto,
+}
+
+impl ParallelStrategy {
+    /// Create a parallel strategy with the given number of workers.
+    pub fn batches(n: usize) -> Self {
+        ParallelStrategy::Batches(n.max(1))
+    }
+
+    /// Check if this strategy enables parallel processing.
+    pub fn is_parallel(&self) -> bool {
+        !matches!(self, ParallelStrategy::None)
+    }
+
+    /// Get the number of workers for this strategy.
+    ///
+    /// Returns 1 for `None`, the specified count for `Batches`,
+    /// and a default of 4 for `Auto`.
+    pub fn worker_count(&self) -> usize {
+        match self {
+            ParallelStrategy::None => 1,
+            ParallelStrategy::Batches(n) => *n,
+            ParallelStrategy::Auto => 4, // Default for auto
+        }
+    }
+
+    /// Resolve `Auto` strategy based on estimated key count.
+    pub fn resolve(&self, estimated_keys: Option<usize>) -> ParallelStrategy {
+        match self {
+            ParallelStrategy::Auto => match estimated_keys {
+                Some(n) if n < 1000 => ParallelStrategy::None,
+                _ => ParallelStrategy::Batches(4),
+            },
+            other => *other,
+        }
+    }
+}
+
 /// Row index configuration, matching polars-io pattern.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RowIndex {
@@ -65,6 +146,8 @@ pub struct ScanOptions {
     pub count_hint: usize,
     /// Maximum total rows to return (None for unlimited).
     pub n_rows: Option<usize>,
+    /// Parallel processing strategy.
+    pub parallel: ParallelStrategy,
 }
 
 impl Default for ScanOptions {
@@ -74,6 +157,7 @@ impl Default for ScanOptions {
             batch_size: get_default_batch_size(),
             count_hint: get_default_count_hint(),
             n_rows: None,
+            parallel: ParallelStrategy::None,
         }
     }
 }
@@ -102,6 +186,12 @@ impl ScanOptions {
     /// Set the maximum number of rows to return.
     pub fn with_n_rows(mut self, n: usize) -> Self {
         self.n_rows = Some(n);
+        self
+    }
+
+    /// Set the parallel processing strategy.
+    pub fn with_parallel(mut self, strategy: ParallelStrategy) -> Self {
+        self.parallel = strategy;
         self
     }
 }
@@ -902,12 +992,45 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_parallel_strategy_default() {
+        let strategy = ParallelStrategy::default();
+        assert_eq!(strategy, ParallelStrategy::None);
+        assert!(!strategy.is_parallel());
+        assert_eq!(strategy.worker_count(), 1);
+    }
+
+    #[test]
+    fn test_parallel_strategy_batches() {
+        let strategy = ParallelStrategy::batches(4);
+        assert_eq!(strategy, ParallelStrategy::Batches(4));
+        assert!(strategy.is_parallel());
+        assert_eq!(strategy.worker_count(), 4);
+
+        // Ensure at least 1 worker
+        let min_strategy = ParallelStrategy::batches(0);
+        assert_eq!(min_strategy.worker_count(), 1);
+    }
+
+    #[test]
+    fn test_parallel_strategy_auto() {
+        let strategy = ParallelStrategy::Auto;
+        assert!(strategy.is_parallel());
+        assert_eq!(strategy.worker_count(), 4); // Default for auto
+
+        // Resolve based on key count
+        assert_eq!(strategy.resolve(Some(500)), ParallelStrategy::None);
+        assert_eq!(strategy.resolve(Some(5000)), ParallelStrategy::Batches(4));
+        assert_eq!(strategy.resolve(None), ParallelStrategy::Batches(4));
+    }
+
+    #[test]
     fn test_scan_options_default() {
         let opts = ScanOptions::default();
         assert_eq!(opts.pattern, "*");
         assert_eq!(opts.batch_size, get_default_batch_size());
         assert_eq!(opts.count_hint, get_default_count_hint());
         assert!(opts.n_rows.is_none());
+        assert_eq!(opts.parallel, ParallelStrategy::None);
     }
 
     #[test]
@@ -915,12 +1038,14 @@ mod tests {
         let opts = ScanOptions::new("user:*")
             .with_batch_size(500)
             .with_count_hint(50)
-            .with_n_rows(1000);
+            .with_n_rows(1000)
+            .with_parallel(ParallelStrategy::Batches(4));
 
         assert_eq!(opts.pattern, "user:*");
         assert_eq!(opts.batch_size, 500);
         assert_eq!(opts.count_hint, 50);
         assert_eq!(opts.n_rows, Some(1000));
+        assert_eq!(opts.parallel, ParallelStrategy::Batches(4));
     }
 
     #[test]
