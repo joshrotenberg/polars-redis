@@ -65,6 +65,44 @@ lf = redis.scan_hashes(
 - **Low values (10-50)**: More SCAN iterations, lower memory per iteration
 - **High values (500-1000)**: Fewer iterations, higher throughput
 
+## Parallel Fetching
+
+The `parallel` parameter enables parallel data fetching with multiple workers:
+
+```python
+lf = redis.scan_hashes(
+    url,
+    pattern="user:*",
+    schema=schema,
+    parallel=4,  # Use 4 parallel workers
+)
+```
+
+Each batch of keys is split across workers, with results collected in order.
+
+### Tuning Guidelines
+
+| Workers | Use Case |
+|---------|----------|
+| `None` (default) | Small datasets, simple queries |
+| 2-4 | Medium datasets, local Redis |
+| 4-8 | Large datasets, remote Redis with higher latency |
+
+!!! note
+    Parallel fetching uses multiple Redis connections. Ensure your Redis server and connection pool can handle the additional concurrent connections.
+
+### When to Use Parallel Fetching
+
+- **Large datasets**: Thousands of keys
+- **High-latency connections**: Remote Redis servers
+- **CPU-bound parsing**: Complex schemas with many fields
+
+### When NOT to Use
+
+- **Small datasets**: Overhead exceeds benefit
+- **Connection-limited environments**: Limited connection pool
+- **Already saturated Redis**: Adding connections won't help
+
 ## Write Pipelining
 
 Write operations automatically use Redis pipelining with batches of 1000 keys:

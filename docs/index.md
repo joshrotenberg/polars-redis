@@ -47,6 +47,11 @@ redis.write_hashes(high_value, url, key_prefix="whale:")
     - Hashes, JSON documents, strings, sets, lists, sorted sets, streams, and time series
     - Projection pushdown (only fetch requested fields)
     - Batched iteration for memory efficiency
+    - Parallel fetching for improved throughput
+- **RediSearch integration** for predicate pushdown
+    - `search_hashes()` - Server-side filtering with FT.SEARCH
+    - `aggregate_hashes()` - Server-side aggregation with FT.AGGREGATE
+    - Polars-like query builder: `col("age") > 30`
 - **Write DataFrames** to Redis
     - Hashes, JSON documents, strings, sets, lists, and sorted sets
     - Write modes: fail, replace, append

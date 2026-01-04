@@ -32,6 +32,7 @@ lf = redis.scan_hashes(
 | `row_index_column_name` | str | `"_index"` | Name of index column |
 | `batch_size` | int | `1000` | Keys per batch |
 | `count_hint` | int | `100` | Redis SCAN COUNT hint |
+| `parallel` | int | `None` | Number of parallel workers for fetching |
 
 ### Supported Types
 
@@ -376,3 +377,43 @@ lf = redis.scan_hashes(
 
 - `batch_size`: Controls memory usage and Arrow batch size
 - `count_hint`: Hint to Redis for keys per SCAN iteration
+
+## Parallel Fetching
+
+Speed up large scans by fetching data with multiple parallel workers:
+
+```python
+lf = redis.scan_hashes(
+    "redis://localhost:6379",
+    pattern="user:*",
+    schema={"name": pl.Utf8, "age": pl.Int64},
+    parallel=4,  # Use 4 parallel workers
+)
+```
+
+Each batch is split across workers, with results collected in order. This is most effective for:
+
+- Large datasets (thousands of keys)
+- High-latency connections
+- Batch sizes larger than the worker count
+
+!!! note
+    Parallel fetching uses multiple Redis connections. Ensure your Redis server can handle the additional concurrent connections.
+
+## RediSearch: Server-Side Filtering
+
+For even better performance, use RediSearch to filter data in Redis before transfer:
+
+```python
+from polars_redis import col
+
+# Only matching documents are transferred
+df = redis.search_hashes(
+    "redis://localhost:6379",
+    index="users_idx",
+    query=(col("age") > 30) & (col("status") == "active"),
+    schema={"name": pl.Utf8, "age": pl.Int64, "status": pl.Utf8},
+).collect()
+```
+
+See the [RediSearch Guide](redisearch.md) for details on `search_hashes()`, `aggregate_hashes()`, and the query builder.
