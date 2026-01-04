@@ -160,12 +160,62 @@ impl JsonBatchIterator {
 
     /// Fetch JSON data for a batch of keys.
     fn fetch_batch(&mut self, keys: &[String]) -> Result<Vec<JsonData>> {
-        let projection = self.projection.as_deref();
         let include_ttl = self.schema.include_ttl();
-        let mut conn = self.conn.clone();
+        let worker_count = self.config.parallel.worker_count();
 
-        self.runtime
-            .block_on(fetch_json(&mut conn, keys, projection, include_ttl))
+        // Use parallel fetching if configured
+        if worker_count > 1 && keys.len() > worker_count {
+            self.fetch_batch_parallel(keys, include_ttl, worker_count)
+        } else {
+            let projection = self.projection.as_deref();
+            let mut conn = self.conn.clone();
+            self.runtime
+                .block_on(fetch_json(&mut conn, keys, projection, include_ttl))
+        }
+    }
+
+    /// Fetch JSON data in parallel using multiple workers.
+    fn fetch_batch_parallel(
+        &mut self,
+        keys: &[String],
+        include_ttl: bool,
+        worker_count: usize,
+    ) -> Result<Vec<JsonData>> {
+        // Split keys into chunks for parallel processing
+        let chunk_size = keys.len().div_ceil(worker_count);
+        let chunks: Vec<Vec<String>> = keys.chunks(chunk_size).map(|c| c.to_vec()).collect();
+
+        // Clone what we need before the async block
+        let conn = self.conn.clone();
+        let projection_owned: Option<Vec<String>> = self.projection.clone();
+
+        self.runtime.block_on(async {
+            let mut handles = Vec::with_capacity(chunks.len());
+
+            for chunk in chunks {
+                let mut conn = conn.clone();
+                let proj = projection_owned.clone();
+
+                let handle = tokio::spawn(async move {
+                    fetch_json(&mut conn, &chunk, proj.as_deref(), include_ttl).await
+                });
+                handles.push(handle);
+            }
+
+            // Collect results in order
+            let mut all_data = Vec::with_capacity(keys.len());
+            for handle in handles {
+                match handle.await {
+                    Ok(Ok(data)) => all_data.extend(data),
+                    Ok(Err(e)) => return Err(e),
+                    Err(e) => {
+                        return Err(Error::Runtime(format!("Task join error: {}", e)));
+                    }
+                }
+            }
+
+            Ok(all_data)
+        })
     }
 
     /// Check if iteration is complete.
