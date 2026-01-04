@@ -1,0 +1,754 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>polars-redis - A Polars IO Plugin for Redis</title>
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/reveal.js@4/dist/reset.css"
+        />
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/reveal.js@4/dist/reveal.css"
+        />
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/reveal.js@4/dist/theme/black.css"
+        />
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/monokai.min.css"
+        />
+        <style>
+            .reveal h1,
+            .reveal h2,
+            .reveal h3 {
+                text-transform: none;
+            }
+            .reveal pre {
+                width: 100%;
+                font-size: 0.48em;
+                box-shadow: none;
+            }
+            .reveal code {
+                background: #1e1e1e;
+                padding: 0.1em 0.3em;
+                border-radius: 4px;
+            }
+            .reveal pre code {
+                padding: 0.8em 1em;
+                max-height: 500px;
+            }
+            .polars-blue {
+                color: #4b8bbe;
+            }
+            .redis-red {
+                color: #dc382d;
+            }
+            .green {
+                color: #98c379;
+            }
+            .orange {
+                color: #e5c07b;
+            }
+            .reveal section {
+                text-align: left;
+            }
+            .reveal section.center {
+                text-align: center;
+            }
+            .reveal ul {
+                margin-left: 0.5em;
+                font-size: 0.85em;
+            }
+            .reveal li {
+                margin-bottom: 0.3em;
+            }
+            .reveal .small {
+                font-size: 0.65em;
+            }
+            .reveal .tiny {
+                font-size: 0.55em;
+            }
+            .reveal .columns {
+                display: flex;
+                gap: 1em;
+            }
+            .reveal .column {
+                flex: 1;
+            }
+            .reveal h2 {
+                font-size: 1.4em;
+                margin-bottom: 0.5em;
+            }
+            .reveal p {
+                font-size: 0.8em;
+                margin: 0.3em 0;
+            }
+            .hljs {
+                background: #1e1e1e;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="reveal">
+            <div class="slides">
+                <!-- Title -->
+                <section class="center">
+                    <h1>
+                        <span class="polars-blue">polars</span>-<span
+                            class="redis-red"
+                            >redis</span
+                        >
+                    </h1>
+                    <h3>A Polars IO Plugin for Redis</h3>
+                    <p>Scan, query, and write Redis data as DataFrames</p>
+                    <p class="small" style="margin-top: 2em">
+                        github.com/joshrotenberg/polars-redis
+                    </p>
+                </section>
+
+                <!-- The Problem -->
+                <section>
+                    <h2>The Problem</h2>
+                    <pre><code class="language-python"># Typical pattern: Fetch everything, process in app
+keys = redis.scan_iter("user:*")                      # Iterate all keys
+users = []
+for key in keys:
+    data = redis.hgetall(key)                         # N+1 queries
+    users.append(data)
+
+df = pd.DataFrame(users)                              # Manual conversion
+df["age"] = df["age"].astype(int)                     # Manual type coercion
+df["score"] = df["score"].astype(float)
+active = df[df["status"] == "active"]                 # Filter in Python
+result = active.groupby("department")["score"].mean() # Aggregate in Python</code></pre>
+                    <ul>
+                        <li>
+                            <span class="redis-red"
+                                >N+1 queries for N keys</span
+                            >
+                        </li>
+                        <li>
+                            <span class="redis-red"
+                                >Manual type conversion</span
+                            >
+                        </li>
+                        <li>
+                            <span class="redis-red"
+                                >All data transferred, then filtered
+                                client-side</span
+                            >
+                        </li>
+                        <li>
+                            <span class="redis-red"
+                                >No native DataFrame integration</span
+                            >
+                        </li>
+                    </ul>
+                </section>
+
+                <!-- The Solution -->
+                <section>
+                    <h2>The Solution</h2>
+                    <pre><code class="language-python">import polars as pl
+import polars_redis as pr
+
+# One call, proper types, batched operations
+df = pr.scan_hashes(
+    "redis://localhost:6379",
+    "user:*",
+    schema={"name": "utf8", "age": "int64", "score": "float64", "department": "utf8"}
+).collect()
+
+# With RediSearch: filter in Redis, not Python
+df = pr.search_hashes(
+    "redis://localhost:6379",
+    index="users_idx",
+    query="@status:{active}",
+    schema={"name": "utf8", "department": "utf8", "score": "float64"}
+)</code></pre>
+                    <ul>
+                        <li>
+                            <span class="green"
+                                >Batched async operations (configurable batch
+                                size)</span
+                            >
+                        </li>
+                        <li>
+                            <span class="green"
+                                >Automatic schema inference or explicit
+                                types</span
+                            >
+                        </li>
+                        <li>
+                            <span class="green"
+                                >Server-side filtering with RediSearch</span
+                            >
+                        </li>
+                        <li>
+                            <span class="green"
+                                >Native Polars LazyFrame integration</span
+                            >
+                        </li>
+                    </ul>
+                </section>
+
+                <!-- What is polars-redis? -->
+                <section>
+                    <h2>What is polars-redis?</h2>
+                    <div class="columns">
+                        <div class="column">
+                            <h3 class="polars-blue">Polars IO Plugin</h3>
+                            <ul>
+                                <li>Native integration with Polars</li>
+                                <li>LazyFrame support</li>
+                                <li>Zero-copy Arrow conversion</li>
+                                <li>Rust core with Python bindings</li>
+                            </ul>
+                        </div>
+                        <div class="column">
+                            <h3 class="redis-red">Redis Data Access</h3>
+                            <ul>
+                                <li>Scan Hashes and JSON</li>
+                                <li>Write DataFrames back</li>
+                                <li>RediSearch FT.SEARCH</li>
+                                <li>RediSearch FT.AGGREGATE</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Scanning Hashes -->
+                <section>
+                    <h2>Scanning Hashes</h2>
+                    <pre><code class="language-python"># Basic scan with explicit schema
+df = pr.scan_hashes(
+    "redis://localhost:6379",
+    "product:*",
+    schema={
+        "name": "utf8",
+        "price": "float64",
+        "quantity": "int64",
+        "in_stock": "bool"
+    }
+).collect()
+
+# With schema inference (samples keys to detect types)
+df = pr.scan_hashes(
+    "redis://localhost:6379",
+    "product:*",
+    infer_schema=True,
+    infer_schema_length=100  # Sample 100 keys
+).collect()
+
+# Include the Redis key as a column
+df = pr.scan_hashes(
+    "redis://localhost:6379",
+    "product:*",
+    schema={"name": "utf8", "price": "float64"},
+    with_key=True,
+    key_column="_key"
+).collect()</code></pre>
+                </section>
+
+                <!-- Schema Inference -->
+                <section>
+                    <h2>Schema Inference</h2>
+                    <pre><code class="language-python"># Let polars-redis figure out the types
+df = pr.scan_hashes(
+    "redis://localhost:6379",
+    "event:*",
+    infer_schema=True,
+    infer_schema_length=50  # Sample size
+).collect()</code></pre>
+                    <div class="columns">
+                        <div class="column">
+                            <h3 class="orange">Detected Types</h3>
+                            <pre><code class="language-text">Int64    "42", "-100", "0"
+Float64  "3.14", "-0.5", "1e10"
+Bool     "true", "false", "1", "0"
+Utf8     everything else</code></pre>
+                        </div>
+                        <div class="column">
+                            <h3 class="green">Explicit Schema</h3>
+                            <pre><code class="language-python">schema = {
+    "id": "int64",
+    "name": "utf8",
+    "score": "float64",
+    "active": "bool"
+}</code></pre>
+                        </div>
+                    </div>
+                    <p class="small" style="margin-top: 0.5em">
+                        <span class="orange">Tip:</span> Use explicit schema in
+                        production for consistency
+                    </p>
+                </section>
+
+                <!-- Writing Data -->
+                <section>
+                    <h2>Writing Data</h2>
+                    <pre><code class="language-python"># Create a DataFrame
+df = pl.DataFrame({
+    "id": [1, 2, 3],
+    "name": ["alice", "bob", "charlie"],
+    "score": [95.5, 87.3, 92.1],
+    "active": [True, True, False]
+})
+
+# Write as Redis hashes
+pr.write_hashes(
+    "redis://localhost:6379",
+    df,
+    key_column="id",       # Use 'id' column for key generation
+    key_prefix="user:"     # Creates user:1, user:2, user:3
+)
+
+# Verify
+redis-cli HGETALL user:1
+# 1) "name"
+# 2) "alice"
+# 3) "score"
+# 4) "95.5"
+# 5) "active"
+# 6) "true"</code></pre>
+                </section>
+
+                <!-- RediSearch: FT.SEARCH -->
+                <section>
+                    <h2>RediSearch: Server-Side Filtering</h2>
+                    <pre><code class="language-bash"># First, create an index (one-time setup)
+FT.CREATE users_idx ON HASH PREFIX 1 user: SCHEMA \
+    name TEXT SORTABLE \
+    age NUMERIC SORTABLE \
+    department TAG \
+    salary NUMERIC</code></pre>
+                    <pre><code class="language-python"># Query with predicate pushdown - filtering happens in Redis
+df = pr.search_hashes(
+    "redis://localhost:6379",
+    index="users_idx",
+    query="@age:[25 50] @department:{engineering|product}",
+    schema={"name": "utf8", "age": "int64", "department": "utf8", "salary": "float64"}
+)
+
+# Only matching documents are transferred!
+# Compare to scanning ALL user:* keys and filtering in Python</code></pre>
+                    <ul>
+                        <li>
+                            <span class="green">Numeric ranges:</span>
+                            <code>@age:[25 50]</code>
+                        </li>
+                        <li>
+                            <span class="green">Tag filters:</span>
+                            <code>@department:{engineering}</code>
+                        </li>
+                        <li>
+                            <span class="green">Full-text:</span>
+                            <code>@name:alice</code>
+                        </li>
+                        <li>
+                            <span class="green">Negation:</span>
+                            <code>-@status:{inactive}</code>
+                        </li>
+                    </ul>
+                </section>
+
+                <!-- RediSearch: FT.AGGREGATE -->
+                <section>
+                    <h2>RediSearch: Server-Side Aggregation</h2>
+                    <pre><code class="language-python"># Aggregate in Redis, not Python
+df = pr.aggregate_hashes(
+    "redis://localhost:6379",
+    index="users_idx",
+    query="*",
+    group_by=["department"],
+    reduce=[
+        ("COUNT", [], "employee_count"),
+        ("AVG", ["@salary"], "avg_salary"),
+        ("MAX", ["@salary"], "max_salary"),
+        ("SUM", ["@salary"], "total_payroll")
+    ],
+    sort_by=[("avg_salary", False)],  # Descending
+    limit=10
+)</code></pre>
+                    <pre><code class="language-text"># Result
+shape: (3, 5)
++--------------+----------------+------------+------------+---------------+
+| department   | employee_count | avg_salary | max_salary | total_payroll |
++--------------+----------------+------------+------------+---------------+
+| engineering  | 45             | 125000.0   | 180000.0   | 5625000.0     |
+| product      | 20             | 115000.0   | 160000.0   | 2300000.0     |
+| marketing    | 15             | 95000.0    | 140000.0   | 1425000.0     |
++--------------+----------------+------------+------------+---------------+</code></pre>
+                </section>
+
+                <!-- FT.AGGREGATE Advanced -->
+                <section>
+                    <h2>FT.AGGREGATE: Advanced Features</h2>
+                    <pre><code class="language-python"># Computed fields with APPLY
+df = pr.aggregate_hashes(
+    "redis://localhost:6379",
+    index="sales_idx",
+    query="@date:[2024010100 2024123123]",
+    group_by=["product_category"],
+    reduce=[
+        ("COUNT", [], "orders"),
+        ("SUM", ["@amount"], "revenue")
+    ],
+    apply=[
+        ("@revenue / @orders", "avg_order_value")  # Computed field
+    ],
+    filter_expr="@orders > 100",  # Post-aggregation filter
+    sort_by=[("revenue", False)]
+)
+
+# Global aggregation (no grouping)
+df = pr.aggregate_hashes(
+    "redis://localhost:6379",
+    index="users_idx",
+    query="@status:{active}",
+    reduce=[
+        ("COUNT", [], "total_users"),
+        ("AVG", ["@age"], "avg_age")
+    ]
+)
+# Returns single row with totals</code></pre>
+                </section>
+
+                <!-- JSON Support -->
+                <section>
+                    <h2>RedisJSON Support</h2>
+                    <pre><code class="language-python"># Scan JSON documents
+df = pr.scan_json(
+    "redis://localhost:6379",
+    "event:*",
+    schema={
+        "$.timestamp": "utf8",
+        "$.user.id": "int64",
+        "$.user.name": "utf8",
+        "$.data.value": "float64",
+        "$.tags": "utf8"  # Arrays become JSON strings
+    },
+    json_path="$"
+).collect()
+
+# Write DataFrame as JSON documents
+pr.write_json(
+    "redis://localhost:6379",
+    df,
+    key_column="id",
+    key_prefix="event:"
+)</code></pre>
+                    <p class="small">
+                        <span class="orange">Note:</span> RediSearch also
+                        indexes JSON documents with <code>ON JSON</code>
+                    </p>
+                </section>
+
+                <!-- Performance -->
+                <section>
+                    <h2>Performance Features</h2>
+                    <div class="columns">
+                        <div class="column">
+                            <h3 class="polars-blue">Batched Operations</h3>
+                            <pre><code class="language-python"># Configure batch size
+df = pr.scan_hashes(
+    "redis://localhost:6379",
+    "user:*",
+    schema={"name": "utf8"},
+    batch_size=1000,   # Keys per batch
+    scan_count=100     # SCAN COUNT hint
+).collect()</code></pre>
+                            <ul class="small">
+                                <li>Pipelined HGETALL calls</li>
+                                <li>Async execution</li>
+                                <li>Memory-efficient streaming</li>
+                            </ul>
+                        </div>
+                        <div class="column">
+                            <h3 class="redis-red">Predicate Pushdown</h3>
+                            <pre><code class="language-python"># With SCAN: transfer all, filter client
+df = pr.scan_hashes(url, "user:*", schema)
+df = df.filter(pl.col("age") > 25)
+
+# With RediSearch: filter in Redis
+df = pr.search_hashes(
+    url, index="users_idx",
+    query="@age:[25 +inf]",
+    schema=schema
+)</code></pre>
+                            <ul class="small">
+                                <li>Only matching docs transferred</li>
+                                <li>Index-accelerated queries</li>
+                                <li>Server-side aggregation</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Use Case: Ephemeral Data Workbench -->
+                <section>
+                    <h2>Use Case: Ephemeral Data Workbench</h2>
+                    <pre><code class="language-python"># Redis as a fast, queryable staging area
+# 1. Load data from any source
+df = pl.read_csv("sales_data.csv")
+pr.write_hashes("redis://localhost", df, key_column="id", key_prefix="sale:")
+
+# 2. Create index for fast queries
+# FT.CREATE sales_idx ON HASH PREFIX 1 sale: SCHEMA ...
+
+# 3. Query and analyze interactively
+results = pr.aggregate_hashes(
+    "redis://localhost",
+    index="sales_idx",
+    query="@region:{west}",
+    group_by=["product"],
+    reduce=[("SUM", ["@amount"], "total")]
+)
+
+# 4. TTL for automatic cleanup (set in Redis)
+# EXPIRE sale:* 3600</code></pre>
+                    <ul>
+                        <li>
+                            <span class="green">Fast loading:</span> Write
+                            DataFrames directly to Redis
+                        </li>
+                        <li>
+                            <span class="green">Interactive queries:</span>
+                            RediSearch for instant filtering
+                        </li>
+                        <li>
+                            <span class="green">Auto-cleanup:</span> TTL-based
+                            expiration
+                        </li>
+                        <li>
+                            <span class="green">Ideal for:</span> ETL staging,
+                            data exploration, session analytics
+                        </li>
+                    </ul>
+                </section>
+
+                <!-- Architecture -->
+                <section>
+                    <h2>Architecture</h2>
+                    <pre><code class="language-text">
+  +------------------+     +--------------------+     +------------------+
+  |  Python/Polars   |     |    polars-redis    |     |      Redis       |
+  |                  |     |    (Rust + PyO3)   |     |                  |
+  +------------------+     +--------------------+     +------------------+
+          |                         |                         |
+          v                         v                         v
+     LazyFrame API           Async batching              SCAN + HGETALL
+     DataFrame ops           Schema inference            FT.SEARCH
+     .collect()              Arrow conversion            FT.AGGREGATE
+                             Pipeline commands           JSON.GET/SET
+
+  +--------------------------------------------------------------------------+
+  |                           Data Flow                                       |
+  |  scan_hashes() -> SCAN keys -> batch HGETALL -> parse -> Arrow -> Polars |
+  |  search_hashes() -> FT.SEARCH -> parse results -> Arrow -> Polars        |
+  |  write_hashes() -> Polars -> rows -> batch HSET pipeline                 |
+  +--------------------------------------------------------------------------+
+</code></pre>
+                </section>
+
+                <!-- Rust API -->
+                <section>
+                    <h2>Rust API</h2>
+                    <pre><code class="language-rust">use polars_redis::{scan_hashes, HashSchema, BatchConfig, RedisType};
+
+// Define schema
+let schema = HashSchema::new()
+    .with_field("name", RedisType::Utf8)
+    .with_field("age", RedisType::Int64)
+    .with_field("score", RedisType::Float64)
+    .with_key(true)
+    .with_key_column_name("_key");
+
+// Configure batching
+let config = BatchConfig::default()
+    .with_batch_size(1000)
+    .with_scan_count(100);
+
+// Scan to DataFrame
+let df = scan_hashes(
+    "redis://localhost:6379",
+    "user:*",
+    schema,
+    config
+).await?;
+
+println!("{}", df);</code></pre>
+                    <p class="small">
+                        Full async/await support with tokio runtime
+                    </p>
+                </section>
+
+                <!-- Installation -->
+                <section>
+                    <h2>Installation</h2>
+                    <div class="columns">
+                        <div class="column">
+                            <h3 class="polars-blue">Python</h3>
+                            <pre><code class="language-bash"># From PyPI
+pip install polars-redis
+
+# With RediSearch support
+pip install polars-redis[search]
+
+# From source
+git clone https://github.com/joshrotenberg/polars-redis
+cd polars-redis
+pip install maturin
+maturin develop --features search</code></pre>
+                        </div>
+                        <div class="column">
+                            <h3 class="redis-red">Rust</h3>
+                            <pre><code class="language-toml"># Cargo.toml
+[dependencies]
+polars-redis = "0.1"
+
+# With RediSearch support
+polars-redis = {
+    version = "0.1",
+    features = ["search"]
+}</code></pre>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Requirements -->
+                <section>
+                    <h2>Requirements</h2>
+                    <div class="columns">
+                        <div class="column">
+                            <h3 class="orange">Runtime</h3>
+                            <ul>
+                                <li>Python 3.10+ or Rust 2024</li>
+                                <li>Polars 1.0+</li>
+                                <li>Redis 6.0+ (basic operations)</li>
+                                <li>Redis Stack (RediSearch/RedisJSON)</li>
+                            </ul>
+                        </div>
+                        <div class="column">
+                            <h3 class="green">Quick Start</h3>
+                            <pre><code class="language-bash"># Redis Stack with Docker
+docker run -d \
+  --name redis-stack \
+  -p 6379:6379 \
+  redis/redis-stack:latest
+
+# Verify RediSearch
+redis-cli MODULE LIST
+# 1) "name" "search"
+# 2) "name" "ReJSON"</code></pre>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- API Summary -->
+                <section>
+                    <h2>API Summary</h2>
+                    <pre><code class="language-python"># Scanning
+pr.scan_hashes(url, pattern, schema, ...)      # Scan hash keys to LazyFrame
+pr.scan_json(url, pattern, schema, ...)        # Scan JSON keys to LazyFrame
+
+# RediSearch (requires 'search' feature)
+pr.search_hashes(url, index, query, schema, ...)      # FT.SEARCH to DataFrame
+pr.aggregate_hashes(url, index, query, ...)           # FT.AGGREGATE to DataFrame
+
+# Writing
+pr.write_hashes(url, df, key_column, key_prefix, ...) # DataFrame to hashes
+pr.write_json(url, df, key_column, key_prefix, ...)   # DataFrame to JSON
+
+# Common Options
+schema={"field": "type"}     # utf8, int64, float64, bool
+infer_schema=True            # Auto-detect types
+batch_size=1000              # Keys per batch
+with_key=True                # Include Redis key as column
+key_column="_key"            # Column name for key</code></pre>
+                </section>
+
+                <!-- Resources -->
+                <section>
+                    <h2>Resources</h2>
+                    <div class="columns">
+                        <div class="column">
+                            <h3 class="polars-blue">Documentation</h3>
+                            <ul>
+                                <li>Quick Start & Installation</li>
+                                <li>User Guide (Scanning, Writing)</li>
+                                <li>Schema Inference</li>
+                                <li>Configuration Options</li>
+                                <li>Python & Rust API Reference</li>
+                                <li>Examples</li>
+                            </ul>
+                            <p class="small" style="margin-top: 1em">
+                                <span class="green"
+                                    >joshrotenberg.github.io/polars-redis</span
+                                >
+                            </p>
+                        </div>
+                        <div class="column">
+                            <h3 class="redis-red">Links</h3>
+                            <ul>
+                                <li>
+                                    GitHub:
+                                    github.com/joshrotenberg/polars-redis
+                                </li>
+                                <li>PyPI: pypi.org/project/polars-redis</li>
+                                <li>
+                                    crates.io: crates.io/crates/polars-redis
+                                </li>
+                                <li>Polars: pola.rs</li>
+                                <li>Redis Stack: redis.io/docs/stack</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Get Started -->
+                <section class="center">
+                    <h2>Get Started</h2>
+                    <pre><code class="language-bash"># Install
+pip install polars-redis
+
+# Start Redis Stack
+docker run -d -p 6379:6379 redis/redis-stack:latest
+
+# Try it
+python -c "
+import polars_redis as pr
+# Write some data
+import polars as pl
+df = pl.DataFrame({'id': [1,2,3], 'name': ['a','b','c']})
+pr.write_hashes('redis://localhost', df, key_column='id', key_prefix='test:')
+
+# Read it back
+result = pr.scan_hashes('redis://localhost', 'test:*',
+    schema={'name': 'utf8'}, with_key=True).collect()
+print(result)
+"</code></pre>
+                    <p style="margin-top: 1em"></p>
+                    <h3>github.com/joshrotenberg/polars-redis</h3>
+                </section>
+            </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/reveal.js@4/dist/reveal.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/reveal.js@4/plugin/highlight/highlight.js"></script>
+        <script>
+            Reveal.initialize({
+                hash: true,
+                transition: "slide",
+                backgroundTransition: "fade",
+                width: 1200,
+                height: 700,
+                margin: 0.1,
+                plugins: [RevealHighlight],
+            });
+        </script>
+    </body>
+</html>
