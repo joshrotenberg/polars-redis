@@ -1790,6 +1790,31 @@ class TestSearchHashes:
             capture_output=True,
         )
 
+        # Wait for RediSearch to index all documents
+        # RediSearch indexes in the background, so we need to wait
+        import time
+
+        for _ in range(50):  # Wait up to 5 seconds
+            result = subprocess.run(
+                ["redis-cli", "FT.INFO", "search_users_idx"],
+                capture_output=True,
+                text=True,
+            )
+            # Parse FT.INFO output to check num_docs
+            output = result.stdout
+            if "num_docs" in output:
+                # Find num_docs value - format is "num_docs\n20\n"
+                lines = output.strip().split("\n")
+                for i, line in enumerate(lines):
+                    if line == "num_docs" and i + 1 < len(lines):
+                        num_docs = int(lines[i + 1])
+                        if num_docs >= 20:
+                            break
+            time.sleep(0.1)
+        else:
+            # Final check - if we get here, indexing might not be complete
+            time.sleep(0.5)
+
         yield
 
         # Cleanup
