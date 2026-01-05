@@ -162,10 +162,14 @@ pub use types::list::{ListBatchIterator, ListSchema};
 #[cfg(feature = "cluster")]
 pub use types::set::ClusterSetBatchIterator;
 pub use types::set::{SetBatchIterator, SetSchema};
+#[cfg(feature = "cluster")]
+pub use types::stream::ClusterStreamBatchIterator;
 pub use types::stream::{StreamBatchIterator, StreamSchema};
 #[cfg(feature = "cluster")]
 pub use types::string::ClusterStringBatchIterator;
 pub use types::string::{StringBatchIterator, StringSchema};
+#[cfg(feature = "cluster")]
+pub use types::timeseries::ClusterTimeSeriesBatchIterator;
 pub use types::timeseries::{TimeSeriesBatchIterator, TimeSeriesSchema};
 #[cfg(feature = "cluster")]
 pub use types::zset::ClusterZSetBatchIterator;
