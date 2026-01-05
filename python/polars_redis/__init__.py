@@ -38,6 +38,7 @@ from polars_redis._internal import (
     PyStringBatchIterator,
     RedisScanner,
     py_infer_hash_schema,
+    py_infer_hash_schema_with_confidence,
     py_infer_hash_schema_with_overwrite,
     py_infer_json_schema,
     py_infer_json_schema_with_overwrite,
@@ -105,6 +106,8 @@ __all__ = [
     "infer_json_schema",
     "infer_hash_schema_with_overwrite",
     "infer_json_schema_with_overwrite",
+    "infer_hash_schema_with_confidence",
+    "SchemaConfidence",
     # Option classes
     "ScanOptions",
     "HashScanOptions",
@@ -1064,6 +1067,124 @@ def infer_json_schema(
     """
     fields, _ = py_infer_json_schema(url, pattern, sample_size)
     return _fields_to_schema(fields)
+
+
+class SchemaConfidence:
+    """Schema inference result with confidence information.
+
+    This class wraps the result of schema inference with detailed
+    confidence scores for each field, allowing you to assess the
+    quality of type inference before using the schema.
+
+    Attributes:
+        schema: The inferred schema as a dict of field names to Polars types.
+        sample_count: Number of keys that were sampled.
+        field_info: Dict of field names to detailed inference info.
+        average_confidence: Average confidence score across all fields.
+        all_confident: Whether all fields have confidence >= 0.9.
+    """
+
+    def __init__(self, result: dict):
+        """Initialize from the raw result dict."""
+        self._result = result
+        self._schema = _fields_to_schema(result["fields"])
+
+    @property
+    def schema(self) -> dict[str, type[pl.DataType]]:
+        """Get the inferred schema."""
+        return self._schema
+
+    @property
+    def sample_count(self) -> int:
+        """Get the number of keys sampled."""
+        return self._result["sample_count"]
+
+    @property
+    def field_info(self) -> dict:
+        """Get detailed inference info for each field.
+
+        Returns a dict mapping field names to info dicts containing:
+        - type: Inferred type name
+        - confidence: Score from 0.0 to 1.0
+        - samples: Total samples for this field
+        - valid: Number matching the inferred type
+        - nulls: Number of null/missing values
+        - null_ratio: Percentage of nulls
+        - type_candidates: Dict of type names to match counts
+        """
+        return self._result["field_info"]
+
+    @property
+    def average_confidence(self) -> float:
+        """Get the average confidence score across all fields."""
+        return self._result["average_confidence"]
+
+    @property
+    def all_confident(self) -> bool:
+        """Check if all fields have confidence >= 0.9."""
+        return self._result["all_confident"]
+
+    def low_confidence_fields(self, threshold: float = 0.9) -> list[tuple[str, float]]:
+        """Get fields with confidence below a threshold.
+
+        Args:
+            threshold: Confidence threshold (default: 0.9).
+
+        Returns:
+            List of (field_name, confidence) tuples.
+        """
+        return [
+            (name, info["confidence"])
+            for name, info in self.field_info.items()
+            if info["confidence"] < threshold
+        ]
+
+    def __repr__(self) -> str:
+        """Return a string representation."""
+        return (
+            f"SchemaConfidence(fields={len(self._schema)}, "
+            f"samples={self.sample_count}, "
+            f"avg_confidence={self.average_confidence:.2%})"
+        )
+
+
+def infer_hash_schema_with_confidence(
+    url: str,
+    pattern: str = "*",
+    *,
+    sample_size: int = 100,
+) -> SchemaConfidence:
+    """Infer schema from Redis hashes with detailed confidence information.
+
+    This function returns confidence scores for each field, indicating how
+    reliably the type was inferred. Use this when you need to validate
+    schema quality before processing large datasets.
+
+    Args:
+        url: Redis connection URL (e.g., "redis://localhost:6379").
+        pattern: Key pattern to match (e.g., "user:*").
+        sample_size: Maximum number of keys to sample (default: 100).
+
+    Returns:
+        A SchemaConfidence object with the inferred schema and confidence data.
+
+    Example:
+        >>> result = infer_hash_schema_with_confidence(
+        ...     "redis://localhost:6379",
+        ...     pattern="user:*",
+        ...     sample_size=100
+        ... )
+        >>> print(result.average_confidence)
+        0.95
+        >>> if result.all_confident:
+        ...     df = read_hashes(url, pattern, schema=result.schema)
+        ... else:
+        ...     # Check low confidence fields
+        ...     for field, conf in result.low_confidence_fields():
+        ...         print(f"Warning: {field} has {conf:.0%} confidence")
+    """
+    result = py_infer_hash_schema_with_confidence(url, pattern, sample_size)
+    return SchemaConfidence(result)
 
 
 def _fields_to_schema(fields: list[tuple[str, str]]) -> dict[str, type[pl.DataType]]:
