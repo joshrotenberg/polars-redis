@@ -1627,6 +1627,391 @@ class TestWriteStrings:
             subprocess.run(["redis-cli", "DEL", "test:write:str:float:2"], capture_output=True)
 
 
+class TestWriteSets:
+    """Tests for write_sets function."""
+
+    def test_write_sets_basic(self, redis_url: str) -> None:
+        """Test basic set writing."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:set:1", "test:set:1", "test:set:2"],
+                "member": ["python", "redis", "rust"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_sets(df, redis_url)
+            assert count == 2  # 2 unique keys
+
+            # Verify set 1 has 2 members
+            result = subprocess.run(
+                ["redis-cli", "SMEMBERS", "test:set:1"],
+                capture_output=True,
+                text=True,
+            )
+            members = set(result.stdout.strip().split("\n"))
+            assert members == {"python", "redis"}
+
+            # Verify set 2 has 1 member
+            result = subprocess.run(
+                ["redis-cli", "SMEMBERS", "test:set:2"],
+                capture_output=True,
+                text=True,
+            )
+            assert result.stdout.strip() == "rust"
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:set:1"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", "test:set:2"], capture_output=True)
+
+    def test_write_sets_custom_column(self, redis_url: str) -> None:
+        """Test set writing with custom member column."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:tags:1", "test:tags:1", "test:tags:1"],
+                "tag": ["feature", "bug", "enhancement"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_sets(df, redis_url, member_column="tag")
+            assert count == 1
+
+            result = subprocess.run(
+                ["redis-cli", "SCARD", "test:tags:1"],
+                capture_output=True,
+                text=True,
+            )
+            assert int(result.stdout.strip()) == 3
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:tags:1"], capture_output=True)
+
+    def test_write_sets_with_ttl(self, redis_url: str) -> None:
+        """Test set writing with TTL."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:ttlset:1", "test:ttlset:1"],
+                "member": ["a", "b"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_sets(df, redis_url, ttl=60)
+            assert count == 1
+
+            result = subprocess.run(
+                ["redis-cli", "TTL", "test:ttlset:1"],
+                capture_output=True,
+                text=True,
+            )
+            ttl = int(result.stdout.strip())
+            assert 0 < ttl <= 60
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:ttlset:1"], capture_output=True)
+
+    def test_write_sets_append_mode(self, redis_url: str) -> None:
+        """Test set writing in append mode adds to existing set."""
+        import subprocess
+
+        # Create initial set
+        subprocess.run(["redis-cli", "SADD", "test:append:set", "existing"], capture_output=True)
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:append:set"],
+                "member": ["new"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_sets(df, redis_url, if_exists="append")
+            assert count == 1
+
+            result = subprocess.run(
+                ["redis-cli", "SMEMBERS", "test:append:set"],
+                capture_output=True,
+                text=True,
+            )
+            members = set(result.stdout.strip().split("\n"))
+            assert members == {"existing", "new"}
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:append:set"], capture_output=True)
+
+
+class TestWriteLists:
+    """Tests for write_lists function."""
+
+    def test_write_lists_basic(self, redis_url: str) -> None:
+        """Test basic list writing."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:list:1", "test:list:1", "test:list:2"],
+                "element": ["a", "b", "c"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_lists(df, redis_url)
+            assert count == 2  # 2 unique keys
+
+            # Verify list 1 has 2 elements
+            result = subprocess.run(
+                ["redis-cli", "LRANGE", "test:list:1", "0", "-1"],
+                capture_output=True,
+                text=True,
+            )
+            elements = result.stdout.strip().split("\n")
+            assert elements == ["a", "b"]
+
+            # Verify list 2 has 1 element
+            result = subprocess.run(
+                ["redis-cli", "LRANGE", "test:list:2", "0", "-1"],
+                capture_output=True,
+                text=True,
+            )
+            assert result.stdout.strip() == "c"
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:list:1"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", "test:list:2"], capture_output=True)
+
+    def test_write_lists_with_index_ordering(self, redis_url: str) -> None:
+        """Test list writing with index column for ordering."""
+        import subprocess
+
+        # Elements in wrong order, but should be sorted by index
+        df = pl.DataFrame(
+            {
+                "_key": ["test:ordered:list", "test:ordered:list", "test:ordered:list"],
+                "_index": [2, 0, 1],
+                "element": ["c", "a", "b"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_lists(df, redis_url, index_column="_index")
+            assert count == 1
+
+            result = subprocess.run(
+                ["redis-cli", "LRANGE", "test:ordered:list", "0", "-1"],
+                capture_output=True,
+                text=True,
+            )
+            elements = result.stdout.strip().split("\n")
+            assert elements == ["a", "b", "c"]
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:ordered:list"], capture_output=True)
+
+    def test_write_lists_with_ttl(self, redis_url: str) -> None:
+        """Test list writing with TTL."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:ttllist:1", "test:ttllist:1"],
+                "element": ["x", "y"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_lists(df, redis_url, ttl=60)
+            assert count == 1
+
+            result = subprocess.run(
+                ["redis-cli", "TTL", "test:ttllist:1"],
+                capture_output=True,
+                text=True,
+            )
+            ttl = int(result.stdout.strip())
+            assert 0 < ttl <= 60
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:ttllist:1"], capture_output=True)
+
+    def test_write_lists_append_mode(self, redis_url: str) -> None:
+        """Test list writing in append mode adds to existing list."""
+        import subprocess
+
+        # Create initial list
+        subprocess.run(["redis-cli", "RPUSH", "test:append:list", "existing"], capture_output=True)
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:append:list"],
+                "element": ["new"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_lists(df, redis_url, if_exists="append")
+            assert count == 1
+
+            result = subprocess.run(
+                ["redis-cli", "LRANGE", "test:append:list", "0", "-1"],
+                capture_output=True,
+                text=True,
+            )
+            elements = result.stdout.strip().split("\n")
+            assert elements == ["existing", "new"]
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:append:list"], capture_output=True)
+
+
+class TestWriteZsets:
+    """Tests for write_zsets function."""
+
+    def test_write_zsets_basic(self, redis_url: str) -> None:
+        """Test basic sorted set writing."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:zset:1", "test:zset:1", "test:zset:2"],
+                "member": ["alice", "bob", "charlie"],
+                "score": [1500.0, 1200.0, 1800.0],
+            }
+        )
+
+        try:
+            count = polars_redis.write_zsets(df, redis_url)
+            assert count == 2  # 2 unique keys
+
+            # Verify zset 1 has 2 members
+            result = subprocess.run(
+                ["redis-cli", "ZCARD", "test:zset:1"],
+                capture_output=True,
+                text=True,
+            )
+            assert int(result.stdout.strip()) == 2
+
+            # Verify scores
+            result = subprocess.run(
+                ["redis-cli", "ZSCORE", "test:zset:1", "alice"],
+                capture_output=True,
+                text=True,
+            )
+            assert float(result.stdout.strip()) == 1500.0
+
+            result = subprocess.run(
+                ["redis-cli", "ZSCORE", "test:zset:1", "bob"],
+                capture_output=True,
+                text=True,
+            )
+            assert float(result.stdout.strip()) == 1200.0
+
+            # Verify zset 2
+            result = subprocess.run(
+                ["redis-cli", "ZSCORE", "test:zset:2", "charlie"],
+                capture_output=True,
+                text=True,
+            )
+            assert float(result.stdout.strip()) == 1800.0
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:zset:1"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", "test:zset:2"], capture_output=True)
+
+    def test_write_zsets_custom_columns(self, redis_url: str) -> None:
+        """Test sorted set writing with custom column names."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:leaderboard:1", "test:leaderboard:1"],
+                "player": ["player1", "player2"],
+                "points": [100, 200],
+            }
+        )
+
+        try:
+            count = polars_redis.write_zsets(
+                df, redis_url, member_column="player", score_column="points"
+            )
+            assert count == 1
+
+            result = subprocess.run(
+                ["redis-cli", "ZREVRANGE", "test:leaderboard:1", "0", "-1", "WITHSCORES"],
+                capture_output=True,
+                text=True,
+            )
+            lines = result.stdout.strip().split("\n")
+            # player2 should be first (higher score)
+            assert lines[0] == "player2"
+            assert float(lines[1]) == 200.0
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:leaderboard:1"], capture_output=True)
+
+    def test_write_zsets_with_ttl(self, redis_url: str) -> None:
+        """Test sorted set writing with TTL."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:ttlzset:1", "test:ttlzset:1"],
+                "member": ["a", "b"],
+                "score": [1.0, 2.0],
+            }
+        )
+
+        try:
+            count = polars_redis.write_zsets(df, redis_url, ttl=60)
+            assert count == 1
+
+            result = subprocess.run(
+                ["redis-cli", "TTL", "test:ttlzset:1"],
+                capture_output=True,
+                text=True,
+            )
+            ttl = int(result.stdout.strip())
+            assert 0 < ttl <= 60
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:ttlzset:1"], capture_output=True)
+
+    def test_write_zsets_append_mode(self, redis_url: str) -> None:
+        """Test sorted set writing in append mode updates scores."""
+        import subprocess
+
+        # Create initial sorted set
+        subprocess.run(
+            ["redis-cli", "ZADD", "test:append:zset", "100", "existing"],
+            capture_output=True,
+        )
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:append:zset", "test:append:zset"],
+                "member": ["existing", "new"],
+                "score": [150.0, 200.0],  # Update existing score
+            }
+        )
+
+        try:
+            count = polars_redis.write_zsets(df, redis_url, if_exists="append")
+            assert count == 1
+
+            # Check updated score
+            result = subprocess.run(
+                ["redis-cli", "ZSCORE", "test:append:zset", "existing"],
+                capture_output=True,
+                text=True,
+            )
+            assert float(result.stdout.strip()) == 150.0
+
+            # Check new member
+            result = subprocess.run(
+                ["redis-cli", "ZSCORE", "test:append:zset", "new"],
+                capture_output=True,
+                text=True,
+            )
+            assert float(result.stdout.strip()) == 200.0
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:append:zset"], capture_output=True)
+
+
 class TestWriteTTL:
     """Tests for TTL (time-to-live) support in write operations."""
 

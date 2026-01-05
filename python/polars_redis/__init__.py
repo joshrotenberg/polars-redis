@@ -63,7 +63,10 @@ from polars_redis._write import (
     write_hashes,
     write_hashes_detailed,
     write_json,
+    write_lists,
+    write_sets,
     write_strings,
+    write_zsets,
 )
 
 # Re-export from options module
@@ -103,7 +106,10 @@ __all__ = [
     "write_hashes",
     "write_hashes_detailed",
     "write_json",
+    "write_lists",
+    "write_sets",
     "write_strings",
+    "write_zsets",
     "WriteResult",
     # Utilities
     "scan_keys",
