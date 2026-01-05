@@ -166,8 +166,8 @@ pub use types::timeseries::{TimeSeriesBatchIterator, TimeSeriesSchema};
 pub use types::zset::ClusterZSetBatchIterator;
 pub use types::zset::{ZSetBatchIterator, ZSetSchema};
 pub use write::{
-    WriteMode, WriteResult, write_hashes, write_json, write_lists, write_sets, write_strings,
-    write_zsets,
+    KeyError, WriteMode, WriteResult, WriteResultDetailed, write_hashes, write_hashes_detailed,
+    write_json, write_lists, write_sets, write_strings, write_zsets,
 };
 
 /// Serialize an Arrow RecordBatch to IPC format bytes.
@@ -224,6 +224,7 @@ fn polars_redis_internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_infer_hash_schema_with_overwrite, m)?)?;
     m.add_function(wrap_pyfunction!(py_infer_json_schema_with_overwrite, m)?)?;
     m.add_function(wrap_pyfunction!(py_write_hashes, m)?)?;
+    m.add_function(wrap_pyfunction!(py_write_hashes_detailed, m)?)?;
     m.add_function(wrap_pyfunction!(py_write_json, m)?)?;
     m.add_function(wrap_pyfunction!(py_write_strings, m)?)?;
     m.add_function(wrap_pyfunction!(py_write_sets, m)?)?;
@@ -1923,6 +1924,84 @@ fn py_write_hashes(
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
     Ok((result.keys_written, result.keys_failed, result.keys_skipped))
+}
+
+#[cfg(feature = "python")]
+/// Write hashes to Redis with detailed per-key error reporting.
+///
+/// This is similar to `py_write_hashes` but returns detailed information about
+/// which specific keys succeeded or failed, enabling retry logic and better
+/// error handling in production workflows.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `keys` - List of Redis keys to write to
+/// * `fields` - List of field names
+/// * `values` - 2D list of values (rows x columns), same order as fields
+/// * `ttl` - Optional TTL in seconds for each key
+/// * `if_exists` - How to handle existing keys: "fail", "replace", or "append"
+///
+/// # Returns
+/// A dict with keys:
+/// - `keys_written`: Number of keys successfully written
+/// - `keys_failed`: Number of keys that failed
+/// - `keys_skipped`: Number of keys skipped (when mode is "fail" and key exists)
+/// - `succeeded_keys`: List of keys that were successfully written
+/// - `failed_keys`: List of keys that failed to write
+/// - `errors`: Dict mapping failed keys to their error messages
+#[pyfunction]
+#[pyo3(signature = (url, keys, fields, values, ttl = None, if_exists = "replace".to_string()))]
+fn py_write_hashes_detailed(
+    url: &str,
+    keys: Vec<String>,
+    fields: Vec<String>,
+    values: Vec<Vec<Option<String>>>,
+    ttl: Option<i64>,
+    if_exists: String,
+) -> PyResult<std::collections::HashMap<String, Py<PyAny>>> {
+    use pyo3::IntoPyObjectExt;
+
+    let mode: WriteMode = if_exists.parse().map_err(|e: crate::Error| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string())
+    })?;
+
+    let result = write_hashes_detailed(url, keys, fields, values, ttl, mode)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    // Build the response dictionary
+    Python::attach(|py| {
+        let mut dict = std::collections::HashMap::new();
+
+        dict.insert(
+            "keys_written".to_string(),
+            result.keys_written.into_py_any(py)?,
+        );
+        dict.insert(
+            "keys_failed".to_string(),
+            result.keys_failed.into_py_any(py)?,
+        );
+        dict.insert(
+            "keys_skipped".to_string(),
+            result.keys_skipped.into_py_any(py)?,
+        );
+        dict.insert(
+            "succeeded_keys".to_string(),
+            result.succeeded_keys.into_py_any(py)?,
+        );
+
+        // Build failed_keys list and errors dict
+        let failed_keys: Vec<String> = result.errors.iter().map(|e| e.key.clone()).collect();
+        dict.insert("failed_keys".to_string(), failed_keys.into_py_any(py)?);
+
+        let errors: std::collections::HashMap<String, String> = result
+            .errors
+            .into_iter()
+            .map(|e| (e.key, e.error))
+            .collect();
+        dict.insert("errors".to_string(), errors.into_py_any(py)?);
+
+        Ok(dict)
+    })
 }
 
 #[cfg(feature = "python")]
