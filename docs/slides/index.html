@@ -211,10 +211,10 @@ df = pr.search_hashes(
                         <div class="column">
                             <h3 class="redis-red">Redis Data Access</h3>
                             <ul>
-                                <li>Scan Hashes and JSON</li>
+                                <li>Scan Hashes, JSON, Strings</li>
                                 <li>Write DataFrames back</li>
-                                <li>RediSearch FT.SEARCH</li>
-                                <li>RediSearch FT.AGGREGATE</li>
+                                <li>RediSearch with query builder</li>
+                                <li>Redis Cluster support</li>
                             </ul>
                         </div>
                     </div>
@@ -355,6 +355,77 @@ df = pr.search_hashes(
                     </ul>
                 </section>
 
+                <!-- Query Builder: Polars-like Syntax -->
+                <section>
+                    <h2>Query Builder: Polars-like Syntax</h2>
+                    <pre><code class="language-python">from polars_redis import col, search_hashes
+
+# Build queries with familiar Polars-like syntax
+# Instead of learning RediSearch query language:
+query = (col("age") > 30) & (col("status") == "active")
+
+# Use directly in search_hashes
+df = search_hashes(
+    "redis://localhost:6379",
+    index="users_idx",
+    query=query,  # Automatically converts to "@age:[(30 +inf] @status:{active}"
+    schema={"name": pl.Utf8, "age": pl.Int64, "status": pl.Utf8}
+)
+
+# Complex queries are easy to build
+query = (
+    (col("age").is_between(25, 50)) &
+    (col("department").has_any_tag(["engineering", "product"])) &
+    ~(col("status") == "inactive")  # NOT
+)</code></pre>
+                    <p class="small">
+                        <span class="green">Result:</span> Automatic translation
+                        to RediSearch syntax with predicate pushdown
+                    </p>
+                </section>
+
+                <!-- Query Builder: Full API -->
+                <section>
+                    <h2>Query Builder: Full API</h2>
+                    <div class="columns">
+                        <div class="column">
+                            <h3 class="polars-blue">Comparisons</h3>
+                            <pre><code class="language-python"># Numeric comparisons
+col("age") > 30      # @age:[(30 +inf]
+col("age") >= 30     # @age:[30 +inf]
+col("age") < 30      # @age:[-inf (30]
+col("price").is_between(10, 100)
+
+# Equality
+col("status") == "active"
+col("status") != "deleted"
+
+# Membership
+col("role").is_in(["admin", "user"])</code></pre>
+                        </div>
+                        <div class="column">
+                            <h3 class="redis-red">Text & Tags</h3>
+                            <pre><code class="language-python"># Text search
+col("title").contains("python")
+col("name").starts_with("jo")
+col("name").ends_with("son")
+col("name").fuzzy("john", 1)
+col("title").phrase("hello", "world")
+
+# Tags (exact match)
+col("category").has_tag("science")
+col("tags").has_any_tag(["a", "b"])
+
+# Geo
+col("loc").within_radius(
+    -122.4, 37.7, 10, "km"
+)</code></pre>
+                        </div>
+                    </div>
+                    <pre><code class="language-python"># Logical operators: & (AND), | (OR), ~ (NOT)
+query = (col("age") > 30) & ((col("dept") == "eng") | (col("dept") == "prod")) & ~(col("status") == "deleted")</code></pre>
+                </section>
+
                 <!-- RediSearch: FT.AGGREGATE -->
                 <section>
                     <h2>RediSearch: Server-Side Aggregation</h2>
@@ -483,6 +554,47 @@ df = pr.search_hashes(
                                 <li>Only matching docs transferred</li>
                                 <li>Index-accelerated queries</li>
                                 <li>Server-side aggregation</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Redis Cluster Support -->
+                <section>
+                    <h2>Redis Cluster Support</h2>
+                    <pre><code class="language-python"># Connect to Redis Cluster (keys distributed across nodes)
+from polars_redis import ClusterHashBatchIterator
+
+# Provide any cluster node URLs - auto-discovers all nodes
+nodes = ["redis://node1:7000", "redis://node2:7001", "redis://node3:7002"]
+
+iterator = ClusterHashBatchIterator(
+    nodes,
+    schema=HashSchema(...),
+    config=BatchConfig(pattern="user:*", batch_size=1000)
+)
+
+# Automatically scans ALL cluster nodes
+# Keys are distributed by slot, iterator handles routing</code></pre>
+                    <div class="columns">
+                        <div class="column">
+                            <h3 class="polars-blue">How It Works</h3>
+                            <ul class="small">
+                                <li>
+                                    Discovers master nodes via CLUSTER SLOTS
+                                </li>
+                                <li>SCAN each node separately</li>
+                                <li>Fetch routes to correct nodes</li>
+                                <li>No key duplication (slot-based)</li>
+                            </ul>
+                        </div>
+                        <div class="column">
+                            <h3 class="redis-red">Cluster Features</h3>
+                            <ul class="small">
+                                <li>Horizontal scaling</li>
+                                <li>High availability</li>
+                                <li>Automatic failover</li>
+                                <li>Same API as single-node</li>
                             </ul>
                         </div>
                     </div>
@@ -654,21 +766,21 @@ redis-cli MODULE LIST
                     <pre><code class="language-python"># Scanning
 pr.scan_hashes(url, pattern, schema, ...)      # Scan hash keys to LazyFrame
 pr.scan_json(url, pattern, schema, ...)        # Scan JSON keys to LazyFrame
+pr.scan_strings(url, pattern, ...)             # Scan string keys to LazyFrame
 
-# RediSearch (requires 'search' feature)
-pr.search_hashes(url, index, query, schema, ...)      # FT.SEARCH to DataFrame
-pr.aggregate_hashes(url, index, query, ...)           # FT.AGGREGATE to DataFrame
+# RediSearch with Query Builder
+from polars_redis import col, search_hashes
+query = (col("age") > 30) & (col("status") == "active")
+pr.search_hashes(url, index, query, schema)    # Predicate pushdown!
+pr.aggregate_hashes(url, index, query, ...)    # Server-side aggregation
 
 # Writing
-pr.write_hashes(url, df, key_column, key_prefix, ...) # DataFrame to hashes
-pr.write_json(url, df, key_column, key_prefix, ...)   # DataFrame to JSON
+pr.write_hashes(df, url, key_column, ...)      # DataFrame to hashes
+pr.write_json(df, url, key_column, ...)        # DataFrame to JSON
 
-# Common Options
-schema={"field": "type"}     # utf8, int64, float64, bool
-infer_schema=True            # Auto-detect types
-batch_size=1000              # Keys per batch
-with_key=True                # Include Redis key as column
-key_column="_key"            # Column name for key</code></pre>
+# Redis Cluster
+ClusterHashBatchIterator(nodes, schema, config)  # Scan across cluster nodes
+ClusterStringBatchIterator(nodes, schema, config)</code></pre>
                 </section>
 
                 <!-- Resources -->
