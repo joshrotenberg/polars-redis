@@ -1116,6 +1116,88 @@ class TestScanStrings:
         df = lf.collect()
         assert len(df) == 0
 
+    def test_scan_strings_with_ttl(self, redis_url: str) -> None:
+        """Test scanning strings with TTL column included."""
+        import subprocess
+
+        # Create strings with TTL
+        subprocess.run(
+            ["redis-cli", "SET", "test:ttlread:str:1", "value1", "EX", "3600"],
+            capture_output=True,
+        )
+        subprocess.run(
+            ["redis-cli", "SET", "test:ttlread:str:2", "value2", "EX", "7200"],
+            capture_output=True,
+        )
+        # One without TTL
+        subprocess.run(
+            ["redis-cli", "SET", "test:ttlread:str:3", "value3"],
+            capture_output=True,
+        )
+
+        try:
+            lf = polars_redis.scan_strings(
+                redis_url,
+                pattern="test:ttlread:str:*",
+                include_ttl=True,
+            )
+
+            df = lf.collect()
+            assert len(df) == 3
+            assert "_ttl" in df.columns
+            assert df.schema["_ttl"] == pl.Int64
+
+            # Check TTL values - sort by key for predictable order
+            df = df.sort("_key")
+            ttls = df["_ttl"].to_list()
+
+            # First two should have positive TTL values
+            assert ttls[0] is not None and ttls[0] > 0  # test:ttlread:str:1
+            assert ttls[1] is not None and ttls[1] > 0  # test:ttlread:str:2
+            # Third should be -1 (no expiry)
+            assert ttls[2] == -1  # test:ttlread:str:3
+
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:ttlread:str:1"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", "test:ttlread:str:2"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", "test:ttlread:str:3"], capture_output=True)
+
+    def test_scan_strings_with_ttl_custom_column_name(self, redis_url: str) -> None:
+        """Test scanning strings with custom TTL column name."""
+        import subprocess
+
+        subprocess.run(
+            ["redis-cli", "SET", "test:ttlcustom:str:1", "val1", "EX", "600"],
+            capture_output=True,
+        )
+
+        try:
+            lf = polars_redis.scan_strings(
+                redis_url,
+                pattern="test:ttlcustom:str:*",
+                include_ttl=True,
+                ttl_column_name="expires_in",
+            )
+
+            df = lf.collect()
+            assert "expires_in" in df.columns
+            assert "_ttl" not in df.columns
+            assert df.schema["expires_in"] == pl.Int64
+            assert df["expires_in"][0] > 0
+
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:ttlcustom:str:1"], capture_output=True)
+
+    def test_scan_strings_without_ttl(self, redis_url: str) -> None:
+        """Test that TTL column is not included by default."""
+        lf = polars_redis.scan_strings(
+            redis_url,
+            pattern="test:cache:*",
+        )
+
+        df = lf.collect()
+        assert "_ttl" not in df.columns
+
 
 class TestReadStrings:
     """Tests for read_strings function."""

@@ -792,6 +792,8 @@ impl PyClusterStringBatchIterator {
         include_key = true,
         key_column_name = "_key".to_string(),
         value_column_name = "value".to_string(),
+        include_ttl = false,
+        ttl_column_name = "_ttl".to_string(),
         max_rows = None,
         parallel = None
     ))]
@@ -805,6 +807,8 @@ impl PyClusterStringBatchIterator {
         include_key: bool,
         key_column_name: String,
         value_column_name: String,
+        include_ttl: bool,
+        ttl_column_name: String,
         max_rows: Option<usize>,
         parallel: Option<usize>,
     ) -> PyResult<Self> {
@@ -828,7 +832,9 @@ impl PyClusterStringBatchIterator {
         let string_schema = StringSchema::new(dtype)
             .with_key(include_key)
             .with_key_column_name(key_column_name)
-            .with_value_column_name(value_column_name);
+            .with_value_column_name(value_column_name)
+            .with_ttl(include_ttl)
+            .with_ttl_column_name(ttl_column_name);
 
         let mut config = BatchConfig::new(pattern)
             .with_batch_size(batch_size)
@@ -1566,6 +1572,8 @@ impl PyStringBatchIterator {
     /// * `include_key` - Whether to include the Redis key as a column
     /// * `key_column_name` - Name of the key column
     /// * `value_column_name` - Name of the value column
+    /// * `include_ttl` - Whether to include the TTL as a column
+    /// * `ttl_column_name` - Name of the TTL column
     /// * `max_rows` - Optional maximum rows to return
     /// * `parallel` - Optional number of parallel workers for fetching
     #[new]
@@ -1578,6 +1586,8 @@ impl PyStringBatchIterator {
         include_key = true,
         key_column_name = "_key".to_string(),
         value_column_name = "value".to_string(),
+        include_ttl = false,
+        ttl_column_name = "_ttl".to_string(),
         max_rows = None,
         parallel = None
     ))]
@@ -1591,6 +1601,8 @@ impl PyStringBatchIterator {
         include_key: bool,
         key_column_name: String,
         value_column_name: String,
+        include_ttl: bool,
+        ttl_column_name: String,
         max_rows: Option<usize>,
         parallel: Option<usize>,
     ) -> PyResult<Self> {
@@ -1615,7 +1627,9 @@ impl PyStringBatchIterator {
         let string_schema = StringSchema::new(dtype)
             .with_key(include_key)
             .with_key_column_name(key_column_name)
-            .with_value_column_name(value_column_name);
+            .with_value_column_name(value_column_name)
+            .with_ttl(include_ttl)
+            .with_ttl_column_name(ttl_column_name);
 
         let mut config = BatchConfig::new(pattern)
             .with_batch_size(batch_size)

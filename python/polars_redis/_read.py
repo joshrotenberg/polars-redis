@@ -20,6 +20,8 @@ def read_strings(
     include_key: bool = True,
     key_column_name: str = "_key",
     value_column_name: str = "value",
+    include_ttl: bool = False,
+    ttl_column_name: str = "_ttl",
     batch_size: int = 1000,
     count_hint: int = 100,
 ) -> pl.DataFrame:
@@ -35,6 +37,8 @@ def read_strings(
         include_key: Whether to include the Redis key as a column.
         key_column_name: Name of the key column (default: "_key").
         value_column_name: Name of the value column (default: "value").
+        include_ttl: Whether to include the TTL as a column.
+        ttl_column_name: Name of the TTL column (default: "_ttl").
         batch_size: Number of keys to process per batch.
         count_hint: SCAN COUNT hint for Redis.
 
@@ -55,6 +59,8 @@ def read_strings(
         include_key=include_key,
         key_column_name=key_column_name,
         value_column_name=value_column_name,
+        include_ttl=include_ttl,
+        ttl_column_name=ttl_column_name,
         batch_size=batch_size,
         count_hint=count_hint,
     ).collect()
