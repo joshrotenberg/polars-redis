@@ -56,7 +56,9 @@ from polars_redis._scan import (
 )
 from polars_redis._search import (
     aggregate_hashes,
+    aggregate_json,
     search_hashes,
+    search_json,
 )
 from polars_redis._write import (
     WriteResult,
@@ -97,7 +99,9 @@ __all__ = [
     "scan_json",
     "scan_strings",
     "search_hashes",
+    "search_json",
     "aggregate_hashes",
+    "aggregate_json",
     # Read functions (eager)
     "read_hashes",
     "read_json",

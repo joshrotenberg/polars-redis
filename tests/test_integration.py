@@ -2443,6 +2443,360 @@ class TestSearchHashes:
     not redisearch_available(),
     reason="RediSearch module not available",
 )
+class TestSearchJson:
+    """Tests for search_json function using RediSearch on JSON documents."""
+
+    @pytest.fixture(scope="class", autouse=True)
+    def setup_json_search_data(self, redis_url: str) -> None:
+        """Set up test JSON data and index for RediSearch tests."""
+        import subprocess
+
+        # Create test JSON documents for search
+        for i in range(1, 21):
+            price = float(10 + i * 5)
+            in_stock = "true" if i % 2 == 0 else "false"
+            category = "electronics" if i <= 10 else "clothing"
+            json_data = (
+                f'{{"name":"Product{i}","price":{price},'
+                f'"category":"{category}","in_stock":{in_stock}}}'
+            )
+            subprocess.run(
+                ["redis-cli", "JSON.SET", f"product:{i}", "$", json_data],
+                capture_output=True,
+            )
+
+        # Drop JSON index if it exists
+        subprocess.run(
+            ["redis-cli", "FT.DROPINDEX", "products_json_idx"],
+            capture_output=True,
+        )
+
+        # Create RediSearch index on JSON documents
+        subprocess.run(
+            [
+                "redis-cli",
+                "FT.CREATE",
+                "products_json_idx",
+                "ON",
+                "JSON",
+                "PREFIX",
+                "1",
+                "product:",
+                "SCHEMA",
+                "$.name",
+                "AS",
+                "name",
+                "TEXT",
+                "$.price",
+                "AS",
+                "price",
+                "NUMERIC",
+                "SORTABLE",
+                "$.category",
+                "AS",
+                "category",
+                "TAG",
+                "$.in_stock",
+                "AS",
+                "in_stock",
+                "TAG",
+            ],
+            capture_output=True,
+        )
+
+        # Wait for indexing
+        import time
+
+        for _ in range(50):
+            result = subprocess.run(
+                ["redis-cli", "FT.INFO", "products_json_idx"],
+                capture_output=True,
+                text=True,
+            )
+            output = result.stdout
+            if "num_docs" in output:
+                lines = output.strip().split("\n")
+                for j, line in enumerate(lines):
+                    if line == "num_docs" and j + 1 < len(lines):
+                        num_docs = int(lines[j + 1])
+                        if num_docs >= 20:
+                            break
+            time.sleep(0.1)
+        else:
+            time.sleep(0.5)
+
+        yield
+
+        # Cleanup
+        subprocess.run(
+            ["redis-cli", "FT.DROPINDEX", "products_json_idx"],
+            capture_output=True,
+        )
+        for i in range(1, 21):
+            subprocess.run(
+                ["redis-cli", "DEL", f"product:{i}"],
+                capture_output=True,
+            )
+
+    def test_search_json_all(self, redis_url: str) -> None:
+        """Test searching all JSON documents with wildcard query."""
+        lf = polars_redis.search_json(
+            redis_url,
+            index="products_json_idx",
+            query="*",
+            schema={
+                "name": pl.Utf8,
+                "price": pl.Float64,
+                "category": pl.Utf8,
+            },
+        )
+
+        df = lf.collect()
+        assert len(df) == 20
+        assert "_key" in df.columns
+        assert "name" in df.columns
+        assert "price" in df.columns
+
+    def test_search_json_numeric_range(self, redis_url: str) -> None:
+        """Test searching JSON with numeric range filter."""
+        # Search for products with price >= 50 (products 8-20 have price >= 50)
+        lf = polars_redis.search_json(
+            redis_url,
+            index="products_json_idx",
+            query="@price:[50 +inf]",
+            schema={
+                "name": pl.Utf8,
+                "price": pl.Float64,
+            },
+        )
+
+        df = lf.collect()
+        assert len(df) >= 1
+        assert all(df["price"] >= 50)
+
+    def test_search_json_tag_filter(self, redis_url: str) -> None:
+        """Test searching JSON with tag filter."""
+        # Search for electronics category
+        lf = polars_redis.search_json(
+            redis_url,
+            index="products_json_idx",
+            query="@category:{electronics}",
+            schema={
+                "name": pl.Utf8,
+                "price": pl.Float64,
+                "category": pl.Utf8,
+            },
+        )
+
+        df = lf.collect()
+        assert len(df) == 10  # Products 1-10 are electronics
+
+    def test_search_json_with_sort(self, redis_url: str) -> None:
+        """Test searching JSON with sorting."""
+        lf = polars_redis.search_json(
+            redis_url,
+            index="products_json_idx",
+            query="*",
+            schema={
+                "name": pl.Utf8,
+                "price": pl.Float64,
+            },
+            sort_by="price",
+            sort_ascending=True,
+        )
+
+        df = lf.head(5).collect()
+        assert len(df) == 5
+        # Prices should be in ascending order
+        prices = df["price"].to_list()
+        assert prices == sorted(prices)
+
+    def test_search_json_combined_query(self, redis_url: str) -> None:
+        """Test searching JSON with combined filters."""
+        # Search for electronics with price < 50
+        lf = polars_redis.search_json(
+            redis_url,
+            index="products_json_idx",
+            query="@category:{electronics} @price:[-inf 49]",
+            schema={
+                "name": pl.Utf8,
+                "price": pl.Float64,
+                "category": pl.Utf8,
+            },
+        )
+
+        df = lf.collect()
+        # Products 1-7 are electronics with price < 50
+        assert len(df) >= 1
+        assert all(df["price"] < 50)
+
+
+@pytest.mark.skipif(
+    not redisearch_available(),
+    reason="RediSearch module not available",
+)
+class TestAggregateJson:
+    """Tests for aggregate_json function using RediSearch FT.AGGREGATE on JSON."""
+
+    @pytest.fixture(scope="class", autouse=True)
+    def setup_json_aggregate_data(self, redis_url: str) -> None:
+        """Set up test JSON data and index for FT.AGGREGATE tests."""
+        import subprocess
+
+        # Create test JSON documents for aggregation
+        categories = ["electronics"] * 10 + ["clothing"] * 5 + ["books"] * 5
+        for i in range(1, 21):
+            price = float(10 + i * 5)
+            rating = float(3 + (i % 3))  # Ratings 3-5
+            category = categories[i - 1]
+            json_data = (
+                f'{{"name":"AggProduct{i}","price":{price},'
+                f'"rating":{rating},"category":"{category}"}}'
+            )
+            subprocess.run(
+                ["redis-cli", "JSON.SET", f"agg_product:{i}", "$", json_data],
+                capture_output=True,
+            )
+
+        # Drop JSON index if it exists
+        subprocess.run(
+            ["redis-cli", "FT.DROPINDEX", "agg_products_json_idx"],
+            capture_output=True,
+        )
+
+        # Create RediSearch index
+        subprocess.run(
+            [
+                "redis-cli",
+                "FT.CREATE",
+                "agg_products_json_idx",
+                "ON",
+                "JSON",
+                "PREFIX",
+                "1",
+                "agg_product:",
+                "SCHEMA",
+                "$.name",
+                "AS",
+                "name",
+                "TEXT",
+                "$.price",
+                "AS",
+                "price",
+                "NUMERIC",
+                "SORTABLE",
+                "$.rating",
+                "AS",
+                "rating",
+                "NUMERIC",
+                "$.category",
+                "AS",
+                "category",
+                "TAG",
+            ],
+            capture_output=True,
+        )
+
+        # Wait for indexing
+        import time
+
+        for _ in range(50):
+            result = subprocess.run(
+                ["redis-cli", "FT.INFO", "agg_products_json_idx"],
+                capture_output=True,
+                text=True,
+            )
+            output = result.stdout
+            if "num_docs" in output:
+                lines = output.strip().split("\n")
+                for j, line in enumerate(lines):
+                    if line == "num_docs" and j + 1 < len(lines):
+                        num_docs = int(lines[j + 1])
+                        if num_docs >= 20:
+                            break
+            time.sleep(0.1)
+        else:
+            time.sleep(0.5)
+
+        yield
+
+        # Cleanup
+        subprocess.run(
+            ["redis-cli", "FT.DROPINDEX", "agg_products_json_idx"],
+            capture_output=True,
+        )
+        for i in range(1, 21):
+            subprocess.run(
+                ["redis-cli", "DEL", f"agg_product:{i}"],
+                capture_output=True,
+            )
+
+    def test_aggregate_json_count_all(self, redis_url: str) -> None:
+        """Test counting all JSON documents."""
+        df = polars_redis.aggregate_json(
+            redis_url,
+            index="agg_products_json_idx",
+            query="*",
+            group_by=[],
+            reduce=[("COUNT", [], "total")],
+        )
+
+        assert len(df) == 1
+        assert int(df["total"][0]) == 20
+
+    def test_aggregate_json_group_by_category(self, redis_url: str) -> None:
+        """Test grouping JSON documents by category."""
+        df = polars_redis.aggregate_json(
+            redis_url,
+            index="agg_products_json_idx",
+            query="*",
+            group_by=["@category"],
+            reduce=[("COUNT", [], "count")],
+        )
+
+        assert len(df) == 3  # electronics, clothing, books
+        # Check totals add up
+        total = sum(int(c) for c in df["count"].to_list())
+        assert total == 20
+
+    def test_aggregate_json_avg_price_by_category(self, redis_url: str) -> None:
+        """Test calculating average price by category."""
+        df = polars_redis.aggregate_json(
+            redis_url,
+            index="agg_products_json_idx",
+            query="*",
+            group_by=["@category"],
+            reduce=[
+                ("COUNT", [], "product_count"),
+                ("AVG", ["@price"], "avg_price"),
+            ],
+        )
+
+        assert len(df) == 3
+        assert "avg_price" in df.columns
+        assert "product_count" in df.columns
+
+    def test_aggregate_json_with_sort(self, redis_url: str) -> None:
+        """Test aggregation with sorting."""
+        df = polars_redis.aggregate_json(
+            redis_url,
+            index="agg_products_json_idx",
+            query="*",
+            group_by=["@category"],
+            reduce=[("COUNT", [], "count")],
+            sort_by=[("@count", False)],  # Descending
+        )
+
+        assert len(df) == 3
+        # Electronics should be first (10 products)
+        counts = [int(c) for c in df["count"].to_list()]
+        assert counts == sorted(counts, reverse=True)
+
+
+@pytest.mark.skipif(
+    not redisearch_available(),
+    reason="RediSearch module not available",
+)
 class TestAggregateHashes:
     """Tests for aggregate_hashes function using RediSearch FT.AGGREGATE."""
 
