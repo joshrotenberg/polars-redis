@@ -9,7 +9,7 @@
 use polars_redis::{BatchConfig, HashBatchIterator, HashSchema, RedisType};
 
 mod common;
-use common::{REDIS_URL, cleanup_keys, redis_available, redis_cli, setup_test_hashes};
+use common::{cleanup_keys, redis_available, redis_cli, redis_url, setup_test_hashes};
 
 /// Test basic hash scanning with explicit schema.
 #[test]
@@ -39,8 +39,8 @@ fn test_scan_hashes_basic() {
         .with_count_hint(50);
 
     // Create iterator
-    let mut iterator =
-        HashBatchIterator::new(REDIS_URL, schema, config, None).expect("Failed to create iterator");
+    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
+        .expect("Failed to create iterator");
 
     // Collect all batches
     let mut total_rows = 0;
@@ -79,7 +79,7 @@ fn test_scan_hashes_with_projection() {
 
     // Only request 'name' field
     let projection = Some(vec!["name".to_string()]);
-    let mut iterator = HashBatchIterator::new(REDIS_URL, schema, config, projection)
+    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, projection)
         .expect("Failed to create iterator");
 
     let batch = iterator
@@ -107,8 +107,8 @@ fn test_scan_hashes_no_matches() {
 
     let config = BatchConfig::new("nonexistent:pattern:*".to_string()).with_batch_size(100);
 
-    let mut iterator =
-        HashBatchIterator::new(REDIS_URL, schema, config, None).expect("Failed to create iterator");
+    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
+        .expect("Failed to create iterator");
 
     // Should return None immediately
     let batch = iterator.next_batch().expect("Failed to get batch");
@@ -134,8 +134,8 @@ fn test_scan_hashes_max_rows() {
         .with_batch_size(100)
         .with_max_rows(5); // Only get 5 rows
 
-    let mut iterator =
-        HashBatchIterator::new(REDIS_URL, schema, config, None).expect("Failed to create iterator");
+    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
+        .expect("Failed to create iterator");
 
     let mut total_rows = 0;
     while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
@@ -165,8 +165,8 @@ fn test_scan_hashes_small_batches() {
         .with_batch_size(3) // Very small batch
         .with_count_hint(3);
 
-    let mut iterator =
-        HashBatchIterator::new(REDIS_URL, schema, config, None).expect("Failed to create iterator");
+    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
+        .expect("Failed to create iterator");
 
     let mut batch_count = 0;
     let mut total_rows = 0;
@@ -203,8 +203,8 @@ fn test_scan_hashes_with_ttl() {
 
     let config = BatchConfig::new("rust:ttl:*".to_string()).with_batch_size(100);
 
-    let mut iterator =
-        HashBatchIterator::new(REDIS_URL, schema, config, None).expect("Failed to create iterator");
+    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
+        .expect("Failed to create iterator");
 
     let batch = iterator
         .next_batch()
@@ -237,8 +237,8 @@ fn test_scan_hashes_with_row_index() {
 
     let config = BatchConfig::new("rust:idx:*".to_string()).with_batch_size(100);
 
-    let mut iterator =
-        HashBatchIterator::new(REDIS_URL, schema, config, None).expect("Failed to create iterator");
+    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
+        .expect("Failed to create iterator");
 
     let batch = iterator
         .next_batch()
@@ -287,8 +287,8 @@ fn test_scan_hashes_type_conversion() {
 
     let config = BatchConfig::new("rust:types:*".to_string()).with_batch_size(100);
 
-    let mut iterator =
-        HashBatchIterator::new(REDIS_URL, schema, config, None).expect("Failed to create iterator");
+    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
+        .expect("Failed to create iterator");
 
     let batch = iterator
         .next_batch()
@@ -324,8 +324,8 @@ fn test_scan_hashes_missing_fields() {
 
     let config = BatchConfig::new("rust:missing:*".to_string()).with_batch_size(100);
 
-    let mut iterator =
-        HashBatchIterator::new(REDIS_URL, schema, config, None).expect("Failed to create iterator");
+    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
+        .expect("Failed to create iterator");
 
     let batch = iterator
         .next_batch()
@@ -355,8 +355,8 @@ fn test_scan_hashes_rows_yielded() {
 
     let config = BatchConfig::new("rust:yielded:*".to_string()).with_batch_size(100);
 
-    let mut iterator =
-        HashBatchIterator::new(REDIS_URL, schema, config, None).expect("Failed to create iterator");
+    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
+        .expect("Failed to create iterator");
 
     assert_eq!(iterator.rows_yielded(), 0);
 

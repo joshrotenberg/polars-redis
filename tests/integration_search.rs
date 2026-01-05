@@ -11,7 +11,7 @@ use polars_redis::{HashSchema, HashSearchIterator, RedisType, SearchBatchConfig}
 
 mod common;
 use common::{
-    REDIS_URL, cleanup_keys, create_hash_index, redis_available, redis_cli, setup_test_hashes,
+    cleanup_keys, create_hash_index, redis_available, redis_cli, redis_url, setup_test_hashes,
     wait_for_index,
 };
 
@@ -44,7 +44,7 @@ fn test_search_hashes_basic() {
     let config =
         SearchBatchConfig::new("rust_search_idx".to_string(), "*".to_string()).with_batch_size(100);
 
-    let mut iterator = HashSearchIterator::new(REDIS_URL, schema, config, None)
+    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
         .expect("Failed to create search iterator");
 
     let mut total_rows = 0;
@@ -89,7 +89,7 @@ fn test_search_numeric_range() {
         SearchBatchConfig::new("rust_numrange_idx".to_string(), "@age:[25 30]".to_string())
             .with_batch_size(100);
 
-    let mut iterator = HashSearchIterator::new(REDIS_URL, schema, config, None)
+    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
         .expect("Failed to create search iterator");
 
     let mut total_rows = 0;
@@ -133,7 +133,7 @@ fn test_search_with_sort() {
         .with_batch_size(100)
         .with_sort_by("age".to_string(), false); // descending
 
-    let mut iterator = HashSearchIterator::new(REDIS_URL, schema, config, None)
+    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
         .expect("Failed to create search iterator");
 
     let batch = iterator
@@ -172,7 +172,7 @@ fn test_search_with_limit() {
         .with_batch_size(100)
         .with_max_rows(5); // Only get 5 rows
 
-    let mut iterator = HashSearchIterator::new(REDIS_URL, schema, config, None)
+    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
         .expect("Failed to create search iterator");
 
     let mut total_rows = 0;
@@ -210,7 +210,7 @@ fn test_search_total_results() {
     let config =
         SearchBatchConfig::new("rust_total_idx".to_string(), "*".to_string()).with_batch_size(5); // Small batch to test pagination
 
-    let mut iterator = HashSearchIterator::new(REDIS_URL, schema, config, None)
+    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
         .expect("Failed to create search iterator");
 
     // Before first batch, total_results should be None
@@ -254,7 +254,7 @@ fn test_search_no_results() {
     )
     .with_batch_size(100);
 
-    let mut iterator = HashSearchIterator::new(REDIS_URL, schema, config, None)
+    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
         .expect("Failed to create search iterator");
 
     let batch = iterator.next_batch().expect("Failed to get batch");
@@ -296,7 +296,7 @@ fn test_search_with_projection() {
     // Only project 'name' column
     let projection = Some(vec!["name".to_string()]);
 
-    let mut iterator = HashSearchIterator::new(REDIS_URL, schema, config, projection)
+    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, projection)
         .expect("Failed to create search iterator");
 
     let batch = iterator

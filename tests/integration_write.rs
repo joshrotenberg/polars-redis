@@ -6,7 +6,7 @@
 use polars_redis::{WriteMode, write_hashes, write_strings};
 
 mod common;
-use common::{REDIS_URL, cleanup_keys, redis_available, redis_cli_output};
+use common::{cleanup_keys, redis_available, redis_cli_output, redis_url};
 
 /// Test basic hash writing.
 #[test]
@@ -31,7 +31,7 @@ fn test_write_hashes_basic() {
         vec![Some("Charlie".to_string()), Some("35".to_string())],
     ];
 
-    let result = write_hashes(REDIS_URL, keys, fields, values, None, WriteMode::Replace)
+    let result = write_hashes(&redis_url(), keys, fields, values, None, WriteMode::Replace)
         .expect("Failed to write hashes");
 
     assert_eq!(result.keys_written, 3);
@@ -64,7 +64,7 @@ fn test_write_hashes_with_ttl() {
     let values = vec![vec![Some("Test".to_string())]];
 
     let result = write_hashes(
-        REDIS_URL,
+        &redis_url(),
         keys,
         fields,
         values,
@@ -99,7 +99,7 @@ fn test_write_hashes_with_nulls() {
     let fields = vec!["name".to_string(), "age".to_string()];
     let values = vec![vec![Some("Alice".to_string()), None]]; // age is null
 
-    let result = write_hashes(REDIS_URL, keys, fields, values, None, WriteMode::Replace)
+    let result = write_hashes(&redis_url(), keys, fields, values, None, WriteMode::Replace)
         .expect("Failed to write hashes");
 
     assert_eq!(result.keys_written, 1);
@@ -128,7 +128,7 @@ fn test_write_strings_basic() {
     let keys = vec!["rust:strwrite:1".to_string(), "rust:strwrite:2".to_string()];
     let values = vec![Some("value1".to_string()), Some("value2".to_string())];
 
-    let result = write_strings(REDIS_URL, keys, values, None, WriteMode::Replace)
+    let result = write_strings(&redis_url(), keys, values, None, WriteMode::Replace)
         .expect("Failed to write strings");
 
     assert_eq!(result.keys_written, 2);
@@ -160,7 +160,7 @@ fn test_write_mode_replace() {
     let values = vec![vec![Some("Old".to_string()), Some("data".to_string())]];
 
     write_hashes(
-        REDIS_URL,
+        &redis_url(),
         keys.clone(),
         fields,
         values,
@@ -173,7 +173,7 @@ fn test_write_mode_replace() {
     let fields = vec!["name".to_string(), "new_field".to_string()];
     let values = vec![vec![Some("New".to_string()), Some("data".to_string())]];
 
-    let result = write_hashes(REDIS_URL, keys, fields, values, None, WriteMode::Replace)
+    let result = write_hashes(&redis_url(), keys, fields, values, None, WriteMode::Replace)
         .expect("Failed to replace data");
 
     assert_eq!(result.keys_written, 1);
@@ -205,7 +205,7 @@ fn test_write_mode_append() {
     let values = vec![vec![Some("Original".to_string())]];
 
     write_hashes(
-        REDIS_URL,
+        &redis_url(),
         keys.clone(),
         fields,
         values,
@@ -218,7 +218,7 @@ fn test_write_mode_append() {
     let fields = vec!["age".to_string()];
     let values = vec![vec![Some("30".to_string())]];
 
-    let result = write_hashes(REDIS_URL, keys, fields, values, None, WriteMode::Append)
+    let result = write_hashes(&redis_url(), keys, fields, values, None, WriteMode::Append)
         .expect("Failed to append data");
 
     assert_eq!(result.keys_written, 1);
@@ -253,8 +253,8 @@ fn test_batch_to_ipc() {
 
     let config = BatchConfig::new("rust:ipc:*".to_string()).with_batch_size(100);
 
-    let mut iterator =
-        HashBatchIterator::new(REDIS_URL, schema, config, None).expect("Failed to create iterator");
+    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
+        .expect("Failed to create iterator");
 
     let batch = iterator
         .next_batch()
