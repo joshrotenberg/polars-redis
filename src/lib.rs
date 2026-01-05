@@ -113,6 +113,8 @@ use arrow::datatypes::DataType;
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
 
+#[cfg(feature = "cluster")]
+pub mod cluster;
 mod connection;
 mod error;
 mod infer;
@@ -127,7 +129,9 @@ pub mod search;
 mod types;
 mod write;
 
-pub use connection::RedisConnection;
+#[cfg(feature = "cluster")]
+pub use cluster::{ClusterKeyScanner, DirectClusterKeyScanner};
+pub use connection::{ConnectionConfig, RedisConn, RedisConnection};
 pub use error::{Error, Result};
 pub use infer::{InferredSchema, infer_hash_schema, infer_json_schema};
 pub use options::{
@@ -140,14 +144,26 @@ pub use parallel::{FetchResult, KeyBatch, ParallelConfig, ParallelFetch};
 pub use query_builder::{Predicate, PredicateBuilder, Value};
 pub use schema::{HashSchema, RedisType};
 pub use types::hash::{BatchConfig, HashBatchIterator, HashFetcher};
+#[cfg(feature = "cluster")]
+pub use types::hash::{ClusterHashBatchIterator, ClusterHashFetcher};
 #[cfg(feature = "search")]
 pub use types::hash::{HashSearchIterator, SearchBatchConfig};
+#[cfg(feature = "cluster")]
+pub use types::json::ClusterJsonBatchIterator;
 pub use types::json::{JsonBatchIterator, JsonSchema};
+#[cfg(feature = "cluster")]
+pub use types::list::ClusterListBatchIterator;
 pub use types::list::{ListBatchIterator, ListSchema};
+#[cfg(feature = "cluster")]
+pub use types::set::ClusterSetBatchIterator;
 pub use types::set::{SetBatchIterator, SetSchema};
 pub use types::stream::{StreamBatchIterator, StreamSchema};
+#[cfg(feature = "cluster")]
+pub use types::string::ClusterStringBatchIterator;
 pub use types::string::{StringBatchIterator, StringSchema};
 pub use types::timeseries::{TimeSeriesBatchIterator, TimeSeriesSchema};
+#[cfg(feature = "cluster")]
+pub use types::zset::ClusterZSetBatchIterator;
 pub use types::zset::{ZSetBatchIterator, ZSetSchema};
 pub use write::{
     WriteMode, WriteResult, write_hashes, write_json, write_lists, write_sets, write_strings,
@@ -213,6 +229,12 @@ fn polars_redis_internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_write_sets, m)?)?;
     m.add_function(wrap_pyfunction!(py_write_lists, m)?)?;
     m.add_function(wrap_pyfunction!(py_write_zsets, m)?)?;
+    #[cfg(feature = "cluster")]
+    m.add_class::<PyClusterHashBatchIterator>()?;
+    #[cfg(feature = "cluster")]
+    m.add_class::<PyClusterJsonBatchIterator>()?;
+    #[cfg(feature = "cluster")]
+    m.add_class::<PyClusterStringBatchIterator>()?;
     Ok(())
 }
 
@@ -427,6 +449,450 @@ impl PyHashBatchIterator {
     /// Get the number of rows yielded so far.
     fn rows_yielded(&self) -> usize {
         self.inner.rows_yielded()
+    }
+}
+
+// ============================================================================
+// Cluster Python bindings (with cluster + python features)
+// ============================================================================
+
+#[cfg(all(feature = "python", feature = "cluster"))]
+/// Python wrapper for ClusterHashBatchIterator.
+///
+/// This class is used by the Python IO plugin to iterate over Redis Cluster hash data
+/// and yield Arrow RecordBatches.
+#[pyclass]
+pub struct PyClusterHashBatchIterator {
+    inner: ClusterHashBatchIterator,
+}
+
+#[cfg(all(feature = "python", feature = "cluster"))]
+#[pymethods]
+impl PyClusterHashBatchIterator {
+    /// Create a new PyClusterHashBatchIterator.
+    ///
+    /// # Arguments
+    /// * `nodes` - List of cluster node URLs
+    /// * `pattern` - Key pattern to match
+    /// * `schema` - List of (field_name, type_name) tuples
+    /// * `batch_size` - Keys per batch
+    /// * `count_hint` - SCAN COUNT hint
+    /// * `projection` - Optional list of columns to fetch
+    /// * `include_key` - Whether to include the Redis key as a column
+    /// * `key_column_name` - Name of the key column
+    /// * `include_ttl` - Whether to include the TTL as a column
+    /// * `ttl_column_name` - Name of the TTL column
+    /// * `include_row_index` - Whether to include the row index as a column
+    /// * `row_index_column_name` - Name of the row index column
+    /// * `max_rows` - Optional maximum rows to return
+    /// * `parallel` - Optional number of parallel workers for fetching
+    #[new]
+    #[pyo3(signature = (
+        nodes,
+        pattern,
+        schema,
+        batch_size = 1000,
+        count_hint = 100,
+        projection = None,
+        include_key = true,
+        key_column_name = "_key".to_string(),
+        include_ttl = false,
+        ttl_column_name = "_ttl".to_string(),
+        include_row_index = false,
+        row_index_column_name = "_index".to_string(),
+        max_rows = None,
+        parallel = None
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        nodes: Vec<String>,
+        pattern: String,
+        schema: Vec<(String, String)>,
+        batch_size: usize,
+        count_hint: usize,
+        projection: Option<Vec<String>>,
+        include_key: bool,
+        key_column_name: String,
+        include_ttl: bool,
+        ttl_column_name: String,
+        include_row_index: bool,
+        row_index_column_name: String,
+        max_rows: Option<usize>,
+        parallel: Option<usize>,
+    ) -> PyResult<Self> {
+        let field_types: Vec<(String, RedisType)> = schema
+            .into_iter()
+            .map(|(name, type_str)| {
+                let redis_type = match type_str.to_lowercase().as_str() {
+                    "utf8" | "str" | "string" => RedisType::Utf8,
+                    "int64" | "int" | "integer" => RedisType::Int64,
+                    "float64" | "float" | "double" => RedisType::Float64,
+                    "bool" | "boolean" => RedisType::Boolean,
+                    _ => {
+                        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                            "Unknown type '{}' for field '{}'. Supported: utf8, int64, float64, bool",
+                            type_str, name
+                        )));
+                    }
+                };
+                Ok((name, redis_type))
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+
+        let hash_schema = HashSchema::new(field_types)
+            .with_key(include_key)
+            .with_key_column_name(key_column_name)
+            .with_ttl(include_ttl)
+            .with_ttl_column_name(ttl_column_name)
+            .with_row_index(include_row_index)
+            .with_row_index_column_name(row_index_column_name);
+
+        let mut config = BatchConfig::new(pattern)
+            .with_batch_size(batch_size)
+            .with_count_hint(count_hint);
+
+        if let Some(max) = max_rows {
+            config = config.with_max_rows(max);
+        }
+
+        if let Some(workers) = parallel {
+            config = config.with_parallel(ParallelStrategy::batches(workers));
+        }
+
+        let inner = ClusterHashBatchIterator::new(&nodes, hash_schema, config, projection)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        Ok(Self { inner })
+    }
+
+    /// Get the next batch as Arrow IPC bytes.
+    fn next_batch_ipc(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let batch = self
+            .inner
+            .next_batch()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        match batch {
+            Some(record_batch) => {
+                let mut buf = Vec::new();
+                {
+                    let mut writer = arrow::ipc::writer::FileWriter::try_new(
+                        &mut buf,
+                        record_batch.schema().as_ref(),
+                    )
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to create IPC writer: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.write(&record_batch).map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to write batch: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.finish().map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to finish IPC: {}",
+                            e
+                        ))
+                    })?;
+                }
+
+                Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
+            }
+            None => Ok(None),
+        }
+    }
+
+    fn is_done(&self) -> bool {
+        self.inner.is_done()
+    }
+
+    fn rows_yielded(&self) -> usize {
+        self.inner.rows_yielded()
+    }
+
+    fn node_count(&self) -> usize {
+        self.inner.node_count()
+    }
+}
+
+#[cfg(all(feature = "python", feature = "cluster"))]
+/// Python wrapper for ClusterJsonBatchIterator.
+#[pyclass]
+pub struct PyClusterJsonBatchIterator {
+    inner: ClusterJsonBatchIterator,
+}
+
+#[cfg(all(feature = "python", feature = "cluster"))]
+#[pymethods]
+impl PyClusterJsonBatchIterator {
+    #[new]
+    #[pyo3(signature = (
+        nodes,
+        pattern,
+        schema,
+        batch_size = 1000,
+        count_hint = 100,
+        projection = None,
+        include_key = true,
+        key_column_name = "_key".to_string(),
+        include_ttl = false,
+        ttl_column_name = "_ttl".to_string(),
+        include_row_index = false,
+        row_index_column_name = "_index".to_string(),
+        max_rows = None,
+        parallel = None
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        nodes: Vec<String>,
+        pattern: String,
+        schema: Vec<(String, String)>,
+        batch_size: usize,
+        count_hint: usize,
+        projection: Option<Vec<String>>,
+        include_key: bool,
+        key_column_name: String,
+        include_ttl: bool,
+        ttl_column_name: String,
+        include_row_index: bool,
+        row_index_column_name: String,
+        max_rows: Option<usize>,
+        parallel: Option<usize>,
+    ) -> PyResult<Self> {
+        let field_types: Vec<(String, DataType)> = schema
+            .into_iter()
+            .map(|(name, type_str)| {
+                let dtype = match type_str.to_lowercase().as_str() {
+                    "utf8" | "str" | "string" => DataType::Utf8,
+                    "int64" | "int" | "integer" => DataType::Int64,
+                    "float64" | "float" | "double" => DataType::Float64,
+                    "bool" | "boolean" => DataType::Boolean,
+                    _ => {
+                        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                            "Unknown type '{}' for field '{}'. Supported: utf8, int64, float64, bool",
+                            type_str, name
+                        )));
+                    }
+                };
+                Ok((name, dtype))
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+
+        let json_schema = JsonSchema::new(field_types)
+            .with_key(include_key)
+            .with_key_column_name(key_column_name)
+            .with_ttl(include_ttl)
+            .with_ttl_column_name(ttl_column_name)
+            .with_row_index(include_row_index)
+            .with_row_index_column_name(row_index_column_name);
+
+        let mut config = BatchConfig::new(pattern)
+            .with_batch_size(batch_size)
+            .with_count_hint(count_hint);
+
+        if let Some(max) = max_rows {
+            config = config.with_max_rows(max);
+        }
+
+        if let Some(workers) = parallel {
+            config = config.with_parallel(ParallelStrategy::batches(workers));
+        }
+
+        let inner = ClusterJsonBatchIterator::new(&nodes, json_schema, config, projection)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        Ok(Self { inner })
+    }
+
+    fn next_batch_ipc(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let batch = self
+            .inner
+            .next_batch()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        match batch {
+            Some(record_batch) => {
+                let mut buf = Vec::new();
+                {
+                    let mut writer = arrow::ipc::writer::FileWriter::try_new(
+                        &mut buf,
+                        record_batch.schema().as_ref(),
+                    )
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to create IPC writer: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.write(&record_batch).map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to write batch: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.finish().map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to finish IPC: {}",
+                            e
+                        ))
+                    })?;
+                }
+
+                Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
+            }
+            None => Ok(None),
+        }
+    }
+
+    fn is_done(&self) -> bool {
+        self.inner.is_done()
+    }
+
+    fn rows_yielded(&self) -> usize {
+        self.inner.rows_yielded()
+    }
+
+    fn node_count(&self) -> usize {
+        self.inner.node_count()
+    }
+}
+
+#[cfg(all(feature = "python", feature = "cluster"))]
+/// Python wrapper for ClusterStringBatchIterator.
+#[pyclass]
+pub struct PyClusterStringBatchIterator {
+    inner: ClusterStringBatchIterator,
+}
+
+#[cfg(all(feature = "python", feature = "cluster"))]
+#[pymethods]
+impl PyClusterStringBatchIterator {
+    #[new]
+    #[pyo3(signature = (
+        nodes,
+        pattern,
+        value_type = "utf8".to_string(),
+        batch_size = 1000,
+        count_hint = 100,
+        include_key = true,
+        key_column_name = "_key".to_string(),
+        value_column_name = "value".to_string(),
+        max_rows = None,
+        parallel = None
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        nodes: Vec<String>,
+        pattern: String,
+        value_type: String,
+        batch_size: usize,
+        count_hint: usize,
+        include_key: bool,
+        key_column_name: String,
+        value_column_name: String,
+        max_rows: Option<usize>,
+        parallel: Option<usize>,
+    ) -> PyResult<Self> {
+        use arrow::datatypes::TimeUnit;
+
+        let dtype = match value_type.to_lowercase().as_str() {
+            "utf8" | "str" | "string" => DataType::Utf8,
+            "int64" | "int" | "integer" => DataType::Int64,
+            "float64" | "float" | "double" => DataType::Float64,
+            "bool" | "boolean" => DataType::Boolean,
+            "date" => DataType::Date32,
+            "datetime" => DataType::Timestamp(TimeUnit::Microsecond, None),
+            _ => {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Unknown value type '{}'. Supported: utf8, int64, float64, bool, date, datetime",
+                    value_type
+                )));
+            }
+        };
+
+        let string_schema = StringSchema::new(dtype)
+            .with_key(include_key)
+            .with_key_column_name(key_column_name)
+            .with_value_column_name(value_column_name);
+
+        let mut config = BatchConfig::new(pattern)
+            .with_batch_size(batch_size)
+            .with_count_hint(count_hint);
+
+        if let Some(max) = max_rows {
+            config = config.with_max_rows(max);
+        }
+
+        if let Some(workers) = parallel {
+            config = config.with_parallel(ParallelStrategy::batches(workers));
+        }
+
+        let inner = ClusterStringBatchIterator::new(&nodes, string_schema, config)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        Ok(Self { inner })
+    }
+
+    fn next_batch_ipc(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let batch = self
+            .inner
+            .next_batch()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        match batch {
+            Some(record_batch) => {
+                let mut buf = Vec::new();
+                {
+                    let mut writer = arrow::ipc::writer::FileWriter::try_new(
+                        &mut buf,
+                        record_batch.schema().as_ref(),
+                    )
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to create IPC writer: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.write(&record_batch).map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to write batch: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.finish().map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to finish IPC: {}",
+                            e
+                        ))
+                    })?;
+                }
+
+                Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
+            }
+            None => Ok(None),
+        }
+    }
+
+    fn is_done(&self) -> bool {
+        self.inner.is_done()
+    }
+
+    fn rows_yielded(&self) -> usize {
+        self.inner.rows_yielded()
+    }
+
+    fn node_count(&self) -> usize {
+        self.inner.node_count()
     }
 }
 
