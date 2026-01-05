@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1767570030019,
+  "lastUpdate": 1767586439961,
   "repoUrl": "https://github.com/joshrotenberg/polars-redis",
   "entries": {
     "Rust Benchmarks": [
@@ -395,6 +395,138 @@ window.BENCHMARK_DATA = {
             "name": "projection/25_of_50_fields",
             "value": 1125,
             "range": "± 5",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "joshrotenberg@gmail.com",
+            "name": "Josh Rotenberg",
+            "username": "joshrotenberg"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "f8f79c13c5c4f83140413f3446d81ce11798ac33",
+          "message": "feat: add Redis Cluster support (#65)\n\n* docs: Update documentation for RediSearch and parallel features\n\n- Add RediSearch guide with search_hashes, aggregate_hashes, query builder\n- Add parallel parameter documentation to scanning and configuration guides\n- Update README and index with new features\n- Add search_example.py to Python examples\n- Fix slides.md link and add direct URL fallback\n- Update mkdocs.yml navigation\n\n* feat: add Redis Cluster support\n\nAdd comprehensive Redis Cluster support with cluster-aware iterators\nfor all data types (Hash, JSON, String, Set, List, ZSet).\n\nKey changes:\n- Add cluster.rs with DirectClusterKeyScanner for cluster-wide SCAN\n- Extend connection.rs with RedisConn enum and ConnectionConfig\n- Add ClusterXxxBatchIterator for each data type\n- Add cluster fetch functions to each reader module\n- Add Python bindings for cluster hash, json, string iterators\n- Support redis+cluster:// URL scheme for auto-detection\n\nThe implementation uses DirectClusterKeyScanner to iterate SCAN across\nall master nodes (since cluster SCAN only returns keys from one node),\nand ClusterConnection for data fetching (which routes automatically).\n\nAll cluster code is behind the 'cluster' feature flag.\n\nCloses #40\n\n* test: add cluster integration tests using docker-wrapper\n\n- Add template-redis-cluster feature to docker-wrapper dev dependency\n- Create integration_cluster.rs with comprehensive cluster tests\n- Test hash scanning across cluster nodes\n- Test string scanning across cluster nodes\n- Tests use RedisClusterTemplate for Docker-based cluster setup",
+          "timestamp": "2026-01-04T20:10:17-08:00",
+          "tree_id": "97d133055960193b8760a08983860e3050c52225",
+          "url": "https://github.com/joshrotenberg/polars-redis/commit/f8f79c13c5c4f83140413f3446d81ce11798ac33"
+        },
+        "date": 1767586439170,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "schema_creation/small_3_fields",
+            "value": 326,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/medium_10_fields",
+            "value": 1097,
+            "range": "± 5",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/large_50_fields",
+            "value": 6921,
+            "range": "± 29",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/default",
+            "value": 27,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/with_options",
+            "value": 29,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/100",
+            "value": 248,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/100",
+            "value": 1216,
+            "range": "± 3",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/100",
+            "value": 71,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/1000",
+            "value": 2778,
+            "range": "± 7",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/1000",
+            "value": 12790,
+            "range": "± 65",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/1000",
+            "value": 672,
+            "range": "± 2",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/10000",
+            "value": 31251,
+            "range": "± 205",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/10000",
+            "value": 134811,
+            "range": "± 349",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/10000",
+            "value": 7326,
+            "range": "± 49",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "arrow_schema/to_arrow_schema",
+            "value": 766,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/no_filter",
+            "value": 21,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/5_of_50_fields",
+            "value": 934,
+            "range": "± 11",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/25_of_50_fields",
+            "value": 1100,
+            "range": "± 3",
             "unit": "ns/iter"
           }
         ]
