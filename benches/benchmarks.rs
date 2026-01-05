@@ -2,7 +2,9 @@
 //!
 //! Run with: cargo bench
 
-use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
+use std::hint::black_box;
+
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
 use polars_redis::{BatchConfig, HashSchema, RedisType};
 
