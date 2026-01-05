@@ -2,9 +2,13 @@
 
 An interactive slide deck covering polars-redis features and usage.
 
-<a href="slides/index.html" class="md-button md-button--primary" target="_blank">
+<a href="../slides/index.html" class="md-button md-button--primary" target="_blank">
     Open Presentation
 </a>
+
+!!! note "Direct Link"
+    If the button above doesn't work, you can access the slides directly at:
+    [https://joshrotenberg.github.io/polars-redis/slides/](https://joshrotenberg.github.io/polars-redis/slides/)
 
 ## Topics Covered
 

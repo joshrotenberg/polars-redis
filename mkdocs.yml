@@ -59,6 +59,7 @@ nav:
       - Quick Start: getting-started/quickstart.md
   - User Guide:
       - Scanning Data: guide/scanning.md
+      - RediSearch: guide/redisearch.md
       - Writing Data: guide/writing.md
       - Schema Inference: guide/schema-inference.md
       - Configuration: guide/configuration.md
