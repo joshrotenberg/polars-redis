@@ -14,7 +14,10 @@ from polars_redis._internal import (
     py_write_hashes,
     py_write_hashes_detailed,
     py_write_json,
+    py_write_lists,
+    py_write_sets,
     py_write_strings,
+    py_write_zsets,
 )
 
 
@@ -362,4 +365,277 @@ def write_strings(
 
     # Call the Rust implementation
     keys_written, _, _ = py_write_strings(url, keys, values, ttl, if_exists)
+    return keys_written
+
+
+def write_sets(
+    df: pl.DataFrame,
+    url: str,
+    key_column: str | None = "_key",
+    member_column: str = "member",
+    ttl: int | None = None,
+    key_prefix: str = "",
+    if_exists: str = "replace",
+) -> int:
+    """Write a DataFrame to Redis as sets.
+
+    Rows with the same key are grouped together, and their member values
+    become the set members for that key.
+
+    Args:
+        df: The DataFrame to write.
+        url: Redis connection URL (e.g., "redis://localhost:6379").
+        key_column: Column containing Redis keys (default: "_key").
+            If None, all members go into a single set with key "{key_prefix}0".
+        member_column: Column containing set members (default: "member").
+        ttl: Optional TTL in seconds for each key (default: None, no expiration).
+        key_prefix: Prefix to prepend to all keys (default: "").
+        if_exists: How to handle existing keys (default: "replace").
+            - "fail": Skip keys that already exist.
+            - "replace": Delete existing sets before writing.
+            - "append": Add members to existing sets.
+
+    Returns:
+        Number of keys successfully written.
+
+    Raises:
+        ValueError: If the key column or member column is not in the DataFrame.
+
+    Example:
+        >>> df = pl.DataFrame({
+        ...     "_key": ["tags:1", "tags:1", "tags:2"],
+        ...     "member": ["python", "redis", "rust"]
+        ... })
+        >>> count = write_sets(df, "redis://localhost:6379")
+        >>> # Creates: tags:1 = {python, redis}, tags:2 = {rust}
+        >>> print(f"Wrote {count} sets")
+        >>> # With TTL (expires in 1 hour)
+        >>> count = write_sets(df, "redis://localhost:6379", ttl=3600)
+        >>> # Append to existing sets instead of replacing
+        >>> count = write_sets(df, "redis://localhost:6379", if_exists="append")
+    """
+    if member_column not in df.columns:
+        raise ValueError(f"Member column '{member_column}' not found in DataFrame")
+
+    if key_column is None:
+        # All members go into a single set
+        members = [str(m) for m in df[member_column].to_list() if m is not None]
+        keys = [f"{key_prefix}0"]
+        members_by_key = [members]
+    else:
+        if key_column not in df.columns:
+            raise ValueError(f"Key column '{key_column}' not found in DataFrame")
+
+        # Group members by key
+        grouped: dict[str, list[str]] = {}
+        for key, member in zip(df[key_column].to_list(), df[member_column].to_list()):
+            if member is None:
+                continue
+            full_key = f"{key_prefix}{key}"
+            if full_key not in grouped:
+                grouped[full_key] = []
+            grouped[full_key].append(str(member))
+
+        keys = list(grouped.keys())
+        members_by_key = list(grouped.values())
+
+    # Call the Rust implementation
+    keys_written, _, _ = py_write_sets(url, keys, members_by_key, ttl, if_exists)
+    return keys_written
+
+
+def write_lists(
+    df: pl.DataFrame,
+    url: str,
+    key_column: str | None = "_key",
+    element_column: str = "element",
+    index_column: str | None = None,
+    ttl: int | None = None,
+    key_prefix: str = "",
+    if_exists: str = "replace",
+) -> int:
+    """Write a DataFrame to Redis as lists.
+
+    Rows with the same key are grouped together, and their element values
+    become the list elements for that key. Elements are added using RPUSH
+    (appended to the end).
+
+    Args:
+        df: The DataFrame to write.
+        url: Redis connection URL (e.g., "redis://localhost:6379").
+        key_column: Column containing Redis keys (default: "_key").
+            If None, all elements go into a single list with key "{key_prefix}0".
+        element_column: Column containing list elements (default: "element").
+        index_column: Optional column for ordering elements within each key.
+            If provided, elements are sorted by this column before being added.
+        ttl: Optional TTL in seconds for each key (default: None, no expiration).
+        key_prefix: Prefix to prepend to all keys (default: "").
+        if_exists: How to handle existing keys (default: "replace").
+            - "fail": Skip keys that already exist.
+            - "replace": Delete existing lists before writing.
+            - "append": Add elements to existing lists.
+
+    Returns:
+        Number of keys successfully written.
+
+    Raises:
+        ValueError: If the key column or element column is not in the DataFrame.
+
+    Example:
+        >>> df = pl.DataFrame({
+        ...     "_key": ["queue:1", "queue:1", "queue:2"],
+        ...     "element": ["a", "b", "c"]
+        ... })
+        >>> count = write_lists(df, "redis://localhost:6379")
+        >>> # Creates: queue:1 = [a, b], queue:2 = [c]
+        >>> print(f"Wrote {count} lists")
+        >>> # With ordering
+        >>> df = pl.DataFrame({
+        ...     "_key": ["queue:1", "queue:1", "queue:1"],
+        ...     "_index": [2, 0, 1],
+        ...     "element": ["c", "a", "b"]
+        ... })
+        >>> count = write_lists(df, "redis://localhost:6379", index_column="_index")
+        >>> # Creates: queue:1 = [a, b, c] (sorted by index)
+        >>> # Append to existing lists instead of replacing
+        >>> count = write_lists(df, "redis://localhost:6379", if_exists="append")
+    """
+    if element_column not in df.columns:
+        raise ValueError(f"Element column '{element_column}' not found in DataFrame")
+
+    if index_column is not None and index_column not in df.columns:
+        raise ValueError(f"Index column '{index_column}' not found in DataFrame")
+
+    if key_column is None:
+        # All elements go into a single list
+        if index_column is not None:
+            # Sort by index
+            sorted_df = df.sort(index_column)
+            elements = [str(e) for e in sorted_df[element_column].to_list() if e is not None]
+        else:
+            elements = [str(e) for e in df[element_column].to_list() if e is not None]
+        keys = [f"{key_prefix}0"]
+        elements_by_key = [elements]
+    else:
+        if key_column not in df.columns:
+            raise ValueError(f"Key column '{key_column}' not found in DataFrame")
+
+        # Group elements by key, with optional ordering
+        if index_column is not None:
+            # Sort by key and index, then group
+            sorted_df = df.sort([key_column, index_column])
+            grouped: dict[str, list[str]] = {}
+            for key, element in zip(
+                sorted_df[key_column].to_list(), sorted_df[element_column].to_list()
+            ):
+                if element is None:
+                    continue
+                full_key = f"{key_prefix}{key}"
+                if full_key not in grouped:
+                    grouped[full_key] = []
+                grouped[full_key].append(str(element))
+        else:
+            # Preserve DataFrame order within each key
+            grouped = {}
+            for key, element in zip(df[key_column].to_list(), df[element_column].to_list()):
+                if element is None:
+                    continue
+                full_key = f"{key_prefix}{key}"
+                if full_key not in grouped:
+                    grouped[full_key] = []
+                grouped[full_key].append(str(element))
+
+        keys = list(grouped.keys())
+        elements_by_key = list(grouped.values())
+
+    # Call the Rust implementation
+    keys_written, _, _ = py_write_lists(url, keys, elements_by_key, ttl, if_exists)
+    return keys_written
+
+
+def write_zsets(
+    df: pl.DataFrame,
+    url: str,
+    key_column: str | None = "_key",
+    member_column: str = "member",
+    score_column: str = "score",
+    ttl: int | None = None,
+    key_prefix: str = "",
+    if_exists: str = "replace",
+) -> int:
+    """Write a DataFrame to Redis as sorted sets.
+
+    Rows with the same key are grouped together, and their member/score pairs
+    become the sorted set members for that key.
+
+    Args:
+        df: The DataFrame to write.
+        url: Redis connection URL (e.g., "redis://localhost:6379").
+        key_column: Column containing Redis keys (default: "_key").
+            If None, all members go into a single sorted set with key "{key_prefix}0".
+        member_column: Column containing sorted set members (default: "member").
+        score_column: Column containing scores (default: "score").
+        ttl: Optional TTL in seconds for each key (default: None, no expiration).
+        key_prefix: Prefix to prepend to all keys (default: "").
+        if_exists: How to handle existing keys (default: "replace").
+            - "fail": Skip keys that already exist.
+            - "replace": Delete existing sorted sets before writing.
+            - "append": Add/update members in existing sorted sets.
+
+    Returns:
+        Number of keys successfully written.
+
+    Raises:
+        ValueError: If any required column is not in the DataFrame.
+
+    Example:
+        >>> df = pl.DataFrame({
+        ...     "_key": ["leaderboard:1", "leaderboard:1"],
+        ...     "member": ["alice", "bob"],
+        ...     "score": [1500.0, 1200.0]
+        ... })
+        >>> count = write_zsets(df, "redis://localhost:6379")
+        >>> # Creates: leaderboard:1 = {alice: 1500, bob: 1200}
+        >>> print(f"Wrote {count} sorted sets")
+        >>> # With TTL (expires in 1 hour)
+        >>> count = write_zsets(df, "redis://localhost:6379", ttl=3600)
+        >>> # Append/update scores in existing sorted sets
+        >>> count = write_zsets(df, "redis://localhost:6379", if_exists="append")
+    """
+    if member_column not in df.columns:
+        raise ValueError(f"Member column '{member_column}' not found in DataFrame")
+
+    if score_column not in df.columns:
+        raise ValueError(f"Score column '{score_column}' not found in DataFrame")
+
+    if key_column is None:
+        # All members go into a single sorted set
+        members_scores = []
+        for member, score in zip(df[member_column].to_list(), df[score_column].to_list()):
+            if member is None or score is None:
+                continue
+            members_scores.append((str(member), float(score)))
+        keys = [f"{key_prefix}0"]
+        members_by_key = [members_scores]
+    else:
+        if key_column not in df.columns:
+            raise ValueError(f"Key column '{key_column}' not found in DataFrame")
+
+        # Group members by key
+        grouped: dict[str, list[tuple[str, float]]] = {}
+        for key, member, score in zip(
+            df[key_column].to_list(), df[member_column].to_list(), df[score_column].to_list()
+        ):
+            if member is None or score is None:
+                continue
+            full_key = f"{key_prefix}{key}"
+            if full_key not in grouped:
+                grouped[full_key] = []
+            grouped[full_key].append((str(member), float(score)))
+
+        keys = list(grouped.keys())
+        members_by_key = list(grouped.values())
+
+    # Call the Rust implementation
+    keys_written, _, _ = py_write_zsets(url, keys, members_by_key, ttl, if_exists)
     return keys_written
