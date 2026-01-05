@@ -2,6 +2,21 @@
 //!
 //! This module provides functionality to infer Polars schemas from Redis data
 //! by sampling keys and analyzing field values.
+//!
+//! # Confidence Scores
+//!
+//! The `_with_confidence` variants of inference functions return detailed
+//! statistics about type inference quality:
+//!
+//! ```ignore
+//! let result = infer_hash_schema_with_confidence(url, pattern, sample_size)?;
+//!
+//! for (field, info) in &result.field_info {
+//!     if info.confidence < 0.9 {
+//!         println!("Warning: {} has low confidence ({:.0}%)", field, info.confidence * 100.0);
+//!     }
+//! }
+//! ```
 
 use std::collections::{HashMap, HashSet};
 
@@ -20,6 +35,87 @@ pub struct InferredSchema {
     pub fields: Vec<(String, RedisType)>,
     /// Number of keys sampled.
     pub sample_count: usize,
+}
+
+/// Detailed inference information for a single field.
+#[derive(Debug, Clone)]
+pub struct FieldInferenceInfo {
+    /// The inferred type for this field.
+    pub inferred_type: RedisType,
+    /// Confidence score from 0.0 to 1.0.
+    /// 1.0 means all sampled values matched the inferred type.
+    pub confidence: f64,
+    /// Total number of samples for this field.
+    pub samples: usize,
+    /// Number of samples that successfully parsed as the inferred type.
+    pub valid: usize,
+    /// Number of null/missing values.
+    pub nulls: usize,
+    /// Type candidates that were considered, with their match counts.
+    pub type_candidates: HashMap<String, usize>,
+}
+
+impl FieldInferenceInfo {
+    /// Check if confidence is above a threshold (default: 0.9).
+    pub fn is_confident(&self, threshold: f64) -> bool {
+        self.confidence >= threshold
+    }
+
+    /// Get the percentage of null values.
+    pub fn null_ratio(&self) -> f64 {
+        if self.samples == 0 {
+            0.0
+        } else {
+            self.nulls as f64 / self.samples as f64
+        }
+    }
+}
+
+/// Inferred schema with detailed confidence information.
+#[derive(Debug, Clone)]
+pub struct InferredSchemaWithConfidence {
+    /// Field names and their inferred types.
+    pub fields: Vec<(String, RedisType)>,
+    /// Number of keys sampled.
+    pub sample_count: usize,
+    /// Detailed inference information for each field.
+    pub field_info: HashMap<String, FieldInferenceInfo>,
+}
+
+impl InferredSchemaWithConfidence {
+    /// Convert to a basic InferredSchema (discards confidence info).
+    pub fn to_basic(&self) -> InferredSchema {
+        InferredSchema {
+            fields: self.fields.clone(),
+            sample_count: self.sample_count,
+        }
+    }
+
+    /// Get fields with confidence below a threshold.
+    pub fn low_confidence_fields(&self, threshold: f64) -> Vec<(&str, f64)> {
+        self.field_info
+            .iter()
+            .filter(|(_, info)| info.confidence < threshold)
+            .map(|(name, info)| (name.as_str(), info.confidence))
+            .collect()
+    }
+
+    /// Check if all fields have confidence above a threshold.
+    pub fn all_confident(&self, threshold: f64) -> bool {
+        self.field_info
+            .values()
+            .all(|info| info.confidence >= threshold)
+    }
+
+    /// Get overall average confidence across all fields.
+    pub fn average_confidence(&self) -> f64 {
+        if self.field_info.is_empty() {
+            1.0
+        } else {
+            let sum: f64 = self.field_info.values().map(|info| info.confidence).sum();
+            sum / self.field_info.len() as f64
+        }
+    }
 }
 
 impl InferredSchema {
@@ -139,6 +235,123 @@ pub fn infer_hash_schema(
         sample_size,
         type_inference,
     ))
+}
+
+/// Infer schema from Redis hashes with detailed confidence information.
+///
+/// This function returns confidence scores for each field, indicating how
+/// reliably the type was inferred. Use this when you need to:
+/// - Validate schema quality before processing large datasets
+/// - Identify fields that may need schema overrides
+/// - Debug type inference issues
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `pattern` - Key pattern to match
+/// * `sample_size` - Maximum number of keys to sample
+///
+/// # Returns
+/// An `InferredSchemaWithConfidence` with field types and confidence data.
+///
+/// # Example
+/// ```ignore
+/// let result = infer_hash_schema_with_confidence(
+///     "redis://localhost:6379",
+///     "user:*",
+///     100,
+/// )?;
+///
+/// // Check for low-confidence fields
+/// for (field, confidence) in result.low_confidence_fields(0.9) {
+///     eprintln!("Warning: {} has {:.0}% confidence", field, confidence * 100.0);
+/// }
+///
+/// // Decide whether to proceed
+/// if result.all_confident(0.8) {
+///     let schema = result.to_basic();
+///     // Use schema for reading
+/// } else {
+///     // Consider using schema overrides
+/// }
+/// ```
+pub fn infer_hash_schema_with_confidence(
+    url: &str,
+    pattern: &str,
+    sample_size: usize,
+) -> Result<InferredSchemaWithConfidence> {
+    let runtime =
+        Runtime::new().map_err(|e| Error::Runtime(format!("Failed to create runtime: {}", e)))?;
+
+    let connection = RedisConnection::new(url)?;
+    let mut conn = runtime.block_on(connection.get_connection_manager())?;
+
+    runtime.block_on(infer_hash_schema_with_confidence_async(
+        &mut conn,
+        pattern,
+        sample_size,
+    ))
+}
+
+/// Async implementation of hash schema inference with confidence.
+async fn infer_hash_schema_with_confidence_async(
+    conn: &mut ConnectionManager,
+    pattern: &str,
+    sample_size: usize,
+) -> Result<InferredSchemaWithConfidence> {
+    // Collect sample keys
+    let keys = scan_sample_keys(conn, pattern, sample_size).await?;
+
+    if keys.is_empty() {
+        return Ok(InferredSchemaWithConfidence {
+            fields: vec![],
+            sample_count: 0,
+            field_info: HashMap::new(),
+        });
+    }
+
+    // Collect all field names and their values
+    let mut field_values: HashMap<String, Vec<Option<String>>> = HashMap::new();
+
+    for key in &keys {
+        let hash_data: HashMap<String, String> = conn.hgetall(key).await?;
+
+        // Track which fields this hash has
+        let fields_in_hash: HashSet<&String> = hash_data.keys().collect();
+
+        // Add values for fields that exist
+        for (field, value) in &hash_data {
+            field_values
+                .entry(field.clone())
+                .or_default()
+                .push(Some(value.clone()));
+        }
+
+        // Add None for fields that don't exist in this hash but exist in others
+        for (field, values) in &mut field_values {
+            if !fields_in_hash.contains(field) {
+                values.push(None);
+            }
+        }
+    }
+
+    // Infer types for each field with confidence
+    let mut fields: Vec<(String, RedisType)> = Vec::new();
+    let mut field_info: HashMap<String, FieldInferenceInfo> = HashMap::new();
+
+    for (name, values) in field_values {
+        let (dtype, info) = infer_type_from_values_with_confidence(&values);
+        fields.push((name.clone(), dtype));
+        field_info.insert(name, info);
+    }
+
+    // Sort fields alphabetically for consistent ordering
+    fields.sort_by(|a, b| a.0.cmp(&b.0));
+
+    Ok(InferredSchemaWithConfidence {
+        fields,
+        sample_count: keys.len(),
+        field_info,
+    })
 }
 
 /// Async implementation of hash schema inference.
@@ -333,32 +546,103 @@ async fn scan_sample_keys(
 
 /// Infer type from a collection of string values.
 fn infer_type_from_values(values: &[Option<String>]) -> RedisType {
+    infer_type_from_values_with_confidence(values).0
+}
+
+/// Infer type from a collection of string values with detailed confidence info.
+///
+/// Returns (inferred_type, FieldInferenceInfo).
+fn infer_type_from_values_with_confidence(
+    values: &[Option<String>],
+) -> (RedisType, FieldInferenceInfo) {
+    let total_samples = values.len();
+    let null_count = values.iter().filter(|v| v.is_none()).count();
     let non_null_values: Vec<&str> = values.iter().filter_map(|v| v.as_deref()).collect();
 
     if non_null_values.is_empty() {
-        return RedisType::Utf8;
+        return (
+            RedisType::Utf8,
+            FieldInferenceInfo {
+                inferred_type: RedisType::Utf8,
+                confidence: 1.0, // No data means we default to Utf8 with full confidence
+                samples: total_samples,
+                valid: 0,
+                nulls: null_count,
+                type_candidates: HashMap::new(),
+            },
+        );
     }
 
-    // Try Int64
-    if non_null_values.iter().all(|v| v.parse::<i64>().is_ok()) {
-        return RedisType::Int64;
-    }
+    // Count how many values parse successfully for each type
+    let mut type_candidates: HashMap<String, usize> = HashMap::new();
 
-    // Try Float64
-    if non_null_values.iter().all(|v| v.parse::<f64>().is_ok()) {
-        return RedisType::Float64;
-    }
-
-    // Try Boolean
-    if non_null_values
+    let int_count = non_null_values
         .iter()
-        .all(|v| is_boolean_string(v.to_lowercase().as_str()))
-    {
-        return RedisType::Boolean;
-    }
+        .filter(|v| v.parse::<i64>().is_ok())
+        .count();
+    let float_count = non_null_values
+        .iter()
+        .filter(|v| v.parse::<f64>().is_ok())
+        .count();
+    let bool_count = non_null_values
+        .iter()
+        .filter(|v| is_boolean_string(v.to_lowercase().as_str()))
+        .count();
 
-    // Default to Utf8
-    RedisType::Utf8
+    type_candidates.insert("int64".to_string(), int_count);
+    type_candidates.insert("float64".to_string(), float_count);
+    type_candidates.insert("bool".to_string(), bool_count);
+    type_candidates.insert("utf8".to_string(), non_null_values.len()); // Everything is valid as Utf8
+
+    let non_null_count = non_null_values.len();
+
+    // Determine best type (most specific that matches all values)
+    let (inferred_type, valid_count) = if int_count == non_null_count {
+        (RedisType::Int64, int_count)
+    } else if float_count == non_null_count {
+        (RedisType::Float64, float_count)
+    } else if bool_count == non_null_count {
+        (RedisType::Boolean, bool_count)
+    } else {
+        // Fall back to Utf8 - use the best non-Utf8 candidate for confidence
+        let best_specific = [
+            (RedisType::Int64, int_count),
+            (RedisType::Float64, float_count),
+            (RedisType::Boolean, bool_count),
+        ]
+        .into_iter()
+        .max_by_key(|(_, count)| *count);
+
+        if let Some((best_type, best_count)) = best_specific {
+            if best_count > 0 && best_count as f64 / non_null_count as f64 >= 0.5 {
+                // More than half match a specific type, but not all - low confidence
+                (best_type, best_count)
+            } else {
+                (RedisType::Utf8, non_null_count)
+            }
+        } else {
+            (RedisType::Utf8, non_null_count)
+        }
+    };
+
+    // Calculate confidence as ratio of valid values to total non-null values
+    let confidence = if non_null_count == 0 {
+        1.0
+    } else {
+        valid_count as f64 / non_null_count as f64
+    };
+
+    (
+        inferred_type,
+        FieldInferenceInfo {
+            inferred_type,
+            confidence,
+            samples: total_samples,
+            valid: valid_count,
+            nulls: null_count,
+            type_candidates,
+        },
+    )
 }
 
 /// Infer type from a collection of JSON values.
@@ -817,5 +1101,269 @@ mod tests {
         // Different case should add new field, not overwrite
         let merged = inferred.with_overwrite(&[("name".to_string(), RedisType::Int64)]);
         assert_eq!(merged.fields.len(), 2);
+    }
+
+    // ========================================================================
+    // Confidence Score Tests
+    // ========================================================================
+
+    #[test]
+    fn test_confidence_all_integers() {
+        let values = vec![
+            Some("1".to_string()),
+            Some("42".to_string()),
+            Some("-10".to_string()),
+        ];
+        let (dtype, info) = infer_type_from_values_with_confidence(&values);
+
+        assert_eq!(dtype, RedisType::Int64);
+        assert_eq!(info.confidence, 1.0);
+        assert_eq!(info.samples, 3);
+        assert_eq!(info.valid, 3);
+        assert_eq!(info.nulls, 0);
+        assert_eq!(info.type_candidates.get("int64"), Some(&3));
+    }
+
+    #[test]
+    fn test_confidence_with_nulls() {
+        let values = vec![Some("42".to_string()), None, Some("100".to_string()), None];
+        let (dtype, info) = infer_type_from_values_with_confidence(&values);
+
+        assert_eq!(dtype, RedisType::Int64);
+        assert_eq!(info.confidence, 1.0); // Confidence based on non-null values
+        assert_eq!(info.samples, 4);
+        assert_eq!(info.valid, 2);
+        assert_eq!(info.nulls, 2);
+        assert!((info.null_ratio() - 0.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_confidence_mixed_types_low_confidence() {
+        // 3 integers, 2 strings -> should have lower confidence
+        // Note: integers also parse as floats, so float64 count is also 3
+        let values = vec![
+            Some("1".to_string()),
+            Some("2".to_string()),
+            Some("3".to_string()),
+            Some("hello".to_string()),
+            Some("world".to_string()),
+        ];
+        let (dtype, info) = infer_type_from_values_with_confidence(&values);
+
+        // Falls back to Float64 with 60% confidence (3/5) - ints also parse as floats
+        assert_eq!(dtype, RedisType::Float64);
+        assert!((info.confidence - 0.6).abs() < 0.001);
+        assert!(!info.is_confident(0.9));
+        assert!(info.is_confident(0.5));
+    }
+
+    #[test]
+    fn test_confidence_all_nulls() {
+        let values: Vec<Option<String>> = vec![None, None, None];
+        let (dtype, info) = infer_type_from_values_with_confidence(&values);
+
+        assert_eq!(dtype, RedisType::Utf8);
+        assert_eq!(info.confidence, 1.0); // Default with full confidence
+        assert_eq!(info.samples, 3);
+        assert_eq!(info.valid, 0);
+        assert_eq!(info.nulls, 3);
+    }
+
+    #[test]
+    fn test_confidence_empty() {
+        let values: Vec<Option<String>> = vec![];
+        let (dtype, info) = infer_type_from_values_with_confidence(&values);
+
+        assert_eq!(dtype, RedisType::Utf8);
+        assert_eq!(info.confidence, 1.0);
+        assert_eq!(info.samples, 0);
+    }
+
+    #[test]
+    fn test_field_inference_info_is_confident() {
+        let info = FieldInferenceInfo {
+            inferred_type: RedisType::Int64,
+            confidence: 0.85,
+            samples: 100,
+            valid: 85,
+            nulls: 0,
+            type_candidates: HashMap::new(),
+        };
+
+        assert!(info.is_confident(0.8));
+        assert!(!info.is_confident(0.9));
+    }
+
+    #[test]
+    fn test_field_inference_info_null_ratio() {
+        let info = FieldInferenceInfo {
+            inferred_type: RedisType::Int64,
+            confidence: 1.0,
+            samples: 100,
+            valid: 75,
+            nulls: 25,
+            type_candidates: HashMap::new(),
+        };
+
+        assert!((info.null_ratio() - 0.25).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_inferred_schema_with_confidence_to_basic() {
+        let mut field_info = HashMap::new();
+        field_info.insert(
+            "age".to_string(),
+            FieldInferenceInfo {
+                inferred_type: RedisType::Int64,
+                confidence: 1.0,
+                samples: 10,
+                valid: 10,
+                nulls: 0,
+                type_candidates: HashMap::new(),
+            },
+        );
+
+        let schema = InferredSchemaWithConfidence {
+            fields: vec![("age".to_string(), RedisType::Int64)],
+            sample_count: 10,
+            field_info,
+        };
+
+        let basic = schema.to_basic();
+        assert_eq!(basic.fields.len(), 1);
+        assert_eq!(basic.sample_count, 10);
+    }
+
+    #[test]
+    fn test_inferred_schema_with_confidence_low_confidence_fields() {
+        let mut field_info = HashMap::new();
+        field_info.insert(
+            "good".to_string(),
+            FieldInferenceInfo {
+                inferred_type: RedisType::Int64,
+                confidence: 0.95,
+                samples: 100,
+                valid: 95,
+                nulls: 0,
+                type_candidates: HashMap::new(),
+            },
+        );
+        field_info.insert(
+            "bad".to_string(),
+            FieldInferenceInfo {
+                inferred_type: RedisType::Float64,
+                confidence: 0.6,
+                samples: 100,
+                valid: 60,
+                nulls: 0,
+                type_candidates: HashMap::new(),
+            },
+        );
+
+        let schema = InferredSchemaWithConfidence {
+            fields: vec![
+                ("bad".to_string(), RedisType::Float64),
+                ("good".to_string(), RedisType::Int64),
+            ],
+            sample_count: 100,
+            field_info,
+        };
+
+        let low = schema.low_confidence_fields(0.9);
+        assert_eq!(low.len(), 1);
+        assert_eq!(low[0].0, "bad");
+        assert!((low[0].1 - 0.6).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_inferred_schema_with_confidence_all_confident() {
+        let mut field_info = HashMap::new();
+        field_info.insert(
+            "a".to_string(),
+            FieldInferenceInfo {
+                inferred_type: RedisType::Int64,
+                confidence: 0.95,
+                samples: 100,
+                valid: 95,
+                nulls: 0,
+                type_candidates: HashMap::new(),
+            },
+        );
+        field_info.insert(
+            "b".to_string(),
+            FieldInferenceInfo {
+                inferred_type: RedisType::Utf8,
+                confidence: 1.0,
+                samples: 100,
+                valid: 100,
+                nulls: 0,
+                type_candidates: HashMap::new(),
+            },
+        );
+
+        let schema = InferredSchemaWithConfidence {
+            fields: vec![
+                ("a".to_string(), RedisType::Int64),
+                ("b".to_string(), RedisType::Utf8),
+            ],
+            sample_count: 100,
+            field_info,
+        };
+
+        assert!(schema.all_confident(0.9));
+        assert!(!schema.all_confident(0.99));
+    }
+
+    #[test]
+    fn test_inferred_schema_with_confidence_average() {
+        let mut field_info = HashMap::new();
+        field_info.insert(
+            "a".to_string(),
+            FieldInferenceInfo {
+                inferred_type: RedisType::Int64,
+                confidence: 1.0,
+                samples: 100,
+                valid: 100,
+                nulls: 0,
+                type_candidates: HashMap::new(),
+            },
+        );
+        field_info.insert(
+            "b".to_string(),
+            FieldInferenceInfo {
+                inferred_type: RedisType::Float64,
+                confidence: 0.8,
+                samples: 100,
+                valid: 80,
+                nulls: 0,
+                type_candidates: HashMap::new(),
+            },
+        );
+
+        let schema = InferredSchemaWithConfidence {
+            fields: vec![
+                ("a".to_string(), RedisType::Int64),
+                ("b".to_string(), RedisType::Float64),
+            ],
+            sample_count: 100,
+            field_info,
+        };
+
+        assert!((schema.average_confidence() - 0.9).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_confidence_type_candidates() {
+        let values = vec![
+            Some("1".to_string()),
+            Some("2".to_string()),
+            Some("3.5".to_string()),
+        ];
+        let (_, info) = infer_type_from_values_with_confidence(&values);
+
+        // All 3 are valid floats, only 2 are valid ints
+        assert_eq!(info.type_candidates.get("float64"), Some(&3));
+        assert_eq!(info.type_candidates.get("int64"), Some(&2));
+        assert_eq!(info.type_candidates.get("utf8"), Some(&3));
     }
 }

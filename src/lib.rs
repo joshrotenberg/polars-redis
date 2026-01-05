@@ -112,6 +112,8 @@
 use arrow::datatypes::DataType;
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
+#[cfg(feature = "python")]
+use std::collections::HashMap;
 
 #[cfg(feature = "cluster")]
 pub mod cluster;
@@ -133,7 +135,10 @@ mod write;
 pub use cluster::{ClusterKeyScanner, DirectClusterKeyScanner};
 pub use connection::{ConnectionConfig, RedisConn, RedisConnection};
 pub use error::{Error, Result};
-pub use infer::{InferredSchema, infer_hash_schema, infer_json_schema};
+pub use infer::{
+    FieldInferenceInfo, InferredSchema, InferredSchemaWithConfidence, infer_hash_schema,
+    infer_hash_schema_with_confidence, infer_json_schema,
+};
 pub use options::{
     HashScanOptions, JsonScanOptions, KeyColumn, ParallelStrategy, RowIndex, RowIndexColumn,
     ScanOptions, StreamScanOptions, StringScanOptions, TimeSeriesScanOptions, TtlColumn,
@@ -222,6 +227,7 @@ fn polars_redis_internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_infer_hash_schema, m)?)?;
     m.add_function(wrap_pyfunction!(py_infer_json_schema, m)?)?;
     m.add_function(wrap_pyfunction!(py_infer_hash_schema_with_overwrite, m)?)?;
+    m.add_function(wrap_pyfunction!(py_infer_hash_schema_with_confidence, m)?)?;
     m.add_function(wrap_pyfunction!(py_infer_json_schema_with_overwrite, m)?)?;
     m.add_function(wrap_pyfunction!(py_write_hashes, m)?)?;
     m.add_function(wrap_pyfunction!(py_write_json, m)?)?;
@@ -1890,6 +1896,144 @@ fn py_infer_json_schema_with_overwrite(
     };
 
     Ok((final_schema.to_type_strings(), final_schema.sample_count))
+}
+
+#[cfg(feature = "python")]
+/// Infer schema from Redis hashes with detailed confidence information.
+///
+/// This function returns confidence scores for each field, indicating how
+/// reliably the type was inferred. Use this when you need to validate
+/// schema quality before processing large datasets.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `pattern` - Key pattern to match
+/// * `sample_size` - Maximum number of keys to sample (default: 100)
+///
+/// # Returns
+/// A dict with:
+/// - `fields`: List of (name, type) tuples
+/// - `sample_count`: Number of keys sampled
+/// - `field_info`: Dict mapping field names to confidence info dicts
+/// - `average_confidence`: Overall average confidence score
+/// - `all_confident`: Whether all fields have confidence >= 0.9
+///
+/// Each field_info dict contains:
+/// - `type`: Inferred type name
+/// - `confidence`: Score from 0.0 to 1.0
+/// - `samples`: Total samples for this field
+/// - `valid`: Number of samples matching the inferred type
+/// - `nulls`: Number of null/missing values
+/// - `null_ratio`: Percentage of null values
+/// - `type_candidates`: Dict of type names to match counts
+#[pyfunction]
+#[pyo3(signature = (url, pattern, sample_size = 100))]
+fn py_infer_hash_schema_with_confidence(
+    py: Python<'_>,
+    url: &str,
+    pattern: &str,
+    sample_size: usize,
+) -> PyResult<HashMap<String, Py<PyAny>>> {
+    let schema = infer_hash_schema_with_confidence(url, pattern, sample_size)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    let mut result: HashMap<String, Py<PyAny>> = HashMap::new();
+
+    // Convert fields to Python list of tuples
+    let fields: Vec<(String, String)> = schema
+        .fields
+        .iter()
+        .map(|(name, dtype)| {
+            let type_str = match dtype {
+                crate::schema::RedisType::Utf8 => "utf8",
+                crate::schema::RedisType::Int64 => "int64",
+                crate::schema::RedisType::Float64 => "float64",
+                crate::schema::RedisType::Boolean => "bool",
+                crate::schema::RedisType::Date => "date",
+                crate::schema::RedisType::Datetime => "datetime",
+            };
+            (name.clone(), type_str.to_string())
+        })
+        .collect();
+
+    result.insert(
+        "fields".to_string(),
+        fields.into_pyobject(py)?.into_any().unbind(),
+    );
+    result.insert(
+        "sample_count".to_string(),
+        schema.sample_count.into_pyobject(py)?.into_any().unbind(),
+    );
+
+    // Convert field_info to Python dict
+    let mut field_info_py: HashMap<String, HashMap<String, Py<PyAny>>> = HashMap::new();
+    for (name, info) in &schema.field_info {
+        let mut info_dict: HashMap<String, Py<PyAny>> = HashMap::new();
+        let type_str = match info.inferred_type {
+            crate::schema::RedisType::Utf8 => "utf8",
+            crate::schema::RedisType::Int64 => "int64",
+            crate::schema::RedisType::Float64 => "float64",
+            crate::schema::RedisType::Boolean => "bool",
+            crate::schema::RedisType::Date => "date",
+            crate::schema::RedisType::Datetime => "datetime",
+        };
+        info_dict.insert(
+            "type".to_string(),
+            type_str.into_pyobject(py)?.into_any().unbind(),
+        );
+        info_dict.insert(
+            "confidence".to_string(),
+            info.confidence.into_pyobject(py)?.into_any().unbind(),
+        );
+        info_dict.insert(
+            "samples".to_string(),
+            info.samples.into_pyobject(py)?.into_any().unbind(),
+        );
+        info_dict.insert(
+            "valid".to_string(),
+            info.valid.into_pyobject(py)?.into_any().unbind(),
+        );
+        info_dict.insert(
+            "nulls".to_string(),
+            info.nulls.into_pyobject(py)?.into_any().unbind(),
+        );
+        info_dict.insert(
+            "null_ratio".to_string(),
+            info.null_ratio().into_pyobject(py)?.into_any().unbind(),
+        );
+        info_dict.insert(
+            "type_candidates".to_string(),
+            info.type_candidates
+                .clone()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind(),
+        );
+
+        field_info_py.insert(name.clone(), info_dict);
+    }
+    result.insert(
+        "field_info".to_string(),
+        field_info_py.into_pyobject(py)?.into_any().unbind(),
+    );
+
+    // Add convenience fields
+    result.insert(
+        "average_confidence".to_string(),
+        schema
+            .average_confidence()
+            .into_pyobject(py)?
+            .into_any()
+            .unbind(),
+    );
+    // Boolean needs special handling due to PyO3's Borrowed type
+    let all_confident_bool = pyo3::types::PyBool::new(py, schema.all_confident(0.9));
+    result.insert(
+        "all_confident".to_string(),
+        all_confident_bool.to_owned().into_any().unbind(),
+    );
+
+    Ok(result)
 }
 
 #[cfg(feature = "python")]
