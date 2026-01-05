@@ -3,8 +3,16 @@
 //! This module provides helper functions for setting up test data,
 //! connecting to Redis, and cleaning up after tests.
 //!
-//! Uses docker-wrapper to manage Redis 8 containers for tests.
-//! Redis 8 includes the query engine (RediSearch) and JSON natively.
+//! ## Environment Variables
+//!
+//! - `REDIS_URL`: Redis connection URL (default: `redis://localhost:16379`)
+//! - `REDIS_PORT`: Redis port for CLI commands (default: `16379`)
+//!
+//! For CI, set `REDIS_URL=redis://localhost:6379` and `REDIS_PORT=6379` to use
+//! the GitHub Actions Redis service.
+//!
+//! For local development, the defaults use docker-wrapper to manage a Redis 8
+//! container on port 16379 to avoid conflicts with any local Redis.
 
 #![allow(dead_code)]
 
@@ -13,7 +21,23 @@ use std::sync::OnceLock;
 
 use docker_wrapper::{DockerCommand, RmCommand, RunCommand, StopCommand};
 
-/// Default Redis URL for tests (uses non-standard port to avoid conflicts).
+/// Default Redis URL for tests.
+/// Override with REDIS_URL env var for CI.
+pub fn redis_url() -> String {
+    std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:16379".to_string())
+}
+
+/// Default Redis port for CLI commands.
+/// Override with REDIS_PORT env var for CI.
+pub fn redis_port() -> u16 {
+    std::env::var("REDIS_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(16379)
+}
+
+/// For backward compatibility - returns the URL as a static str equivalent.
+/// Prefer using `redis_url()` for new code.
 pub const REDIS_URL: &str = "redis://localhost:16379";
 pub const REDIS_PORT: u16 = 16379;
 pub const CONTAINER_NAME: &str = "polars-redis-test";
@@ -27,8 +51,17 @@ static CONTAINER_STARTED: OnceLock<bool> = OnceLock::new();
 /// so no need for redis-stack.
 ///
 /// The container is started only once per test run and reused across tests.
+///
+/// Note: In CI, the Redis service is provided externally, so this function
+/// will detect that Redis is already available and skip container creation.
 pub async fn ensure_redis_container() -> bool {
-    // Check if already started
+    // Check if Redis is already available (e.g., in CI)
+    if redis_available() {
+        let _ = CONTAINER_STARTED.set(true);
+        return true;
+    }
+
+    // Check if already started by us
     if CONTAINER_STARTED.get().is_some() {
         return true;
     }
@@ -37,11 +70,12 @@ pub async fn ensure_redis_container() -> bool {
     let _ = StopCommand::new(CONTAINER_NAME).execute().await;
     let _ = RmCommand::new(CONTAINER_NAME).force().execute().await;
 
-    // Start Redis 8 container
+    // Start Redis 8 container on the configured port
+    let port = redis_port();
     let result = RunCommand::new("redis:8")
         .name(CONTAINER_NAME)
         .detach()
-        .port(REDIS_PORT, 6379)
+        .port(port, 6379)
         .rm() // Remove on stop
         .execute()
         .await;
@@ -66,8 +100,9 @@ pub async fn ensure_redis_container() -> bool {
 
 /// Check if Redis is available at the test URL.
 pub fn redis_available() -> bool {
+    let port = redis_port();
     let output = Command::new("redis-cli")
-        .args(["-p", &REDIS_PORT.to_string(), "PING"])
+        .args(["-p", &port.to_string(), "PING"])
         .output();
 
     match output {
@@ -83,7 +118,7 @@ pub fn redis_available_sync() -> bool {
 
 /// Run a redis-cli command and return success status.
 pub fn redis_cli(args: &[&str]) -> bool {
-    let port_str = REDIS_PORT.to_string();
+    let port_str = redis_port().to_string();
     let mut full_args = vec!["-p", &port_str];
     full_args.extend(args);
 
@@ -96,7 +131,7 @@ pub fn redis_cli(args: &[&str]) -> bool {
 
 /// Run a redis-cli command and return the output as a string.
 pub fn redis_cli_output(args: &[&str]) -> Option<String> {
-    let port_str = REDIS_PORT.to_string();
+    let port_str = redis_port().to_string();
     let mut full_args = vec!["-p", &port_str];
     full_args.extend(args);
 
@@ -110,7 +145,7 @@ pub fn redis_cli_output(args: &[&str]) -> Option<String> {
 
 /// Clean up all keys matching a pattern.
 pub fn cleanup_keys(pattern: &str) {
-    let port_str = REDIS_PORT.to_string();
+    let port_str = redis_port().to_string();
 
     // Get all matching keys
     let output = Command::new("redis-cli")

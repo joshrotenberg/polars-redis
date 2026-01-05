@@ -8,21 +8,33 @@
 //! Run with:
 //!   cargo test --test stress_tests --features "json,search" -- --ignored --nocapture
 //!
-//! Setup (start Redis on port 16379):
-//!   docker run -d --name polars-redis-stress -p 16379:6379 redis:8
+//! Environment variables:
+//! - REDIS_URL: Redis connection URL (default: redis://localhost:16379)
+//! - REDIS_PORT: Redis port for CLI commands (default: 16379)
 
 use std::process::Command;
 use std::time::{Duration, Instant};
 
 use polars_redis::{BatchConfig, HashBatchIterator, HashSchema, RedisType, WriteMode};
 
-const REDIS_URL: &str = "redis://localhost:16379";
-const REDIS_PORT: u16 = 16379;
+/// Get Redis URL from environment or use default.
+fn redis_url() -> String {
+    std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:16379".to_string())
+}
+
+/// Get Redis port from environment or use default.
+fn redis_port() -> u16 {
+    std::env::var("REDIS_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(16379)
+}
 
 /// Check if Redis is available.
 fn redis_available() -> bool {
+    let port = redis_port();
     Command::new("redis-cli")
-        .args(["-p", &REDIS_PORT.to_string(), "PING"])
+        .args(["-p", &port.to_string(), "PING"])
         .output()
         .map(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).trim() == "PONG")
         .unwrap_or(false)
@@ -30,7 +42,7 @@ fn redis_available() -> bool {
 
 /// Run a redis-cli command.
 fn redis_cli(args: &[&str]) -> bool {
-    let port_str = REDIS_PORT.to_string();
+    let port_str = redis_port().to_string();
     let mut full_args = vec!["-p", &port_str];
     full_args.extend(args);
 
@@ -43,7 +55,7 @@ fn redis_cli(args: &[&str]) -> bool {
 
 /// Clean up keys matching a pattern using SCAN (safe for large datasets).
 fn cleanup_keys_safe(pattern: &str) {
-    let port_str = REDIS_PORT.to_string();
+    let port_str = redis_port().to_string();
     let mut cursor = "0".to_string();
 
     loop {
@@ -85,7 +97,7 @@ fn cleanup_keys_safe(pattern: &str) {
 
 /// Set up test hashes using pipelining for speed.
 fn setup_test_hashes_pipelined(prefix: &str, count: usize) {
-    let port_str = REDIS_PORT.to_string();
+    let port_str = redis_port().to_string();
 
     // Use pipelining for faster setup - batch 1000 commands at a time
     let batch_size = 1000;
@@ -128,7 +140,7 @@ fn setup_test_hashes_pipelined(prefix: &str, count: usize) {
 
 /// Get current memory usage from Redis.
 fn get_redis_memory_usage() -> Option<u64> {
-    let port_str = REDIS_PORT.to_string();
+    let port_str = redis_port().to_string();
     let output = Command::new("redis-cli")
         .args(["-p", &port_str, "INFO", "memory"])
         .output()
@@ -200,8 +212,8 @@ fn stress_scan_10k_keys() {
     let config = BatchConfig::new(format!("{}*", prefix)).with_batch_size(1000);
 
     let scan_start = Instant::now();
-    let mut iterator =
-        HashBatchIterator::new(REDIS_URL, schema, config, None).expect("Failed to create iterator");
+    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
+        .expect("Failed to create iterator");
 
     let mut total_rows = 0;
     let mut batch_count = 0;
@@ -267,8 +279,8 @@ fn stress_scan_100k_keys() {
     let config = BatchConfig::new(format!("{}*", prefix)).with_batch_size(5000);
 
     let scan_start = Instant::now();
-    let mut iterator =
-        HashBatchIterator::new(REDIS_URL, schema, config, None).expect("Failed to create iterator");
+    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
+        .expect("Failed to create iterator");
 
     let mut total_rows = 0;
     let mut batch_count = 0;
@@ -339,8 +351,8 @@ fn stress_scan_1m_keys() {
     let config = BatchConfig::new(format!("{}*", prefix)).with_batch_size(10000);
 
     let scan_start = Instant::now();
-    let mut iterator =
-        HashBatchIterator::new(REDIS_URL, schema, config, None).expect("Failed to create iterator");
+    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
+        .expect("Failed to create iterator");
 
     let mut total_rows = 0;
     let mut batch_count = 0;
@@ -424,7 +436,7 @@ fn stress_write_10k_hashes() {
 
     let write_start = Instant::now();
     let result =
-        polars_redis::write_hashes(REDIS_URL, keys, fields, values, None, WriteMode::Replace)
+        polars_redis::write_hashes(&redis_url(), keys, fields, values, None, WriteMode::Replace)
             .expect("Failed to write hashes");
     let write_duration = write_start.elapsed();
 
@@ -487,7 +499,7 @@ fn stress_continuous_scan_60s() {
     while start.elapsed() < duration {
         let config = BatchConfig::new(format!("{}*", prefix)).with_batch_size(1000);
 
-        match HashBatchIterator::new(REDIS_URL, schema.clone(), config, None) {
+        match HashBatchIterator::new(&redis_url(), schema.clone(), config, None) {
             Ok(mut iterator) => {
                 while let Ok(Some(batch)) = iterator.next_batch() {
                     total_rows_scanned += batch.num_rows();
@@ -572,12 +584,12 @@ fn stress_memory_stability() {
             })
             .collect();
 
-        polars_redis::write_hashes(REDIS_URL, keys, fields, values, None, WriteMode::Replace)
+        polars_redis::write_hashes(&redis_url(), keys, fields, values, None, WriteMode::Replace)
             .expect("Write failed");
 
         // Scan data
         let config = BatchConfig::new(format!("{}*", prefix)).with_batch_size(500);
-        let mut iterator = HashBatchIterator::new(REDIS_URL, schema.clone(), config, None)
+        let mut iterator = HashBatchIterator::new(&redis_url(), schema.clone(), config, None)
             .expect("Failed to create iterator");
 
         let mut rows = 0;
@@ -637,7 +649,7 @@ fn stress_varying_field_sizes() {
     cleanup_keys_safe(&format!("{}*", prefix));
 
     // Create hashes with varying field sizes
-    let port_str = REDIS_PORT.to_string();
+    let port_str = redis_port().to_string();
     for i in 1..=count {
         let key = format!("{}{}", prefix, i);
         // Field size varies from 10 bytes to 10KB
@@ -677,7 +689,7 @@ fn stress_varying_field_sizes() {
     let config = BatchConfig::new(format!("{}*", prefix)).with_batch_size(100);
 
     let scan_start = Instant::now();
-    let mut iterator = HashBatchIterator::new(REDIS_URL, schema.clone(), config, None)
+    let mut iterator = HashBatchIterator::new(&redis_url(), schema.clone(), config, None)
         .expect("Failed to create iterator");
 
     let mut total_rows = 0;
@@ -698,7 +710,7 @@ fn stress_varying_field_sizes() {
     let projection = Some(vec!["small".to_string()]);
 
     let projected_start = Instant::now();
-    let mut iterator = HashBatchIterator::new(REDIS_URL, small_schema, config, projection)
+    let mut iterator = HashBatchIterator::new(&redis_url(), small_schema, config, projection)
         .expect("Failed to create iterator");
 
     let mut projected_rows = 0;
