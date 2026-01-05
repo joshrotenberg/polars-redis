@@ -239,6 +239,224 @@ def search_hashes(
     )
 
 
+def search_json(
+    url: str,
+    index: str = "",
+    query: str | QueryExpr = "*",
+    schema: dict | None = None,
+    *,
+    options: SearchOptions | None = None,
+    include_key: bool = True,
+    key_column_name: str = "_key",
+    include_ttl: bool = False,
+    ttl_column_name: str = "_ttl",
+    include_row_index: bool = False,
+    row_index_column_name: str = "_index",
+    batch_size: int = 1000,
+    sort_by: str | None = None,
+    sort_ascending: bool = True,
+) -> pl.LazyFrame:
+    """Search RedisJSON documents using RediSearch and return a LazyFrame.
+
+    This function uses RediSearch's FT.SEARCH command on JSON indexes to perform
+    server-side filtering (predicate pushdown), which is much more efficient than
+    scanning all keys and filtering client-side.
+
+    Requires:
+        - RediSearch module installed on Redis server
+        - RedisJSON module installed on Redis server
+        - An existing RediSearch index created with ON JSON
+
+    Args:
+        url: Redis connection URL (e.g., "redis://localhost:6379").
+        index: RediSearch index name (e.g., "products_idx").
+        query: RediSearch query - either a string (e.g., "@price:[0 100]")
+            or a query expression built with col() (e.g., col("price") < 100).
+        schema: Dictionary mapping field names to Polars dtypes.
+            Field names should match the AS aliases defined in the index.
+        options: SearchOptions object for configuration. If provided,
+            individual keyword arguments are ignored.
+        include_key: Whether to include the Redis key as a column.
+        key_column_name: Name of the key column (default: "_key").
+        include_ttl: Whether to include the TTL as a column.
+        ttl_column_name: Name of the TTL column (default: "_ttl").
+        include_row_index: Whether to include the row index as a column.
+        row_index_column_name: Name of the row index column (default: "_index").
+        batch_size: Number of documents to fetch per batch.
+        sort_by: Optional field name to sort results by.
+        sort_ascending: Sort direction (default: True for ascending).
+
+    Returns:
+        A Polars LazyFrame that will search Redis when collected.
+
+    Example:
+        >>> # Given a JSON index created like:
+        >>> # FT.CREATE products_idx ON JSON PREFIX 1 product:
+        >>> #   SCHEMA $.name AS name TEXT $.price AS price NUMERIC
+        >>>
+        >>> # Search with raw RediSearch query
+        >>> lf = search_json(
+        ...     "redis://localhost:6379",
+        ...     index="products_idx",
+        ...     query="@price:[0 100]",
+        ...     schema={"name": pl.Utf8, "price": pl.Float64}
+        ... )
+        >>> df = lf.collect()
+
+        >>> # Search with Polars-like syntax (predicate pushdown)
+        >>> from polars_redis import col
+        >>> lf = search_json(
+        ...     "redis://localhost:6379",
+        ...     index="products_idx",
+        ...     query=(col("price") < 100) & (col("category") == "electronics"),
+        ...     schema={"name": pl.Utf8, "price": pl.Float64, "category": pl.Utf8}
+        ... )
+        >>> df = lf.collect()
+
+        >>> # Search with sorting
+        >>> lf = search_json(
+        ...     "redis://localhost:6379",
+        ...     index="products_idx",
+        ...     query="*",
+        ...     schema={"name": pl.Utf8, "price": pl.Float64},
+        ...     sort_by="price",
+        ...     sort_ascending=True
+        ... )
+        >>> cheapest = lf.head(10).collect()
+
+    Raises:
+        RuntimeError: If RediSearch support is not available.
+
+    Note:
+        The schema field names should match the AS aliases defined when creating
+        the index, not the JSON paths. For example, if your index was created with
+        `$.product_name AS name`, use "name" in the schema.
+    """
+    # If options object provided, use its values
+    if options is not None:
+        index = options.index
+        query = options.query
+        include_key = options.include_key
+        key_column_name = options.key_column_name
+        include_ttl = options.include_ttl
+        ttl_column_name = options.ttl_column_name
+        include_row_index = options.include_row_index
+        row_index_column_name = options.row_index_column_name
+        batch_size = options.batch_size
+        sort_by = options.sort_by
+        sort_ascending = options.sort_ascending
+
+    if not _HAS_SEARCH:
+        raise RuntimeError(
+            "RediSearch support is not available. "
+            "Ensure the 'search' feature is enabled when building polars-redis."
+        )
+
+    if schema is None:
+        raise ValueError("schema is required for search_json")
+
+    # Convert Expr query to string if needed
+    if isinstance(query, QueryExpr):
+        query = query.to_redis()
+
+    # Convert schema to internal format: list of (name, type_str) tuples
+    internal_schema = [(name, _polars_dtype_to_internal(dtype)) for name, dtype in schema.items()]
+
+    # Build the full Polars schema (for register_io_source)
+    polars_schema: SchemaDict = {}
+    if include_row_index:
+        polars_schema[row_index_column_name] = pl.UInt64
+    if include_key:
+        polars_schema[key_column_name] = pl.Utf8
+    if include_ttl:
+        polars_schema[ttl_column_name] = pl.Int64
+    for name, dtype in schema.items():
+        polars_schema[name] = dtype
+
+    # For JSON indexes, we MUST always use RETURN with explicit field names.
+    # Without RETURN, RediSearch returns the entire JSON blob under "$" key,
+    # but with RETURN <field_names>, it returns flat field-value pairs that
+    # match the hash iterator's expected format.
+    schema_fields = list(schema.keys())
+
+    def _search_json_source(
+        with_columns: list[str] | None,
+        predicate: Expr | None,
+        n_rows: int | None,
+        batch_size_hint: int | None,
+    ) -> Iterator[DataFrame]:
+        """Generator that yields DataFrames from RediSearch JSON results."""
+        # For JSON, always include schema fields in projection to get flat response
+        # Start with schema fields (required for RETURN clause)
+        projection = list(schema_fields)
+
+        # Add special columns to projection so they're included in the output
+        # (the iterator uses projection to filter output columns via schema.project())
+        if include_key:
+            projection.append(key_column_name)
+        if include_ttl:
+            projection.append(ttl_column_name)
+        if include_row_index:
+            projection.append(row_index_column_name)
+
+        # If with_columns is specified, filter to requested columns
+        # but always keep schema fields for the RETURN clause
+        if with_columns is not None:
+            # Filter projection to only requested columns, but schema fields
+            # are still sent to Redis for RETURN (handled by Rust side)
+            requested = set(with_columns)
+            projection = [c for c in projection if c in requested or c in schema]
+
+        # Use batch_size_hint if provided, otherwise use configured batch_size
+        effective_batch_size = batch_size_hint if batch_size_hint is not None else batch_size
+
+        # Create the iterator
+        iterator = PyHashSearchIterator(
+            url=url,
+            index=index,
+            query=query,
+            schema=internal_schema,
+            batch_size=effective_batch_size,
+            projection=projection,
+            include_key=include_key,
+            key_column_name=key_column_name,
+            include_ttl=include_ttl,
+            ttl_column_name=ttl_column_name,
+            include_row_index=include_row_index,
+            row_index_column_name=row_index_column_name,
+            max_rows=n_rows,
+            sort_by=sort_by,
+            sort_ascending=sort_ascending,
+        )
+
+        # Yield batches
+        while not iterator.is_done():
+            ipc_bytes = iterator.next_batch_ipc()
+            if ipc_bytes is None:
+                break
+
+            df = pl.read_ipc(ipc_bytes)
+
+            # Apply additional predicate filter if provided
+            if predicate is not None:
+                df = df.filter(predicate)
+
+            # Apply column selection if needed
+            if with_columns is not None:
+                available = [c for c in with_columns if c in df.columns]
+                if available:
+                    df = df.select(available)
+
+            # Don't yield empty batches
+            if len(df) > 0:
+                yield df
+
+    return register_io_source(
+        io_source=_search_json_source,
+        schema=polars_schema,
+    )
+
+
 def aggregate_hashes(
     url: str,
     index: str,
@@ -359,3 +577,101 @@ def aggregate_hashes(
         return pl.DataFrame()
 
     return pl.DataFrame(results)
+
+
+def aggregate_json(
+    url: str,
+    index: str,
+    query: str = "*",
+    *,
+    group_by: list[str] | None = None,
+    reduce: list[tuple[str, list[str], str]] | None = None,
+    apply: list[tuple[str, str]] | None = None,
+    filter_expr: str | None = None,
+    sort_by: list[tuple[str, bool]] | None = None,
+    limit: int | None = None,
+    offset: int = 0,
+    load: list[str] | None = None,
+) -> pl.DataFrame:
+    """Execute a RediSearch FT.AGGREGATE query on JSON documents.
+
+    FT.AGGREGATE performs aggregations on indexed JSON data, supporting grouping,
+    reduce functions, computed fields, filtering, and sorting - all server-side.
+
+    Requires:
+        - RediSearch module installed on Redis server
+        - RedisJSON module installed on Redis server
+        - An existing RediSearch index created with ON JSON
+
+    Args:
+        url: Redis connection URL (e.g., "redis://localhost:6379").
+        index: RediSearch index name (e.g., "products_idx").
+        query: RediSearch query string (e.g., "@category:electronics", "*" for all).
+        group_by: Fields to group by (e.g., ["@category", "@brand"]).
+        reduce: Reduce operations as (function, args, alias) tuples.
+            Examples:
+            - ("COUNT", [], "total")
+            - ("SUM", ["@price"], "total_price")
+            - ("AVG", ["@rating"], "avg_rating")
+            - ("MIN", ["@price"], "min_price")
+            - ("MAX", ["@price"], "max_price")
+        apply: Computed expressions as (expression, alias) tuples.
+            Example: ("@total_price / @total", "avg_price")
+        filter_expr: Filter expression after aggregation.
+            Example: "@total > 10"
+        sort_by: Sort specifications as (field, ascending) tuples.
+            Example: [("@total", False)] for descending by total.
+        limit: Maximum number of results to return.
+        offset: Number of results to skip (for pagination).
+        load: Fields to load from the source documents (before aggregation).
+
+    Returns:
+        A Polars DataFrame containing the aggregation results.
+
+    Example:
+        >>> # Count products by category
+        >>> df = aggregate_json(
+        ...     "redis://localhost:6379",
+        ...     index="products_idx",
+        ...     query="*",
+        ...     group_by=["@category"],
+        ...     reduce=[("COUNT", [], "count")],
+        ... )
+        >>> print(df)
+
+        >>> # Average price by category, sorted by average
+        >>> df = aggregate_json(
+        ...     "redis://localhost:6379",
+        ...     index="products_idx",
+        ...     query="@in_stock:true",
+        ...     group_by=["@category"],
+        ...     reduce=[
+        ...         ("COUNT", [], "product_count"),
+        ...         ("AVG", ["@price"], "avg_price"),
+        ...     ],
+        ...     sort_by=[("@avg_price", False)],
+        ...     limit=10,
+        ... )
+
+    Raises:
+        RuntimeError: If RediSearch support is not available.
+
+    Note:
+        The field names in group_by, reduce, and other parameters should use
+        the AS aliases defined when creating the index, prefixed with @.
+    """
+    # aggregate_json uses the same underlying implementation as aggregate_hashes
+    # because RediSearch FT.AGGREGATE works the same way for both hash and JSON indexes
+    return aggregate_hashes(
+        url=url,
+        index=index,
+        query=query,
+        group_by=group_by,
+        reduce=reduce,
+        apply=apply,
+        filter_expr=filter_expr,
+        sort_by=sort_by,
+        limit=limit,
+        offset=offset,
+        load=load,
+    )
