@@ -354,6 +354,8 @@ def scan_strings(
     include_key: bool = True,
     key_column_name: str = "_key",
     value_column_name: str = "value",
+    include_ttl: bool = False,
+    ttl_column_name: str = "_ttl",
     batch_size: int = 1000,
     count_hint: int = 100,
     parallel: int | None = None,
@@ -370,6 +372,8 @@ def scan_strings(
         include_key: Whether to include the Redis key as a column.
         key_column_name: Name of the key column (default: "_key").
         value_column_name: Name of the value column (default: "value").
+        include_ttl: Whether to include the TTL as a column.
+        ttl_column_name: Name of the TTL column (default: "_ttl").
         batch_size: Number of keys to process per batch.
         count_hint: SCAN COUNT hint for Redis.
         parallel: Number of parallel workers for fetching data (default: None).
@@ -394,11 +398,12 @@ def scan_strings(
         ... )
         >>> total = lf.select(pl.col("value").sum()).collect()
 
-        >>> # Using options object
+        >>> # Using options object with TTL
         >>> opts = StringScanOptions(
         ...     pattern="counter:*",
         ...     batch_size=500,
         ...     value_column_name="count",
+        ...     include_ttl=True,
         ... )
         >>> lf = scan_strings(
         ...     "redis://localhost:6379",
@@ -413,6 +418,8 @@ def scan_strings(
         include_key = options.include_key
         key_column_name = options.key_column_name
         value_column_name = options.value_column_name
+        include_ttl = options.include_ttl
+        ttl_column_name = options.ttl_column_name
         batch_size = options.batch_size
         count_hint = options.count_hint
     # Convert value_type to internal string
@@ -422,6 +429,8 @@ def scan_strings(
     polars_schema: SchemaDict = {}
     if include_key:
         polars_schema[key_column_name] = pl.Utf8
+    if include_ttl:
+        polars_schema[ttl_column_name] = pl.Int64
     polars_schema[value_column_name] = value_type
 
     def _string_source(
@@ -444,6 +453,8 @@ def scan_strings(
             include_key=include_key,
             key_column_name=key_column_name,
             value_column_name=value_column_name,
+            include_ttl=include_ttl,
+            ttl_column_name=ttl_column_name,
             max_rows=n_rows,
             parallel=parallel,
         )

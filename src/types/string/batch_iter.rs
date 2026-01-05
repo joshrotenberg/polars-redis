@@ -143,13 +143,15 @@ impl StringBatchIterator {
     /// Fetch string data for a batch of keys.
     fn fetch_batch(&mut self, keys: &[String]) -> Result<Vec<StringData>> {
         let worker_count = self.config.parallel.worker_count();
+        let include_ttl = self.schema.include_ttl();
 
         // Use parallel fetching if configured
         if worker_count > 1 && keys.len() > worker_count {
-            self.fetch_batch_parallel(keys, worker_count)
+            self.fetch_batch_parallel(keys, include_ttl, worker_count)
         } else {
             let mut conn = self.conn.clone();
-            self.runtime.block_on(fetch_strings(&mut conn, keys))
+            self.runtime
+                .block_on(fetch_strings(&mut conn, keys, include_ttl))
         }
     }
 
@@ -157,6 +159,7 @@ impl StringBatchIterator {
     fn fetch_batch_parallel(
         &mut self,
         keys: &[String],
+        include_ttl: bool,
         worker_count: usize,
     ) -> Result<Vec<StringData>> {
         // Split keys into chunks for parallel processing
@@ -172,7 +175,10 @@ impl StringBatchIterator {
             for chunk in chunks {
                 let mut conn = conn.clone();
 
-                let handle = tokio::spawn(async move { fetch_strings(&mut conn, &chunk).await });
+                let handle =
+                    tokio::spawn(
+                        async move { fetch_strings(&mut conn, &chunk, include_ttl).await },
+                    );
                 handles.push(handle);
             }
 

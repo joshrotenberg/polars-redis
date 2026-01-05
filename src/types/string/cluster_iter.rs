@@ -153,13 +153,14 @@ impl ClusterStringBatchIterator {
     /// Fetch string data for a batch of keys.
     fn fetch_batch(&mut self, keys: &[String]) -> Result<Vec<StringData>> {
         let worker_count = self.config.parallel.worker_count();
+        let include_ttl = self.schema.include_ttl();
 
         if worker_count > 1 && keys.len() > worker_count {
-            self.fetch_batch_parallel(keys, worker_count)
+            self.fetch_batch_parallel(keys, include_ttl, worker_count)
         } else {
             let mut conn = self.conn.clone();
             self.runtime
-                .block_on(fetch_strings_cluster(&mut conn, keys))
+                .block_on(fetch_strings_cluster(&mut conn, keys, include_ttl))
         }
     }
 
@@ -167,6 +168,7 @@ impl ClusterStringBatchIterator {
     fn fetch_batch_parallel(
         &mut self,
         keys: &[String],
+        include_ttl: bool,
         worker_count: usize,
     ) -> Result<Vec<StringData>> {
         let chunk_size = keys.len().div_ceil(worker_count);
@@ -180,8 +182,9 @@ impl ClusterStringBatchIterator {
             for chunk in chunks {
                 let mut conn = conn.clone();
 
-                let handle =
-                    tokio::spawn(async move { fetch_strings_cluster(&mut conn, &chunk).await });
+                let handle = tokio::spawn(async move {
+                    fetch_strings_cluster(&mut conn, &chunk, include_ttl).await
+                });
                 handles.push(handle);
             }
 

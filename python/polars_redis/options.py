@@ -284,6 +284,7 @@ class StringScanOptions:
         >>> opts = StringScanOptions(
         ...     pattern="counter:*",
         ...     value_column_name="count",
+        ...     include_ttl=True,
         ... )
 
     Attributes:
@@ -294,6 +295,8 @@ class StringScanOptions:
         include_key: Whether to include the Redis key as a column.
         key_column_name: Name of the key column.
         value_column_name: Name of the value column.
+        include_ttl: Whether to include the TTL as a column.
+        ttl_column_name: Name of the TTL column.
         include_row_index: Whether to include the row index as a column.
         row_index_column_name: Name of the row index column.
         row_index_offset: Starting offset for the row index.
@@ -306,6 +309,8 @@ class StringScanOptions:
     include_key: bool = True
     key_column_name: str = "_key"
     value_column_name: str = "value"
+    include_ttl: bool = False
+    ttl_column_name: str = "_ttl"
     include_row_index: bool = False
     row_index_column_name: str = "_index"
     row_index_offset: int = 0
@@ -340,6 +345,13 @@ class StringScanOptions:
     def with_value_column_name(self, name: str) -> StringScanOptions:
         """Set the value column name."""
         self.value_column_name = name
+        return self
+
+    def with_ttl(self, include: bool = True, name: str | None = None) -> StringScanOptions:
+        """Configure the TTL column."""
+        self.include_ttl = include
+        if name is not None:
+            self.ttl_column_name = name
         return self
 
     def with_row_index(
