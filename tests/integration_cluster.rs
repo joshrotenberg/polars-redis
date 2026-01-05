@@ -3,6 +3,14 @@
 //! These tests require Docker to start a Redis Cluster.
 //! Tests use docker-wrapper's RedisClusterTemplate to manage the cluster.
 //!
+//! ## Environment Variables
+//!
+//! - `REDIS_CLUSTER_PORT_BASE`: Base port for cluster nodes (default: 17000)
+//! - `REDIS_CLUSTER_NODES`: Comma-separated list of node URLs (optional, for CI)
+//!
+//! For CI with external cluster on ports 7000-7005:
+//!   REDIS_CLUSTER_PORT_BASE=7000 cargo test --test integration_cluster ...
+//!
 //! Run with: `cargo test --test integration_cluster --all-features`
 //! Run ignored tests: `cargo test --test integration_cluster --all-features -- --ignored`
 
@@ -22,8 +30,16 @@ use polars_redis::{
 
 /// Cluster configuration constants.
 const CLUSTER_NAME: &str = "polars-redis-cluster-test";
-const CLUSTER_PORT_BASE: u16 = 17000;
+const DEFAULT_CLUSTER_PORT_BASE: u16 = 17000;
 const NUM_MASTERS: usize = 3;
+
+/// Get cluster port base from environment or use default.
+fn cluster_port_base() -> u16 {
+    std::env::var("REDIS_CLUSTER_PORT_BASE")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(DEFAULT_CLUSTER_PORT_BASE)
+}
 
 /// Global cluster state - ensures we only start one cluster per test run.
 static CLUSTER_STARTED: OnceLock<RedisClusterConnection> = OnceLock::new();
@@ -33,18 +49,47 @@ fn get_cluster_connection() -> Option<&'static RedisClusterConnection> {
     CLUSTER_STARTED.get()
 }
 
+/// Check if an external cluster is already available (e.g., in CI).
+fn external_cluster_available() -> bool {
+    let port = cluster_port_base();
+    Command::new("redis-cli")
+        .args(["-p", &port.to_string(), "CLUSTER", "INFO"])
+        .output()
+        .map(|o| {
+            o.status.success() && String::from_utf8_lossy(&o.stdout).contains("cluster_state:ok")
+        })
+        .unwrap_or(false)
+}
+
 /// Start Redis Cluster for testing (blocking).
 ///
 /// Returns the cluster connection info if successful.
+/// If an external cluster is already available (CI), uses that instead.
 fn ensure_cluster_started() -> Option<&'static RedisClusterConnection> {
     if let Some(conn) = CLUSTER_STARTED.get() {
         return Some(conn);
     }
 
-    // Create and start the cluster
+    let port_base = cluster_port_base();
+
+    // Check if external cluster is already available (e.g., in CI)
+    if external_cluster_available() {
+        // For external clusters, we don't have a RedisClusterConnection from docker-wrapper.
+        // The cluster_nodes() function will build URLs from the port base instead.
+        // We still need to set something in CLUSTER_STARTED to indicate we're ready.
+        // Create a minimal template just to get a connection object.
+        let template = RedisClusterTemplate::new("external-cluster")
+            .num_masters(NUM_MASTERS)
+            .port_base(port_base);
+        let conn = RedisClusterConnection::from_template(&template);
+        let _ = CLUSTER_STARTED.set(conn);
+        return CLUSTER_STARTED.get();
+    }
+
+    // Create and start the cluster using docker-wrapper
     let template = RedisClusterTemplate::new(CLUSTER_NAME)
         .num_masters(NUM_MASTERS)
-        .port_base(CLUSTER_PORT_BASE)
+        .port_base(port_base)
         .auto_remove();
 
     // Start cluster (blocking)
@@ -102,7 +147,7 @@ fn cluster_nodes() -> Vec<String> {
 
 /// Run redis-cli against the first cluster node.
 fn cluster_redis_cli(args: &[&str]) -> bool {
-    let port_str = CLUSTER_PORT_BASE.to_string();
+    let port_str = cluster_port_base().to_string();
     let mut full_args = vec!["-p", &port_str, "-c"]; // -c for cluster mode
     full_args.extend(args);
 
@@ -115,11 +160,12 @@ fn cluster_redis_cli(args: &[&str]) -> bool {
 
 /// Clean up all keys matching a pattern across the cluster.
 fn cleanup_cluster_keys(pattern: &str) {
-    let port_str = CLUSTER_PORT_BASE.to_string();
+    let port_base = cluster_port_base();
+    let port_str = port_base.to_string();
 
     // In cluster mode, we need to scan each node
     for port_offset in 0..NUM_MASTERS {
-        let port = (CLUSTER_PORT_BASE + port_offset as u16).to_string();
+        let port = (port_base + port_offset as u16).to_string();
 
         // Get all matching keys from this node
         let output = Command::new("redis-cli")
@@ -141,7 +187,7 @@ fn cleanup_cluster_keys(pattern: &str) {
 
 /// Set up test hashes in the cluster.
 fn setup_cluster_hashes(prefix: &str, count: usize) {
-    let port_str = CLUSTER_PORT_BASE.to_string();
+    let port_str = cluster_port_base().to_string();
     for i in 1..=count {
         let key = format!("{}{}", prefix, i);
         let name = format!("User{}", i);
@@ -160,7 +206,7 @@ fn setup_cluster_hashes(prefix: &str, count: usize) {
 /// Set up test JSON documents in the cluster.
 #[allow(dead_code)]
 fn setup_cluster_json(prefix: &str, count: usize) {
-    let port_str = CLUSTER_PORT_BASE.to_string();
+    let port_str = cluster_port_base().to_string();
     for i in 1..=count {
         let key = format!("{}{}", prefix, i);
         let json = format!(
@@ -178,7 +224,7 @@ fn setup_cluster_json(prefix: &str, count: usize) {
 
 /// Set up test strings in the cluster.
 fn setup_cluster_strings(prefix: &str, count: usize) {
-    let port_str = CLUSTER_PORT_BASE.to_string();
+    let port_str = cluster_port_base().to_string();
     for i in 1..=count {
         let key = format!("{}{}", prefix, i);
         let value = format!("value{}", i);

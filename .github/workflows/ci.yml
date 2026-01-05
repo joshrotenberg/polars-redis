@@ -116,6 +116,7 @@ jobs:
 
       - name: Run cluster integration tests
         env:
+          REDIS_CLUSTER_PORT_BASE: "7000"
           REDIS_CLUSTER_NODES: "redis://localhost:7000,redis://localhost:7001,redis://localhost:7002"
         run: cargo test --test integration_cluster --features "json,search,cluster" -- --ignored
 

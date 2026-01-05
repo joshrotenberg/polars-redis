@@ -92,6 +92,7 @@ cargo test --test integration_cluster --features "json,search,cluster" -- --igno
 |----------|---------|-------------|
 | `REDIS_URL` | `redis://localhost:16379` | Redis connection URL |
 | `REDIS_PORT` | `16379` | Redis port for CLI commands |
+| `REDIS_CLUSTER_PORT_BASE` | `17000` | Base port for cluster nodes |
 | `REDIS_CLUSTER_NODES` | (none) | Comma-separated cluster node URLs |
 
 ## CI Behavior
