@@ -42,6 +42,7 @@ from polars_redis._internal import (
     py_infer_json_schema,
     py_infer_json_schema_with_overwrite,
     py_write_hashes,
+    py_write_hashes_detailed,
     py_write_json,
     py_write_strings,
     scan_keys,
@@ -94,8 +95,10 @@ __all__ = [
     "read_strings",
     # Write functions
     "write_hashes",
+    "write_hashes_detailed",
     "write_json",
     "write_strings",
+    "WriteResult",
     # Utilities
     "scan_keys",
     "infer_hash_schema",
@@ -1262,6 +1265,116 @@ def write_hashes(
     # Call the Rust implementation
     keys_written, _, _ = py_write_hashes(url, keys, field_columns, values, ttl, if_exists)
     return keys_written
+
+
+class WriteResult:
+    """Detailed result of a write operation with per-key error information.
+
+    This class provides granular error reporting for production workflows where
+    partial success is acceptable and retry logic is needed.
+
+    Attributes:
+        keys_written: Number of keys successfully written.
+        keys_failed: Number of keys that failed to write.
+        keys_skipped: Number of keys skipped (when if_exists="fail" and key exists).
+        succeeded_keys: List of keys that were successfully written.
+        failed_keys: List of keys that failed to write.
+        errors: Dictionary mapping failed keys to their error messages.
+    """
+
+    def __init__(self, result_dict: dict):
+        """Initialize from the Rust result dictionary."""
+        self.keys_written: int = result_dict["keys_written"]
+        self.keys_failed: int = result_dict["keys_failed"]
+        self.keys_skipped: int = result_dict["keys_skipped"]
+        self.succeeded_keys: list[str] = result_dict["succeeded_keys"]
+        self.failed_keys: list[str] = result_dict["failed_keys"]
+        self.errors: dict[str, str] = result_dict["errors"]
+
+    def is_complete_success(self) -> bool:
+        """Check if all keys were written successfully."""
+        return self.keys_failed == 0
+
+    def __repr__(self) -> str:
+        return (
+            f"WriteResult(keys_written={self.keys_written}, "
+            f"keys_failed={self.keys_failed}, keys_skipped={self.keys_skipped})"
+        )
+
+
+def write_hashes_detailed(
+    df: pl.DataFrame,
+    url: str,
+    key_column: str | None = "_key",
+    ttl: int | None = None,
+    key_prefix: str = "",
+    if_exists: str = "replace",
+) -> WriteResult:
+    """Write a DataFrame to Redis as hashes with detailed error reporting.
+
+    This is similar to write_hashes() but returns detailed information about
+    which specific keys succeeded or failed, enabling retry logic and better
+    error handling in production workflows.
+
+    Args:
+        df: The DataFrame to write.
+        url: Redis connection URL (e.g., "redis://localhost:6379").
+        key_column: Column containing Redis keys (default: "_key").
+            If None, keys are auto-generated from row indices as "{key_prefix}{index}".
+        ttl: Optional TTL in seconds for each key (default: None, no expiration).
+        key_prefix: Prefix to prepend to all keys (default: "").
+        if_exists: How to handle existing keys (default: "replace").
+            - "fail": Skip keys that already exist.
+            - "replace": Delete existing keys before writing (clean replacement).
+            - "append": Merge new fields into existing hashes.
+
+    Returns:
+        WriteResult object with detailed success/failure information.
+
+    Raises:
+        ValueError: If the key column is not in the DataFrame or if_exists is invalid.
+
+    Example:
+        >>> df = pl.DataFrame({
+        ...     "_key": ["user:1", "user:2", "user:3"],
+        ...     "name": ["Alice", "Bob", "Charlie"],
+        ...     "age": [30, 25, 35]
+        ... })
+        >>> result = write_hashes_detailed(df, "redis://localhost:6379")
+        >>> print(f"Wrote {result.keys_written}, failed {result.keys_failed}")
+        >>> if not result.is_complete_success():
+        ...     for key, error in result.errors.items():
+        ...         print(f"  {key}: {error}")
+        ...     # Retry failed keys
+        ...     failed_df = df.filter(pl.col("_key").is_in(result.failed_keys))
+    """
+    if key_column is None:
+        # Auto-generate keys from row indices
+        keys = [f"{key_prefix}{i}" for i in range(len(df))]
+        field_columns = list(df.columns)
+    else:
+        if key_column not in df.columns:
+            raise ValueError(f"Key column '{key_column}' not found in DataFrame")
+        # Extract keys and apply prefix
+        keys = [f"{key_prefix}{k}" for k in df[key_column].to_list()]
+        # Get field columns (all columns except the key column)
+        field_columns = [c for c in df.columns if c != key_column]
+
+    # Convert all values to strings (Redis stores everything as strings)
+    values = []
+    for i in range(len(df)):
+        row_values = []
+        for col in field_columns:
+            val = df[col][i]
+            if val is None:
+                row_values.append(None)
+            else:
+                row_values.append(str(val))
+        values.append(row_values)
+
+    # Call the Rust implementation
+    result_dict = py_write_hashes_detailed(url, keys, field_columns, values, ttl, if_exists)
+    return WriteResult(result_dict)
 
 
 def write_json(
