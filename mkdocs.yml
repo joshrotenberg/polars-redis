@@ -33,6 +33,12 @@ theme:
 plugins:
   - search
 
+extra:
+  slides_url: slides/index.html
+
+hooks:
+  - docs/hooks.py
+
 markdown_extensions:
   - pymdownx.highlight:
       anchor_linenums: true
@@ -63,6 +69,10 @@ nav:
       - Writing Data: guide/writing.md
       - Schema Inference: guide/schema-inference.md
       - Configuration: guide/configuration.md
+      - Performance: guide/performance.md
+      - Cluster Support: guide/cluster.md
+      - Use Cases: guide/use-cases.md
+      - Ephemeral Workbench: guide/ephemeral-workbench.md
       - Migration Guide: guide/migration.md
   - API Reference:
       - Python API: api/python.md
