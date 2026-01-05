@@ -1,6 +1,8 @@
 //! Redis sorted set data fetching.
 
 use redis::aio::ConnectionManager;
+#[cfg(feature = "cluster")]
+use redis::cluster_async::ClusterConnection;
 
 use crate::error::Result;
 
@@ -41,6 +43,44 @@ pub async fn fetch_zsets(conn: &mut ConnectionManager, keys: &[String]) -> Resul
         }
 
         // Only include non-empty sorted sets
+        if !members.is_empty() {
+            zset_data.push(ZSetData {
+                key: key.clone(),
+                members,
+            });
+        }
+    }
+
+    Ok(zset_data)
+}
+
+/// Fetch sorted set members for a batch of keys from a cluster.
+#[cfg(feature = "cluster")]
+pub async fn fetch_zsets_cluster(
+    conn: &mut ClusterConnection,
+    keys: &[String],
+) -> Result<Vec<ZSetData>> {
+    if keys.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut pipe = redis::pipe();
+    for key in keys {
+        pipe.cmd("ZRANGE").arg(key).arg(0).arg(-1).arg("WITHSCORES");
+    }
+
+    let results: Vec<Vec<String>> = pipe.query_async(conn).await?;
+
+    let mut zset_data = Vec::with_capacity(keys.len());
+    for (key, flat_result) in keys.iter().zip(results.into_iter()) {
+        let mut members = Vec::with_capacity(flat_result.len() / 2);
+        let mut iter = flat_result.into_iter();
+        while let (Some(member), Some(score_str)) = (iter.next(), iter.next()) {
+            if let Ok(score) = score_str.parse::<f64>() {
+                members.push((member, score));
+            }
+        }
+
         if !members.is_empty() {
             zset_data.push(ZSetData {
                 key: key.clone(),

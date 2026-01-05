@@ -1,6 +1,8 @@
 //! Redis set data fetching.
 
 use redis::aio::ConnectionManager;
+#[cfg(feature = "cluster")]
+use redis::cluster_async::ClusterConnection;
 
 use crate::error::Result;
 
@@ -30,6 +32,36 @@ pub async fn fetch_sets(conn: &mut ConnectionManager, keys: &[String]) -> Result
     let mut set_data = Vec::with_capacity(keys.len());
     for (key, members) in keys.iter().zip(results.into_iter()) {
         // Only include non-empty sets (key might have been deleted or is wrong type)
+        if !members.is_empty() {
+            set_data.push(SetData {
+                key: key.clone(),
+                members,
+            });
+        }
+    }
+
+    Ok(set_data)
+}
+
+/// Fetch set members for a batch of keys from a cluster.
+#[cfg(feature = "cluster")]
+pub async fn fetch_sets_cluster(
+    conn: &mut ClusterConnection,
+    keys: &[String],
+) -> Result<Vec<SetData>> {
+    if keys.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut pipe = redis::pipe();
+    for key in keys {
+        pipe.smembers(key);
+    }
+
+    let results: Vec<Vec<String>> = pipe.query_async(conn).await?;
+
+    let mut set_data = Vec::with_capacity(keys.len());
+    for (key, members) in keys.iter().zip(results.into_iter()) {
         if !members.is_empty() {
             set_data.push(SetData {
                 key: key.clone(),
