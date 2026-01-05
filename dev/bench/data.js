@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1767593563427,
+  "lastUpdate": 1767650842562,
   "repoUrl": "https://github.com/joshrotenberg/polars-redis",
   "entries": {
     "Rust Benchmarks": [
@@ -791,6 +791,138 @@ window.BENCHMARK_DATA = {
             "name": "projection/25_of_50_fields",
             "value": 1147,
             "range": "± 3",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "joshrotenberg@gmail.com",
+            "name": "Josh Rotenberg",
+            "username": "joshrotenberg"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "e8d14c40d5b47897cf58ea00f8b0af21111f4e9b",
+          "message": "feat: add TTL support for String type reads (#88) (#90)\n\n- Add ttl field to StringData struct\n- Add fetch_ttls function for pipelined TTL fetching\n- Update fetch_strings to support include_ttl parameter\n- Add include_ttl and ttl_column_name to StringSchema\n- Update strings_to_record_batch for TTL column\n- Update StringBatchIterator and ClusterStringBatchIterator\n- Add include_ttl and ttl_column_name to Python bindings\n- Update scan_strings, read_strings, and StringScanOptions\n- Add Python tests for string TTL reads",
+          "timestamp": "2026-01-05T14:03:21-08:00",
+          "tree_id": "68af5e3d9de37d439ec0d328bf53acd6c293e503",
+          "url": "https://github.com/joshrotenberg/polars-redis/commit/e8d14c40d5b47897cf58ea00f8b0af21111f4e9b"
+        },
+        "date": 1767650842156,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "schema_creation/small_3_fields",
+            "value": 307,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/medium_10_fields",
+            "value": 1211,
+            "range": "± 3",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/large_50_fields",
+            "value": 7138,
+            "range": "± 20",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/default",
+            "value": 25,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/with_options",
+            "value": 25,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/100",
+            "value": 231,
+            "range": "± 11",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/100",
+            "value": 1118,
+            "range": "± 3",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/100",
+            "value": 95,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/1000",
+            "value": 2857,
+            "range": "± 79",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/1000",
+            "value": 11646,
+            "range": "± 134",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/1000",
+            "value": 970,
+            "range": "± 10",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/10000",
+            "value": 36699,
+            "range": "± 106",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/10000",
+            "value": 122439,
+            "range": "± 514",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/10000",
+            "value": 9637,
+            "range": "± 63",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "arrow_schema/to_arrow_schema",
+            "value": 845,
+            "range": "± 2",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/no_filter",
+            "value": 18,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/5_of_50_fields",
+            "value": 870,
+            "range": "± 7",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/25_of_50_fields",
+            "value": 1008,
+            "range": "± 5",
             "unit": "ns/iter"
           }
         ]
