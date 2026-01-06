@@ -4,6 +4,118 @@ polars-redis shines in scenarios where Redis holds data that needs analytical
 processing, enrichment, or transformation. Here are common patterns and
 examples.
 
+## DataFrame Caching
+
+Cache expensive computations in Redis without manual serialization boilerplate.
+
+### The Problem
+
+Caching DataFrames in Redis traditionally requires manual work:
+
+```python
+# The old way - lots of boilerplate
+import pyarrow as pa
+import redis
+import io
+
+def cache_df(r, key, df):
+    buffer = io.BytesIO()
+    df.to_parquet(buffer, compression='zstd')
+    buffer.seek(0)
+    r.set(key, buffer.read())
+    r.expire(key, 3600)
+
+def get_df(r, key):
+    data = r.get(key)
+    if data is None:
+        return None
+    return pl.read_parquet(io.BytesIO(data))
+```
+
+Plus you need to handle:
+- Large DataFrames exceeding Redis's 512MB limit
+- Compression options
+- TTL management
+- Cache invalidation
+- Key generation for function arguments
+
+### The polars-redis Solution
+
+```python
+import polars_redis as redis
+
+# One decorator does it all
+@redis.cache(url="redis://localhost:6379", ttl=3600, compression="zstd")
+def expensive_aggregation(start: str, end: str) -> pl.DataFrame:
+    return (
+        pl.scan_parquet("huge_dataset.parquet")
+        .filter(pl.col("date").is_between(start, end))
+        .group_by("category")
+        .agg(pl.sum("revenue"))
+        .collect()
+    )
+
+# First call: computes and caches
+result = expensive_aggregation("2024-01-01", "2024-12-31")
+
+# Second call: instant cache hit
+result = expensive_aggregation("2024-01-01", "2024-12-31")
+
+# Force refresh
+result = expensive_aggregation("2024-01-01", "2024-12-31", _cache_refresh=True)
+
+# Invalidate
+expensive_aggregation.invalidate("2024-01-01", "2024-12-31")
+```
+
+### Sharing Results Across Workers
+
+```python
+import polars_redis as redis
+
+url = "redis://localhost:6379"
+
+# Worker 1: Compute and cache
+result = heavy_ml_feature_engineering()
+redis.cache_dataframe(result, url, "features:v1", compression="zstd", ttl=86400)
+
+# Worker 2, 3, ...: Retrieve cached result instantly
+features = redis.get_cached_dataframe(url, "features:v1")
+```
+
+### Large DataFrame Support
+
+polars-redis automatically chunks large DataFrames:
+
+```python
+# 2GB DataFrame? No problem - auto-chunked across multiple keys
+redis.cache_dataframe(huge_df, url, "big_result", chunk_size_mb=100)
+
+# Retrieval reassembles automatically
+df = redis.get_cached_dataframe(url, "big_result")
+```
+
+### ETL Pipeline Checkpoints
+
+```python
+import polars_redis as redis
+
+url = "redis://localhost:6379"
+
+# Stage 1
+raw = extract_from_source()
+redis.cache_dataframe(raw, url, "etl:stage1", ttl=7200)
+
+# Stage 2 (can run separately, even on different machine)
+stage1 = redis.get_cached_dataframe(url, "etl:stage1")
+transformed = transform(stage1)
+redis.cache_dataframe(transformed, url, "etl:stage2", ttl=7200)
+
+# Stage 3
+final = redis.get_cached_dataframe(url, "etl:stage2")
+load_to_warehouse(final)
+```
+
 ## Customer Data Enrichment
 
 Combine Redis session data with external sources for real-time customer
