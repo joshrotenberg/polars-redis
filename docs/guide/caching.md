@@ -289,3 +289,93 @@ Get information about a cached DataFrame. Returns a dict with keys:
 - `num_chunks`: Number of chunks (1 if not chunked)
 - `chunk_size`: Size of each chunk in bytes
 - `ttl`: Remaining TTL in seconds, or None
+
+## Rust API
+
+The caching functionality is also available in Rust for pure Rust applications.
+
+### Quick Start (Rust)
+
+```rust
+use arrow::array::{Int64Array, StringArray};
+use arrow::datatypes::{DataType, Field, Schema};
+use arrow::record_batch::RecordBatch;
+use polars_redis::cache::{
+    cache_record_batch, get_cached_record_batch, delete_cached,
+    cache_exists, cache_ttl, cache_info,
+    CacheConfig, CacheFormat, IpcCompression, ParquetCompressionType,
+};
+use std::sync::Arc;
+
+// Create a RecordBatch
+let schema = Arc::new(Schema::new(vec![
+    Field::new("id", DataType::Int64, false),
+    Field::new("name", DataType::Utf8, false),
+]));
+
+let batch = RecordBatch::try_new(
+    schema,
+    vec![
+        Arc::new(Int64Array::from(vec![1, 2, 3])),
+        Arc::new(StringArray::from(vec!["a", "b", "c"])),
+    ],
+).unwrap();
+
+// Cache with default config (IPC format)
+let config = CacheConfig::default();
+cache_record_batch("redis://localhost:6379", "my_result", &batch, &config).unwrap();
+
+// Retrieve later
+let cached = get_cached_record_batch("redis://localhost:6379", "my_result").unwrap();
+assert!(cached.is_some());
+
+// Delete when done
+delete_cached("redis://localhost:6379", "my_result").unwrap();
+```
+
+### Configuration (Rust)
+
+```rust
+use polars_redis::cache::{CacheConfig, IpcCompression, ParquetCompressionType};
+
+// IPC with compression
+let config = CacheConfig::ipc()
+    .with_ipc_compression(IpcCompression::Zstd)
+    .with_ttl(3600);
+
+// Parquet with compression
+let config = CacheConfig::parquet()
+    .with_parquet_compression(ParquetCompressionType::Zstd)
+    .with_compression_level(3)
+    .with_ttl(86400);
+
+// Custom chunk size (50MB)
+let config = CacheConfig::default()
+    .with_chunk_size(50 * 1024 * 1024);
+
+// Disable chunking
+let config = CacheConfig::default()
+    .without_chunking();
+```
+
+### Rust API Reference
+
+| Function | Description |
+|----------|-------------|
+| `cache_record_batch(url, key, batch, config)` | Cache a RecordBatch in Redis |
+| `get_cached_record_batch(url, key)` | Retrieve a cached RecordBatch |
+| `delete_cached(url, key)` | Delete cached data |
+| `cache_exists(url, key)` | Check if cached data exists |
+| `cache_ttl(url, key)` | Get remaining TTL |
+| `cache_info(url, key)` | Get cache metadata |
+
+### CacheConfig Options
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `format` | `CacheFormat` | `Ipc` | Serialization format |
+| `ipc_compression` | `IpcCompression` | `Uncompressed` | IPC compression codec |
+| `parquet_compression` | `ParquetCompressionType` | `Zstd` | Parquet compression codec |
+| `compression_level` | `Option<i32>` | `None` | Compression level |
+| `ttl` | `Option<i64>` | `None` | TTL in seconds |
+| `chunk_size` | `usize` | `100MB` | Chunk size in bytes |

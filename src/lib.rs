@@ -115,6 +115,7 @@ use pyo3::prelude::*;
 #[cfg(feature = "python")]
 use std::collections::HashMap;
 
+pub mod cache;
 #[cfg(feature = "cluster")]
 pub mod cluster;
 mod connection;
