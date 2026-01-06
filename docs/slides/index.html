@@ -195,6 +195,61 @@ df = pr.search_hashes(
                     </ul>
                 </section>
 
+                <!-- Polars Primer -->
+                <section>
+                    <h2>What is <span class="polars-blue">Polars</span>?</h2>
+                    <p>
+                        <a href="https://pola.rs/" style="color: #4b8bbe"
+                            >pola.rs</a
+                        >
+                        - A lightning-fast DataFrame library for Python and Rust
+                    </p>
+                    <div class="columns">
+                        <div class="column">
+                            <h3 class="polars-blue">Key Features</h3>
+                            <ul>
+                                <li>
+                                    <span class="green">Blazingly fast</span> -
+                                    Written in Rust, multi-threaded
+                                </li>
+                                <li>
+                                    <span class="green">Lazy evaluation</span> -
+                                    Query optimization before execution
+                                </li>
+                                <li>
+                                    <span class="green">Memory efficient</span>
+                                    - Apache Arrow columnar format
+                                </li>
+                                <li>
+                                    <span class="green">Expressive API</span> -
+                                    Chain operations fluently
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="column">
+                            <h3 class="orange">Quick Example</h3>
+                            <pre><code class="language-python">import polars as pl
+
+# Read, transform, write
+df = pl.read_csv("data.csv")
+result = (
+    df.filter(pl.col("age") > 25)
+      .group_by("department")
+      .agg(pl.col("salary").mean())
+      .sort("salary", descending=True)
+)
+result.write_parquet("output.parquet")</code></pre>
+                        </div>
+                    </div>
+                    <p class="small" style="margin-top: 0.5em">
+                        <span class="green">Learn more:</span>
+                        <a href="https://docs.pola.rs/" style="color: #98c379"
+                            >docs.pola.rs</a
+                        >
+                        - Polars User Guide
+                    </p>
+                </section>
+
                 <!-- What is polars-redis? -->
                 <section>
                     <h2>What is polars-redis?</h2>

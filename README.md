@@ -1,6 +1,8 @@
 # polars-redis
 
-Query Redis like a database. Transform with Polars. Write back without ETL.
+Query Redis like a database. Transform with [Polars](https://pola.rs/). Write back without ETL.
+
+> **New to Polars?** [Polars](https://pola.rs/) is a lightning-fast DataFrame library for Python and Rust. Check out the [Polars User Guide](https://docs.pola.rs/) to get started.
 
 [![CI](https://github.com/joshrotenberg/polars-redis/actions/workflows/ci.yml/badge.svg)](https://github.com/joshrotenberg/polars-redis/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/polars-redis.svg)](https://pypi.org/project/polars-redis/)
