@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1767723881456,
+  "lastUpdate": 1767735154572,
   "repoUrl": "https://github.com/joshrotenberg/polars-redis",
   "entries": {
     "Rust Benchmarks": [
@@ -1847,6 +1847,138 @@ window.BENCHMARK_DATA = {
             "name": "projection/25_of_50_fields",
             "value": 1123,
             "range": "± 17",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "joshrotenberg@gmail.com",
+            "name": "Josh Rotenberg",
+            "username": "joshrotenberg"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "09f0cf27b8f6eafa590c9e2261ce745ea7e394e1",
+          "message": "feat: add Pub/Sub DataFrame streaming (#121) (#126)\n\n* feat: add Pub/Sub DataFrame streaming (#121)\n\n- Add Rust pubsub module with message collection into RecordBatch\n- Add Python pubsub functions: collect_pubsub, subscribe_batches, iter_batches\n- Support termination by count, timeout, or time window\n- Support JSON message format with schema casting\n- Support custom message parsers\n- Support pattern subscriptions (PSUBSCRIBE)\n- Add metadata columns for channel and timestamp\n- Add comprehensive tests for pubsub functionality\n- Add documentation for Pub/Sub streaming\n\n* fix: add redis dependency and fix pubsub tests for CI\n\n- Add redis>=5.0 as a dependency in pyproject.toml\n- Add asyncio_mode=auto to pytest config for async tests\n- Simplify unit test to use real Redis with short timeout\n- Remove unused mock imports\n\n* fix: add pytest-asyncio to CI dependencies for async tests",
+          "timestamp": "2026-01-06T13:22:05-08:00",
+          "tree_id": "dafe048d9c60503fd72814f972694a9dec4fd7c6",
+          "url": "https://github.com/joshrotenberg/polars-redis/commit/09f0cf27b8f6eafa590c9e2261ce745ea7e394e1"
+        },
+        "date": 1767735154274,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "schema_creation/small_3_fields",
+            "value": 321,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/medium_10_fields",
+            "value": 1089,
+            "range": "± 7",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/large_50_fields",
+            "value": 6863,
+            "range": "± 76",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/default",
+            "value": 28,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/with_options",
+            "value": 27,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/100",
+            "value": 249,
+            "range": "± 2",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/100",
+            "value": 1187,
+            "range": "± 43",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/100",
+            "value": 76,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/1000",
+            "value": 3116,
+            "range": "± 30",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/1000",
+            "value": 12498,
+            "range": "± 231",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/1000",
+            "value": 714,
+            "range": "± 2",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/10000",
+            "value": 38167,
+            "range": "± 287",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/10000",
+            "value": 134181,
+            "range": "± 2807",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/10000",
+            "value": 7485,
+            "range": "± 48",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "arrow_schema/to_arrow_schema",
+            "value": 758,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/no_filter",
+            "value": 19,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/5_of_50_fields",
+            "value": 901,
+            "range": "± 3",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/25_of_50_fields",
+            "value": 1106,
+            "range": "± 5",
             "unit": "ns/iter"
           }
         ]
