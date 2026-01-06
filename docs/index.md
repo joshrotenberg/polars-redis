@@ -51,6 +51,16 @@ redis.write_hashes(high_value, url, key_prefix="whale:")
     - Projection pushdown (only fetch requested fields)
     - Batched iteration for memory efficiency
     - Parallel fetching for improved throughput
+- **DataFrame caching** with automatic chunking
+    - Cache DataFrames in Redis with Arrow IPC or Parquet format
+    - Built-in compression (lz4, zstd, gzip, snappy)
+    - Auto-chunking for large DataFrames (no 512MB limit)
+    - `@cache` decorator for function memoization
+    - TTL support for automatic expiration
+- **Real-time streaming** from Pub/Sub and Streams
+    - `collect_pubsub()` - Collect messages into DataFrames
+    - `read_stream()` - Consumer group support with acknowledgment
+    - Batch iterators for continuous processing
 - **RediSearch integration** for predicate pushdown
     - `search_hashes()` - Server-side filtering with FT.SEARCH
     - `aggregate_hashes()` - Server-side aggregation with FT.AGGREGATE
@@ -96,6 +106,43 @@ active_users = lf.filter(pl.col("active")).select(["name", "age"]).collect()
 # Write with TTL (1 hour)
 redis.write_hashes(active_users, url, key_prefix="cache:user:", ttl=3600)
 ```
+
+## DataFrame Caching
+
+Cache expensive computations with a single decorator - no manual serialization needed:
+
+```python
+import polars_redis as redis
+
+@redis.cache(url="redis://localhost:6379", ttl=3600)
+def expensive_query(start_date: str, end_date: str) -> pl.DataFrame:
+    # Complex computation...
+    return df
+
+# First call: computes and caches
+result = expensive_query("2024-01-01", "2024-12-31")
+
+# Second call: instant cache hit
+result = expensive_query("2024-01-01", "2024-12-31")
+```
+
+Or cache directly with full control:
+
+```python
+# Cache with compression and TTL
+redis.cache_dataframe(df, url, "result", compression="zstd", ttl=3600)
+
+# Retrieve later
+df = redis.get_cached_dataframe(url, "result")
+```
+
+**Why polars-redis for caching?**
+
+- **No boilerplate** - One line vs 10+ lines of manual PyArrow/pickle serialization
+- **Auto-chunking** - Handles DataFrames of any size (bypasses Redis 512MB limit)
+- **Built-in compression** - lz4, zstd, gzip, snappy with configurable levels
+- **Cache metadata** - `cache_info()`, `cache_ttl()`, `cache_exists()`
+- **Native Polars** - No pandas conversion overhead
 
 ## Requirements
 
