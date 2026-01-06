@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1767682798926,
+  "lastUpdate": 1767723881456,
   "repoUrl": "https://github.com/joshrotenberg/polars-redis",
   "entries": {
     "Rust Benchmarks": [
@@ -1715,6 +1715,138 @@ window.BENCHMARK_DATA = {
             "name": "projection/25_of_50_fields",
             "value": 1129,
             "range": "± 22",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "joshrotenberg@gmail.com",
+            "name": "Josh Rotenberg",
+            "username": "joshrotenberg"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "ad6cf7c461d3598164ddd448de3ee7cd7942c42e",
+          "message": "feat: add DataFrame caching with Arrow IPC and Parquet support (#123)\n\n* feat: add DataFrame caching with Arrow IPC and Parquet support\n\nAdd functions for caching entire DataFrames in Redis using Arrow IPC\nor Parquet format. This enables using Redis as a high-performance\ndistributed cache for intermediate computation results.\n\nNew functions:\n- cache_dataframe(): Store DataFrame with optional compression and TTL\n- get_cached_dataframe(): Retrieve cached DataFrame\n- scan_cached(): Retrieve as LazyFrame\n- delete_cached(): Remove cached DataFrame\n- cache_exists(): Check if cache key exists\n- cache_ttl(): Get remaining TTL\n\nSupports two formats:\n- Arrow IPC: Fast serialization, zero-copy potential (default)\n- Parquet: Better compression, storage efficiency\n\nCloses #118, closes #122\n\n* feat: add chunked storage and comprehensive tests for DataFrame caching\n\n- Add chunked storage for large DataFrames (default 100MB chunks)\n- Add cache_info() function to inspect cached data\n- Add chunk_size_mb parameter to control chunking behavior\n- Fix chunk size calculation to use integer bytes\n- Add comprehensive test suite (33 tests) covering:\n  - Basic IPC and Parquet caching\n  - All compression options (lz4, zstd, snappy, gzip)\n  - TTL functionality\n  - Chunked storage and retrieval\n  - Cache operations (exists, delete, info, scan)\n  - Various data types (ints, floats, bools, strings, dates, lists, nulls)\n  - Parquet projection pushdown (columns, n_rows)\n  - Error handling for invalid inputs\n- Update documentation with chunking section\n\n* feat: add Rust cache module for RecordBatch caching parity\n\n- Add src/cache.rs with full Arrow IPC and Parquet support\n- Support chunked storage for large datasets (default 100MB chunks)\n- Add compression options: IPC (lz4, zstd), Parquet (snappy, lz4, zstd)\n- Add TTL support for cache expiration\n- Add cache_info() for inspecting cached data\n- Add parquet and bytes dependencies to Cargo.toml\n- Enable ipc_compression feature in arrow\n- Update documentation with Rust API examples\n- Ensures feature parity between Python and Rust APIs",
+          "timestamp": "2026-01-06T10:14:35-08:00",
+          "tree_id": "d59250e6f2f2c53f1bb17c30dd2b49f2dd9c7dfc",
+          "url": "https://github.com/joshrotenberg/polars-redis/commit/ad6cf7c461d3598164ddd448de3ee7cd7942c42e"
+        },
+        "date": 1767723881156,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "schema_creation/small_3_fields",
+            "value": 321,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/medium_10_fields",
+            "value": 1085,
+            "range": "± 6",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/large_50_fields",
+            "value": 6867,
+            "range": "± 29",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/default",
+            "value": 26,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/with_options",
+            "value": 27,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/100",
+            "value": 250,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/100",
+            "value": 1220,
+            "range": "± 6",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/100",
+            "value": 76,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/1000",
+            "value": 3099,
+            "range": "± 39",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/1000",
+            "value": 12533,
+            "range": "± 104",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/1000",
+            "value": 712,
+            "range": "± 13",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/10000",
+            "value": 40130,
+            "range": "± 573",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/10000",
+            "value": 138202,
+            "range": "± 4213",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/10000",
+            "value": 7420,
+            "range": "± 86",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "arrow_schema/to_arrow_schema",
+            "value": 769,
+            "range": "± 9",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/no_filter",
+            "value": 21,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/5_of_50_fields",
+            "value": 918,
+            "range": "± 3",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/25_of_50_fields",
+            "value": 1123,
+            "range": "± 17",
             "unit": "ns/iter"
           }
         ]
