@@ -3,28 +3,82 @@
 //! This module provides helper functions for setting up test data,
 //! connecting to Redis, and cleaning up after tests.
 //!
+//! ## Using ContainerGuard (Recommended)
+//!
+//! For tests that need Redis, use `redis_guard()` to get a `ContainerGuard`
+//! that automatically manages the container lifecycle:
+//!
+//! ```ignore
+//! #[tokio::test]
+//! async fn test_example() {
+//!     let guard = redis_guard().await;
+//!     let url = guard.connection_string();
+//!     // ... test code using url ...
+//!     // Container is automatically cleaned up when guard is dropped
+//! }
+//! ```
+//!
 //! ## Environment Variables
 //!
-//! - `REDIS_URL`: Redis connection URL (default: `redis://localhost:16379`)
-//! - `REDIS_PORT`: Redis port for CLI commands (default: `16379`)
+//! - `REDIS_URL`: Redis connection URL (default: from container)
+//! - `REDIS_PORT`: Redis port for CLI commands (default: `6379`)
 //!
 //! For CI, set `REDIS_URL=redis://localhost:6379` and `REDIS_PORT=6379` to use
 //! the GitHub Actions Redis service.
-//!
-//! For local development, the defaults use docker-wrapper to manage a Redis 8
-//! container on port 16379 to avoid conflicts with any local Redis.
 
 #![allow(dead_code)]
 
 use std::process::Command;
 use std::sync::OnceLock;
 
-use docker_wrapper::{DockerCommand, RmCommand, RunCommand, StopCommand};
+use docker_wrapper::template::redis::RedisTemplate;
+use docker_wrapper::testing::ContainerGuard;
 
-/// Default Redis URL for tests.
-/// Override with REDIS_URL env var for CI.
+/// Container name for the test Redis instance.
+pub const CONTAINER_NAME: &str = "polars-redis-test";
+
+/// Global container guard - ensures we only start one container per test run.
+static REDIS_GUARD: OnceLock<tokio::sync::OnceCell<ContainerGuard<RedisTemplate>>> =
+    OnceLock::new();
+
+/// Get or create a Redis container guard.
+///
+/// This function ensures only one Redis container is started per test run,
+/// and it's automatically cleaned up when all tests complete.
+///
+/// The container is configured with:
+/// - `reuse_if_running(true)` - Reuses existing containers for faster local dev
+/// - `wait_for_ready(true)` - Waits for Redis to be ready before returning
+/// - `keep_on_panic(true)` - Keeps container running on test failure for debugging
+///
+/// # Returns
+/// A reference to the ContainerGuard that provides the connection string.
+pub async fn redis_guard() -> &'static ContainerGuard<RedisTemplate> {
+    let cell = REDIS_GUARD.get_or_init(tokio::sync::OnceCell::new);
+    cell.get_or_init(|| async {
+        let template = RedisTemplate::new(CONTAINER_NAME);
+        ContainerGuard::new(template)
+            .reuse_if_running(true)
+            .wait_for_ready(true)
+            .keep_on_panic(true)
+            .start()
+            .await
+            .expect("Failed to start Redis container")
+    })
+    .await
+}
+
+/// Get the Redis URL from the container guard or environment.
+///
+/// Prefers REDIS_URL env var if set (for CI), otherwise uses the container's
+/// connection string.
 pub fn redis_url() -> String {
-    std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:16379".to_string())
+    std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".to_string())
+}
+
+/// Get the Redis URL from an active container guard.
+pub fn redis_url_from_guard(guard: &ContainerGuard<RedisTemplate>) -> String {
+    std::env::var("REDIS_URL").unwrap_or_else(|_| guard.connection_string())
 }
 
 /// Default Redis port for CLI commands.
@@ -33,69 +87,7 @@ pub fn redis_port() -> u16 {
     std::env::var("REDIS_PORT")
         .ok()
         .and_then(|p| p.parse().ok())
-        .unwrap_or(16379)
-}
-
-/// For backward compatibility - returns the URL as a static str equivalent.
-/// Prefer using `redis_url()` for new code.
-pub const REDIS_URL: &str = "redis://localhost:16379";
-pub const REDIS_PORT: u16 = 16379;
-pub const CONTAINER_NAME: &str = "polars-redis-test";
-
-/// Global container state - ensures we only start one container per test run.
-static CONTAINER_STARTED: OnceLock<bool> = OnceLock::new();
-
-/// Start a Redis 8 container for testing.
-///
-/// Redis 8 includes the query engine and JSON support natively,
-/// so no need for redis-stack.
-///
-/// The container is started only once per test run and reused across tests.
-///
-/// Note: In CI, the Redis service is provided externally, so this function
-/// will detect that Redis is already available and skip container creation.
-pub async fn ensure_redis_container() -> bool {
-    // Check if Redis is already available (e.g., in CI)
-    if redis_available() {
-        let _ = CONTAINER_STARTED.set(true);
-        return true;
-    }
-
-    // Check if already started by us
-    if CONTAINER_STARTED.get().is_some() {
-        return true;
-    }
-
-    // Stop any existing container with the same name
-    let _ = StopCommand::new(CONTAINER_NAME).execute().await;
-    let _ = RmCommand::new(CONTAINER_NAME).force().execute().await;
-
-    // Start Redis 8 container on the configured port
-    let port = redis_port();
-    let result = RunCommand::new("redis:8")
-        .name(CONTAINER_NAME)
-        .detach()
-        .port(port, 6379)
-        .rm() // Remove on stop
-        .execute()
-        .await;
-
-    if result.is_err() {
-        eprintln!("Failed to start Redis container: {:?}", result.err());
-        return false;
-    }
-
-    // Wait for Redis to be ready
-    for _ in 0..30 {
-        if redis_available() {
-            let _ = CONTAINER_STARTED.set(true);
-            return true;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    }
-
-    eprintln!("Redis container started but not responding");
-    false
+        .unwrap_or(6379)
 }
 
 /// Check if Redis is available at the test URL.
@@ -264,9 +256,4 @@ pub fn wait_for_index(index_name: &str) {
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
-}
-
-/// Cleanup function to stop the test container (call at end of test suite).
-pub async fn stop_redis_container() {
-    let _ = StopCommand::new(CONTAINER_NAME).execute().await;
 }
