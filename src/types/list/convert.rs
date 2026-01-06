@@ -9,6 +9,27 @@ use super::reader::ListData;
 use crate::error::Result;
 
 /// Schema configuration for Redis list scanning.
+///
+/// Defines output columns when scanning Redis lists. Each list element becomes
+/// a row in the output DataFrame.
+///
+/// # Example
+///
+/// ```ignore
+/// use polars_redis::ListSchema;
+///
+/// let schema = ListSchema::new()
+///     .with_key(true)
+///     .with_position(true)  // Include element position in list
+///     .with_element_column_name("item");
+/// ```
+///
+/// # Output Schema
+///
+/// - `_key` (optional): The Redis key
+/// - `element`: The list element value (Utf8)
+/// - `position` (optional): Element's position in the list (Int64)
+/// - `_index` (optional): Global row number
 #[derive(Debug, Clone)]
 pub struct ListSchema {
     /// Whether to include the Redis key as a column.

@@ -275,6 +275,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires running Redis instance
     fn test_hash_search_iterator_creation() {
         let schema = HashSchema::new(vec![
             ("name".to_string(), RedisType::Utf8),
@@ -282,10 +283,7 @@ mod tests {
         ]);
         let config = SearchBatchConfig::new("users_idx", "*");
 
-        // This will attempt to connect to Redis
         let result = HashSearchIterator::new("redis://localhost:6379", schema, config, None);
-
-        // Should succeed when Redis is available (ConnectionManager connects eagerly)
         assert!(result.is_ok());
     }
 }

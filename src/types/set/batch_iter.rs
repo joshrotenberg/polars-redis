@@ -10,7 +10,31 @@ use crate::connection::RedisConnection;
 use crate::error::{Error, Result};
 use crate::types::hash::BatchConfig;
 
-/// Iterator for scanning Redis sets and yielding Arrow RecordBatches.
+/// Iterator for scanning Redis sets in batches as Arrow RecordBatches.
+///
+/// This iterator fetches set keys matching a pattern and retrieves their
+/// members, converting them to Arrow RecordBatches for use with Polars.
+/// Each member becomes a row in the output.
+///
+/// # Example
+///
+/// ```ignore
+/// use polars_redis::{SetBatchIterator, SetSchema, BatchConfig};
+///
+/// let schema = SetSchema::new().with_key(true);
+/// let config = BatchConfig::new("tags:*").with_batch_size(1000);
+///
+/// let mut iterator = SetBatchIterator::new(url, schema, config)?;
+///
+/// while let Some(batch) = iterator.next_batch()? {
+///     println!("Got {} members", batch.num_rows());
+/// }
+/// ```
+///
+/// # Output Schema
+///
+/// - `_key` (optional): The Redis key
+/// - `member`: The set member value (Utf8)
 pub struct SetBatchIterator {
     /// Tokio runtime for async operations.
     runtime: Runtime,
@@ -184,6 +208,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore] // Requires running Redis instance
     fn test_set_batch_iterator_creation() {
         let schema = SetSchema::new();
         let config = BatchConfig::new("tags:*");
@@ -193,6 +218,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires running Redis instance
     fn test_set_batch_iterator_with_options() {
         let schema = SetSchema::new()
             .with_key(true)

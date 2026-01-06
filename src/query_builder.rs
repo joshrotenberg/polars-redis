@@ -72,12 +72,25 @@ pub enum Predicate {
     Prefix(String, String),
     /// Suffix match: `@field:*suffix`
     Suffix(String, String),
+    /// Infix/contains match: `@field:*substring*`
+    Infix(String, String),
     /// Wildcard match: `@field:pattern`
     Wildcard(String, String),
+    /// Exact wildcard match: `@field:"w'pattern'"`
+    WildcardExact(String, String),
     /// Fuzzy match: `@field:%term%` (distance 1), `@field:%%term%%` (distance 2)
     Fuzzy(String, String, u8),
     /// Phrase search: `@field:(word1 word2 word3)`
     Phrase(String, Vec<String>),
+    /// Phrase search with slop and inorder: `@field:(word1 word2)=>{$slop:2;$inorder:true}`
+    PhraseWithOptions {
+        field: String,
+        words: Vec<String>,
+        slop: Option<u32>,
+        inorder: Option<bool>,
+    },
+    /// Optional term: `~@field:term` (boosts score but not required)
+    Optional(Box<Predicate>),
 
     // ========================================================================
     // Tag operations
@@ -88,10 +101,22 @@ pub enum Predicate {
     TagOr(String, Vec<String>),
 
     // ========================================================================
+    // Multi-field search
+    // ========================================================================
+    /// Search across multiple fields: `@field1|field2|field3:term`
+    MultiFieldSearch(Vec<String>, String),
+
+    // ========================================================================
     // Geo operations
     // ========================================================================
     /// Geo radius: `@field:[lon lat radius unit]`
     GeoRadius(String, f64, f64, f64, String),
+    /// Geo polygon filter using WITHIN
+    GeoPolygon {
+        field: String,
+        /// Points as (lon, lat) pairs forming a closed polygon
+        points: Vec<(f64, f64)>,
+    },
 
     // ========================================================================
     // Null checks
@@ -106,6 +131,25 @@ pub enum Predicate {
     // ========================================================================
     /// Boost: `(query) => { $weight: value; }`
     Boost(Box<Predicate>, f64),
+
+    // ========================================================================
+    // Vector search (KNN)
+    // ========================================================================
+    /// KNN vector search: `*=>[KNN k @field $vec]`
+    VectorKnn {
+        field: String,
+        k: usize,
+        /// Vector as bytes (to be passed as PARAMS)
+        vector_param: String,
+        /// Optional pre-filter query
+        pre_filter: Option<Box<Predicate>>,
+    },
+    /// Vector range search: `@field:[VECTOR_RANGE radius $vec]`
+    VectorRange {
+        field: String,
+        radius: f64,
+        vector_param: String,
+    },
 
     // ========================================================================
     // Raw/escape hatch
@@ -237,9 +281,20 @@ impl Predicate {
         Predicate::Suffix(field.into(), suffix.into())
     }
 
-    /// Create a wildcard match predicate.
+    /// Create an infix/contains match predicate: `*substring*`
+    pub fn infix(field: impl Into<String>, substring: impl Into<String>) -> Self {
+        Predicate::Infix(field.into(), substring.into())
+    }
+
+    /// Create a wildcard match predicate with simple wildcards.
     pub fn wildcard(field: impl Into<String>, pattern: impl Into<String>) -> Self {
         Predicate::Wildcard(field.into(), pattern.into())
+    }
+
+    /// Create an exact wildcard match predicate: `w'pattern'`
+    /// Supports `*` (any chars) and `?` (single char) wildcards.
+    pub fn wildcard_exact(field: impl Into<String>, pattern: impl Into<String>) -> Self {
+        Predicate::WildcardExact(field.into(), pattern.into())
     }
 
     /// Create a fuzzy match predicate.
@@ -250,6 +305,33 @@ impl Predicate {
     /// Create a phrase search predicate.
     pub fn phrase(field: impl Into<String>, words: Vec<impl Into<String>>) -> Self {
         Predicate::Phrase(field.into(), words.into_iter().map(|w| w.into()).collect())
+    }
+
+    /// Create a phrase search predicate with slop and inorder options.
+    ///
+    /// # Arguments
+    /// * `field` - The field to search
+    /// * `words` - Words that should appear in the phrase
+    /// * `slop` - Number of intervening terms allowed (None = exact match)
+    /// * `inorder` - Whether words must appear in order (None = any order)
+    pub fn phrase_with_options(
+        field: impl Into<String>,
+        words: Vec<impl Into<String>>,
+        slop: Option<u32>,
+        inorder: Option<bool>,
+    ) -> Self {
+        Predicate::PhraseWithOptions {
+            field: field.into(),
+            words: words.into_iter().map(|w| w.into()).collect(),
+            slop,
+            inorder,
+        }
+    }
+
+    /// Mark a predicate as optional (boosts score but not required).
+    /// Generates: `~(query)`
+    pub fn optional(self) -> Self {
+        Predicate::Optional(Box::new(self))
     }
 
     // ========================================================================
@@ -267,6 +349,15 @@ impl Predicate {
     }
 
     // ========================================================================
+    // Multi-field constructors
+    // ========================================================================
+
+    /// Create a multi-field text search: `@field1|field2:term`
+    pub fn multi_field_search(fields: Vec<impl Into<String>>, term: impl Into<String>) -> Self {
+        Predicate::MultiFieldSearch(fields.into_iter().map(|f| f.into()).collect(), term.into())
+    }
+
+    // ========================================================================
     // Geo constructors
     // ========================================================================
 
@@ -279,6 +370,62 @@ impl Predicate {
         unit: impl Into<String>,
     ) -> Self {
         Predicate::GeoRadius(field.into(), lon, lat, radius, unit.into())
+    }
+
+    /// Create a geo polygon predicate.
+    /// Points should form a closed polygon (first and last point should be the same).
+    pub fn geo_polygon(field: impl Into<String>, points: Vec<(f64, f64)>) -> Self {
+        Predicate::GeoPolygon {
+            field: field.into(),
+            points,
+        }
+    }
+
+    // ========================================================================
+    // Vector search constructors
+    // ========================================================================
+
+    /// Create a KNN vector search predicate.
+    ///
+    /// # Arguments
+    /// * `field` - The vector field name
+    /// * `k` - Number of nearest neighbors to return
+    /// * `vector_param` - Parameter name for the vector (will be passed via PARAMS)
+    pub fn vector_knn(field: impl Into<String>, k: usize, vector_param: impl Into<String>) -> Self {
+        Predicate::VectorKnn {
+            field: field.into(),
+            k,
+            vector_param: vector_param.into(),
+            pre_filter: None,
+        }
+    }
+
+    /// Create a KNN vector search with pre-filter.
+    pub fn vector_knn_with_filter(
+        field: impl Into<String>,
+        k: usize,
+        vector_param: impl Into<String>,
+        pre_filter: Predicate,
+    ) -> Self {
+        Predicate::VectorKnn {
+            field: field.into(),
+            k,
+            vector_param: vector_param.into(),
+            pre_filter: Some(Box::new(pre_filter)),
+        }
+    }
+
+    /// Create a vector range search predicate.
+    pub fn vector_range(
+        field: impl Into<String>,
+        radius: f64,
+        vector_param: impl Into<String>,
+    ) -> Self {
+        Predicate::VectorRange {
+            field: field.into(),
+            radius,
+            vector_param: vector_param.into(),
+        }
     }
 
     // ========================================================================
@@ -343,6 +490,52 @@ impl Predicate {
     // ========================================================================
     // Query generation
     // ========================================================================
+
+    /// Get parameters that need to be passed to FT.SEARCH via PARAMS.
+    /// Returns a list of (name, value) pairs.
+    pub fn get_params(&self) -> Vec<(String, String)> {
+        let mut params = Vec::new();
+        self.collect_params(&mut params);
+        params
+    }
+
+    /// Internal helper to collect params recursively.
+    fn collect_params(&self, params: &mut Vec<(String, String)>) {
+        match self {
+            Predicate::GeoPolygon { points, .. } => {
+                let coords: Vec<String> = points
+                    .iter()
+                    .map(|(lon, lat)| format!("{} {}", lon, lat))
+                    .collect();
+                let wkt = format!("POLYGON(({}))", coords.join(", "));
+                params.push(("poly".to_string(), wkt));
+            }
+            Predicate::VectorKnn {
+                vector_param,
+                pre_filter,
+                ..
+            } => {
+                // Vector data needs to be provided externally
+                // We just note the param name here
+                params.push((vector_param.clone(), String::new()));
+                if let Some(filter) = pre_filter {
+                    filter.collect_params(params);
+                }
+            }
+            Predicate::VectorRange { vector_param, .. } => {
+                params.push((vector_param.clone(), String::new()));
+            }
+            Predicate::And(preds) | Predicate::Or(preds) => {
+                for p in preds {
+                    p.collect_params(params);
+                }
+            }
+            Predicate::Not(inner) | Predicate::Optional(inner) | Predicate::Boost(inner, _) => {
+                inner.collect_params(params);
+            }
+            _ => {}
+        }
+    }
 
     /// Convert to RediSearch query string.
     pub fn to_query(&self) -> String {
@@ -429,8 +622,14 @@ impl Predicate {
             Predicate::Suffix(field, suffix) => {
                 format!("@{}:*{}", field, escape_text_value(suffix))
             }
+            Predicate::Infix(field, substring) => {
+                format!("@{}:*{}*", field, escape_text_value(substring))
+            }
             Predicate::Wildcard(field, pattern) => {
                 format!("@{}:{}", field, pattern)
+            }
+            Predicate::WildcardExact(field, pattern) => {
+                format!("@{}:\"w'{}\"", field, pattern)
             }
             Predicate::Fuzzy(field, term, distance) => {
                 let pct = "%".repeat(*distance as usize);
@@ -438,6 +637,29 @@ impl Predicate {
             }
             Predicate::Phrase(field, words) => {
                 format!("@{}:({})", field, words.join(" "))
+            }
+            Predicate::PhraseWithOptions {
+                field,
+                words,
+                slop,
+                inorder,
+            } => {
+                let phrase = words.join(" ");
+                let mut attrs = Vec::new();
+                if let Some(s) = slop {
+                    attrs.push(format!("$slop: {}", s));
+                }
+                if let Some(io) = inorder {
+                    attrs.push(format!("$inorder: {}", io));
+                }
+                if attrs.is_empty() {
+                    format!("@{}:({})", field, phrase)
+                } else {
+                    format!("@{}:({}) => {{ {}; }}", field, phrase, attrs.join("; "))
+                }
+            }
+            Predicate::Optional(inner) => {
+                format!("~{}", inner.to_query())
             }
 
             // Tags
@@ -449,9 +671,26 @@ impl Predicate {
                 format!("@{}:{{{}}}", field, escaped.join("|"))
             }
 
+            // Multi-field search
+            Predicate::MultiFieldSearch(fields, term) => {
+                format!("@{}:{}", fields.join("|"), escape_text_value(term))
+            }
+
             // Geo
             Predicate::GeoRadius(field, lon, lat, radius, unit) => {
                 format!("@{}:[{} {} {} {}]", field, lon, lat, radius, unit)
+            }
+            Predicate::GeoPolygon { field, points } => {
+                // Format: @field:[WITHIN $poly] with PARAMS containing WKT polygon
+                // For query string, we output the WITHIN syntax
+                // The actual polygon data needs to be passed via PARAMS
+                // Points are (lon, lat) pairs
+                let _coords: Vec<String> = points
+                    .iter()
+                    .map(|(lon, lat)| format!("{} {}", lon, lat))
+                    .collect();
+                // Note: The actual WKT polygon is passed via PARAMS 2 poly "POLYGON((...))""
+                format!("@{}:[WITHIN $poly]", field)
             }
 
             // Null checks
@@ -465,6 +704,27 @@ impl Predicate {
             // Boost
             Predicate::Boost(inner, weight) => {
                 format!("({}) => {{ $weight: {}; }}", inner.to_query(), weight)
+            }
+
+            // Vector search
+            Predicate::VectorKnn {
+                field,
+                k,
+                vector_param,
+                pre_filter,
+            } => {
+                let filter = pre_filter
+                    .as_ref()
+                    .map(|p| p.to_query())
+                    .unwrap_or_else(|| "*".to_string());
+                format!("{}=>[KNN {} @{} ${}]", filter, k, field, vector_param)
+            }
+            Predicate::VectorRange {
+                field,
+                radius,
+                vector_param,
+            } => {
+                format!("@{}:[VECTOR_RANGE {} ${}]", field, radius, vector_param)
             }
 
             // Raw
@@ -729,5 +989,132 @@ mod tests {
     fn test_float_values() {
         let pred = Predicate::gt("score", 3.5);
         assert_eq!(pred.to_query(), "@score:[(3.5 +inf]");
+    }
+
+    // =========================================================================
+    // New feature tests
+    // =========================================================================
+
+    // Infix/contains match
+    #[test]
+    fn test_infix() {
+        let pred = Predicate::infix("name", "sun");
+        assert_eq!(pred.to_query(), "@name:*sun*");
+    }
+
+    // Wildcard exact match
+    #[test]
+    fn test_wildcard_exact() {
+        let pred = Predicate::wildcard_exact("name", "foo*bar?");
+        assert_eq!(pred.to_query(), "@name:\"w'foo*bar?\"");
+    }
+
+    // Phrase with slop and inorder
+    #[test]
+    fn test_phrase_with_slop() {
+        let pred = Predicate::phrase_with_options("title", vec!["hello", "world"], Some(2), None);
+        assert_eq!(pred.to_query(), "@title:(hello world) => { $slop: 2; }");
+    }
+
+    #[test]
+    fn test_phrase_with_inorder() {
+        let pred =
+            Predicate::phrase_with_options("title", vec!["hello", "world"], None, Some(true));
+        assert_eq!(
+            pred.to_query(),
+            "@title:(hello world) => { $inorder: true; }"
+        );
+    }
+
+    #[test]
+    fn test_phrase_with_slop_and_inorder() {
+        let pred =
+            Predicate::phrase_with_options("title", vec!["hello", "world"], Some(2), Some(true));
+        assert_eq!(
+            pred.to_query(),
+            "@title:(hello world) => { $slop: 2; $inorder: true; }"
+        );
+    }
+
+    // Optional terms
+    #[test]
+    fn test_optional() {
+        let pred = Predicate::text_search("title", "python").optional();
+        assert_eq!(pred.to_query(), "~@title:python");
+    }
+
+    #[test]
+    fn test_optional_combined() {
+        let required = Predicate::text_search("title", "redis");
+        let optional = Predicate::text_search("title", "tutorial").optional();
+        let pred = required.and(optional);
+        assert_eq!(pred.to_query(), "@title:redis ~@title:tutorial");
+    }
+
+    // Multi-field search
+    #[test]
+    fn test_multi_field_search() {
+        let pred = Predicate::multi_field_search(vec!["title", "body"], "python");
+        assert_eq!(pred.to_query(), "@title|body:python");
+    }
+
+    #[test]
+    fn test_multi_field_search_three_fields() {
+        let pred = Predicate::multi_field_search(vec!["title", "body", "summary"], "redis");
+        assert_eq!(pred.to_query(), "@title|body|summary:redis");
+    }
+
+    // Geo polygon
+    #[test]
+    fn test_geo_polygon() {
+        let points = vec![
+            (0.0, 0.0),
+            (0.0, 10.0),
+            (10.0, 10.0),
+            (10.0, 0.0),
+            (0.0, 0.0),
+        ];
+        let pred = Predicate::geo_polygon("location", points);
+        assert_eq!(pred.to_query(), "@location:[WITHIN $poly]");
+    }
+
+    #[test]
+    fn test_geo_polygon_params() {
+        let points = vec![
+            (0.0, 0.0),
+            (0.0, 10.0),
+            (10.0, 10.0),
+            (10.0, 0.0),
+            (0.0, 0.0),
+        ];
+        let pred = Predicate::geo_polygon("location", points);
+        let params = pred.get_params();
+        assert_eq!(params.len(), 1);
+        assert_eq!(params[0].0, "poly");
+        assert!(params[0].1.starts_with("POLYGON(("));
+    }
+
+    // Vector KNN search
+    #[test]
+    fn test_vector_knn() {
+        let pred = Predicate::vector_knn("embedding", 10, "query_vec");
+        assert_eq!(pred.to_query(), "*=>[KNN 10 @embedding $query_vec]");
+    }
+
+    #[test]
+    fn test_vector_knn_with_filter() {
+        let filter = Predicate::eq("category", "science");
+        let pred = Predicate::vector_knn_with_filter("embedding", 10, "query_vec", filter);
+        assert_eq!(
+            pred.to_query(),
+            "@category:{science}=>[KNN 10 @embedding $query_vec]"
+        );
+    }
+
+    // Vector range search
+    #[test]
+    fn test_vector_range() {
+        let pred = Predicate::vector_range("embedding", 0.5, "query_vec");
+        assert_eq!(pred.to_query(), "@embedding:[VECTOR_RANGE 0.5 $query_vec]");
     }
 }

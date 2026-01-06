@@ -14,7 +14,31 @@ use arrow::datatypes::{DataType, Field, Schema};
 use super::reader::JsonData;
 use crate::error::{Error, Result};
 
-/// Schema for JSON documents, mapping field names to expected types.
+/// Schema for RedisJSON documents, mapping JSONPath expressions to Arrow types.
+///
+/// Defines how RedisJSON document fields should be extracted and converted to
+/// Arrow/Polars columns. Uses JSONPath notation for field access.
+///
+/// # Example
+///
+/// ```ignore
+/// use polars_redis::JsonSchema;
+/// use arrow::datatypes::DataType;
+///
+/// let schema = JsonSchema::new(vec![
+///     ("$.name".to_string(), DataType::Utf8),
+///     ("$.user.age".to_string(), DataType::Int64),
+///     ("$.metadata.score".to_string(), DataType::Float64),
+/// ])
+/// .with_key(true)
+/// .with_ttl(true);
+/// ```
+///
+/// # Optional Metadata Columns
+///
+/// - Key column: Include the Redis key as a column (default: true, name: "_key")
+/// - TTL column: Include the key's TTL in seconds (default: false, name: "_ttl")
+/// - Row index: Include a row number column (default: false, name: "_index")
 #[derive(Debug, Clone)]
 pub struct JsonSchema {
     /// Ordered list of field names to extract.

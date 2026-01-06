@@ -4,6 +4,8 @@
 //! with support for JSONPath projection.
 
 use redis::aio::ConnectionManager;
+#[cfg(feature = "cluster")]
+use redis::cluster_async::ClusterConnection;
 
 use crate::error::Result;
 
@@ -135,6 +137,121 @@ pub async fn fetch_json(
     match paths {
         Some(p) if !p.is_empty() => fetch_json_paths(conn, keys, p, include_ttl).await,
         _ => fetch_json_all(conn, keys, include_ttl).await,
+    }
+}
+
+// ============================================================================
+// Cluster support (with cluster feature)
+// ============================================================================
+
+/// Fetch JSON documents from a cluster using JSON.GET.
+#[cfg(feature = "cluster")]
+pub async fn fetch_json_all_cluster(
+    conn: &mut ClusterConnection,
+    keys: &[String],
+    include_ttl: bool,
+) -> Result<Vec<JsonData>> {
+    if keys.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut pipe = redis::pipe();
+    for key in keys {
+        pipe.cmd("JSON.GET").arg(key).arg("$");
+    }
+
+    let results: Vec<Option<String>> = pipe.query_async(conn).await?;
+
+    let ttls = if include_ttl {
+        fetch_ttls_cluster(conn, keys).await?
+    } else {
+        vec![None; keys.len()]
+    };
+
+    Ok(keys
+        .iter()
+        .zip(results)
+        .zip(ttls)
+        .map(|((key, json), ttl)| JsonData {
+            key: key.clone(),
+            json,
+            ttl,
+        })
+        .collect())
+}
+
+/// Fetch specific paths from JSON documents on a cluster.
+#[cfg(feature = "cluster")]
+pub async fn fetch_json_paths_cluster(
+    conn: &mut ClusterConnection,
+    keys: &[String],
+    paths: &[String],
+    include_ttl: bool,
+) -> Result<Vec<JsonData>> {
+    if keys.is_empty() || paths.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut pipe = redis::pipe();
+    for key in keys {
+        let mut cmd = redis::cmd("JSON.GET");
+        cmd.arg(key);
+        for path in paths {
+            cmd.arg(format!("$.{}", path));
+        }
+        pipe.add_command(cmd);
+    }
+
+    let results: Vec<Option<String>> = pipe.query_async(conn).await?;
+
+    let ttls = if include_ttl {
+        fetch_ttls_cluster(conn, keys).await?
+    } else {
+        vec![None; keys.len()]
+    };
+
+    Ok(keys
+        .iter()
+        .zip(results)
+        .zip(ttls)
+        .map(|((key, json), ttl)| JsonData {
+            key: key.clone(),
+            json,
+            ttl,
+        })
+        .collect())
+}
+
+/// Fetch TTLs for multiple keys on a cluster.
+#[cfg(feature = "cluster")]
+async fn fetch_ttls_cluster(
+    conn: &mut ClusterConnection,
+    keys: &[String],
+) -> Result<Vec<Option<i64>>> {
+    if keys.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut pipe = redis::pipe();
+    for key in keys {
+        pipe.cmd("TTL").arg(key);
+    }
+
+    let results: Vec<i64> = pipe.query_async(conn).await?;
+    Ok(results.into_iter().map(Some).collect())
+}
+
+/// Fetch JSON data from a cluster with optional path projection.
+#[cfg(feature = "cluster")]
+pub async fn fetch_json_cluster(
+    conn: &mut ClusterConnection,
+    keys: &[String],
+    paths: Option<&[String]>,
+    include_ttl: bool,
+) -> Result<Vec<JsonData>> {
+    match paths {
+        Some(p) if !p.is_empty() => fetch_json_paths_cluster(conn, keys, p, include_ttl).await,
+        _ => fetch_json_all_cluster(conn, keys, include_ttl).await,
     }
 }
 

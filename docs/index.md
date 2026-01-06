@@ -1,6 +1,9 @@
 # polars-redis
 
-Query Redis like a database. Transform with Polars. Write back without ETL.
+Query Redis like a database. Transform with [Polars](https://pola.rs/). Write back without ETL.
+
+!!! tip "New to Polars?"
+    [Polars](https://pola.rs/) is a lightning-fast DataFrame library for Python and Rust, designed for performance and ease of use. Check out the [Polars User Guide](https://docs.pola.rs/) to get started.
 
 polars-redis brings Redis into your Polars analytics workflows as a first-class data source - scan hashes, JSON, strings, sets, lists, and sorted sets directly into LazyFrames with projection pushdown and batched iteration.
 
@@ -47,6 +50,11 @@ redis.write_hashes(high_value, url, key_prefix="whale:")
     - Hashes, JSON documents, strings, sets, lists, sorted sets, streams, and time series
     - Projection pushdown (only fetch requested fields)
     - Batched iteration for memory efficiency
+    - Parallel fetching for improved throughput
+- **RediSearch integration** for predicate pushdown
+    - `search_hashes()` - Server-side filtering with FT.SEARCH
+    - `aggregate_hashes()` - Server-side aggregation with FT.AGGREGATE
+    - Polars-like query builder: `col("age") > 30`
 - **Write DataFrames** to Redis
     - Hashes, JSON documents, strings, sets, lists, and sorted sets
     - Write modes: fail, replace, append

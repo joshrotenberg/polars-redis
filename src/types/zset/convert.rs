@@ -11,6 +11,29 @@ use super::reader::ZSetData;
 use crate::error::Result;
 
 /// Schema configuration for Redis sorted set scanning.
+///
+/// Defines output columns when scanning Redis sorted sets. Each member becomes
+/// a row in the output DataFrame, including its score.
+///
+/// # Example
+///
+/// ```ignore
+/// use polars_redis::ZSetSchema;
+///
+/// let schema = ZSetSchema::new()
+///     .with_key(true)
+///     .with_rank(true)  // Include member's rank
+///     .with_member_column_name("player")
+///     .with_score_column_name("points");
+/// ```
+///
+/// # Output Schema
+///
+/// - `_key` (optional): The Redis key
+/// - `member`: The sorted set member value (Utf8)
+/// - `score`: The member's score (Float64)
+/// - `rank` (optional): Member's rank by score (Int64)
+/// - `_index` (optional): Global row number
 #[derive(Debug, Clone)]
 pub struct ZSetSchema {
     /// Whether to include the Redis key as a column.

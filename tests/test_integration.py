@@ -1116,6 +1116,88 @@ class TestScanStrings:
         df = lf.collect()
         assert len(df) == 0
 
+    def test_scan_strings_with_ttl(self, redis_url: str) -> None:
+        """Test scanning strings with TTL column included."""
+        import subprocess
+
+        # Create strings with TTL
+        subprocess.run(
+            ["redis-cli", "SET", "test:ttlread:str:1", "value1", "EX", "3600"],
+            capture_output=True,
+        )
+        subprocess.run(
+            ["redis-cli", "SET", "test:ttlread:str:2", "value2", "EX", "7200"],
+            capture_output=True,
+        )
+        # One without TTL
+        subprocess.run(
+            ["redis-cli", "SET", "test:ttlread:str:3", "value3"],
+            capture_output=True,
+        )
+
+        try:
+            lf = polars_redis.scan_strings(
+                redis_url,
+                pattern="test:ttlread:str:*",
+                include_ttl=True,
+            )
+
+            df = lf.collect()
+            assert len(df) == 3
+            assert "_ttl" in df.columns
+            assert df.schema["_ttl"] == pl.Int64
+
+            # Check TTL values - sort by key for predictable order
+            df = df.sort("_key")
+            ttls = df["_ttl"].to_list()
+
+            # First two should have positive TTL values
+            assert ttls[0] is not None and ttls[0] > 0  # test:ttlread:str:1
+            assert ttls[1] is not None and ttls[1] > 0  # test:ttlread:str:2
+            # Third should be -1 (no expiry)
+            assert ttls[2] == -1  # test:ttlread:str:3
+
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:ttlread:str:1"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", "test:ttlread:str:2"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", "test:ttlread:str:3"], capture_output=True)
+
+    def test_scan_strings_with_ttl_custom_column_name(self, redis_url: str) -> None:
+        """Test scanning strings with custom TTL column name."""
+        import subprocess
+
+        subprocess.run(
+            ["redis-cli", "SET", "test:ttlcustom:str:1", "val1", "EX", "600"],
+            capture_output=True,
+        )
+
+        try:
+            lf = polars_redis.scan_strings(
+                redis_url,
+                pattern="test:ttlcustom:str:*",
+                include_ttl=True,
+                ttl_column_name="expires_in",
+            )
+
+            df = lf.collect()
+            assert "expires_in" in df.columns
+            assert "_ttl" not in df.columns
+            assert df.schema["expires_in"] == pl.Int64
+            assert df["expires_in"][0] > 0
+
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:ttlcustom:str:1"], capture_output=True)
+
+    def test_scan_strings_without_ttl(self, redis_url: str) -> None:
+        """Test that TTL column is not included by default."""
+        lf = polars_redis.scan_strings(
+            redis_url,
+            pattern="test:cache:*",
+        )
+
+        df = lf.collect()
+        assert "_ttl" not in df.columns
+
 
 class TestReadStrings:
     """Tests for read_strings function."""
@@ -1545,6 +1627,391 @@ class TestWriteStrings:
             subprocess.run(["redis-cli", "DEL", "test:write:str:float:2"], capture_output=True)
 
 
+class TestWriteSets:
+    """Tests for write_sets function."""
+
+    def test_write_sets_basic(self, redis_url: str) -> None:
+        """Test basic set writing."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:set:1", "test:set:1", "test:set:2"],
+                "member": ["python", "redis", "rust"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_sets(df, redis_url)
+            assert count == 2  # 2 unique keys
+
+            # Verify set 1 has 2 members
+            result = subprocess.run(
+                ["redis-cli", "SMEMBERS", "test:set:1"],
+                capture_output=True,
+                text=True,
+            )
+            members = set(result.stdout.strip().split("\n"))
+            assert members == {"python", "redis"}
+
+            # Verify set 2 has 1 member
+            result = subprocess.run(
+                ["redis-cli", "SMEMBERS", "test:set:2"],
+                capture_output=True,
+                text=True,
+            )
+            assert result.stdout.strip() == "rust"
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:set:1"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", "test:set:2"], capture_output=True)
+
+    def test_write_sets_custom_column(self, redis_url: str) -> None:
+        """Test set writing with custom member column."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:tags:1", "test:tags:1", "test:tags:1"],
+                "tag": ["feature", "bug", "enhancement"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_sets(df, redis_url, member_column="tag")
+            assert count == 1
+
+            result = subprocess.run(
+                ["redis-cli", "SCARD", "test:tags:1"],
+                capture_output=True,
+                text=True,
+            )
+            assert int(result.stdout.strip()) == 3
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:tags:1"], capture_output=True)
+
+    def test_write_sets_with_ttl(self, redis_url: str) -> None:
+        """Test set writing with TTL."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:ttlset:1", "test:ttlset:1"],
+                "member": ["a", "b"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_sets(df, redis_url, ttl=60)
+            assert count == 1
+
+            result = subprocess.run(
+                ["redis-cli", "TTL", "test:ttlset:1"],
+                capture_output=True,
+                text=True,
+            )
+            ttl = int(result.stdout.strip())
+            assert 0 < ttl <= 60
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:ttlset:1"], capture_output=True)
+
+    def test_write_sets_append_mode(self, redis_url: str) -> None:
+        """Test set writing in append mode adds to existing set."""
+        import subprocess
+
+        # Create initial set
+        subprocess.run(["redis-cli", "SADD", "test:append:set", "existing"], capture_output=True)
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:append:set"],
+                "member": ["new"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_sets(df, redis_url, if_exists="append")
+            assert count == 1
+
+            result = subprocess.run(
+                ["redis-cli", "SMEMBERS", "test:append:set"],
+                capture_output=True,
+                text=True,
+            )
+            members = set(result.stdout.strip().split("\n"))
+            assert members == {"existing", "new"}
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:append:set"], capture_output=True)
+
+
+class TestWriteLists:
+    """Tests for write_lists function."""
+
+    def test_write_lists_basic(self, redis_url: str) -> None:
+        """Test basic list writing."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:list:1", "test:list:1", "test:list:2"],
+                "element": ["a", "b", "c"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_lists(df, redis_url)
+            assert count == 2  # 2 unique keys
+
+            # Verify list 1 has 2 elements
+            result = subprocess.run(
+                ["redis-cli", "LRANGE", "test:list:1", "0", "-1"],
+                capture_output=True,
+                text=True,
+            )
+            elements = result.stdout.strip().split("\n")
+            assert elements == ["a", "b"]
+
+            # Verify list 2 has 1 element
+            result = subprocess.run(
+                ["redis-cli", "LRANGE", "test:list:2", "0", "-1"],
+                capture_output=True,
+                text=True,
+            )
+            assert result.stdout.strip() == "c"
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:list:1"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", "test:list:2"], capture_output=True)
+
+    def test_write_lists_with_index_ordering(self, redis_url: str) -> None:
+        """Test list writing with index column for ordering."""
+        import subprocess
+
+        # Elements in wrong order, but should be sorted by index
+        df = pl.DataFrame(
+            {
+                "_key": ["test:ordered:list", "test:ordered:list", "test:ordered:list"],
+                "_index": [2, 0, 1],
+                "element": ["c", "a", "b"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_lists(df, redis_url, index_column="_index")
+            assert count == 1
+
+            result = subprocess.run(
+                ["redis-cli", "LRANGE", "test:ordered:list", "0", "-1"],
+                capture_output=True,
+                text=True,
+            )
+            elements = result.stdout.strip().split("\n")
+            assert elements == ["a", "b", "c"]
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:ordered:list"], capture_output=True)
+
+    def test_write_lists_with_ttl(self, redis_url: str) -> None:
+        """Test list writing with TTL."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:ttllist:1", "test:ttllist:1"],
+                "element": ["x", "y"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_lists(df, redis_url, ttl=60)
+            assert count == 1
+
+            result = subprocess.run(
+                ["redis-cli", "TTL", "test:ttllist:1"],
+                capture_output=True,
+                text=True,
+            )
+            ttl = int(result.stdout.strip())
+            assert 0 < ttl <= 60
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:ttllist:1"], capture_output=True)
+
+    def test_write_lists_append_mode(self, redis_url: str) -> None:
+        """Test list writing in append mode adds to existing list."""
+        import subprocess
+
+        # Create initial list
+        subprocess.run(["redis-cli", "RPUSH", "test:append:list", "existing"], capture_output=True)
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:append:list"],
+                "element": ["new"],
+            }
+        )
+
+        try:
+            count = polars_redis.write_lists(df, redis_url, if_exists="append")
+            assert count == 1
+
+            result = subprocess.run(
+                ["redis-cli", "LRANGE", "test:append:list", "0", "-1"],
+                capture_output=True,
+                text=True,
+            )
+            elements = result.stdout.strip().split("\n")
+            assert elements == ["existing", "new"]
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:append:list"], capture_output=True)
+
+
+class TestWriteZsets:
+    """Tests for write_zsets function."""
+
+    def test_write_zsets_basic(self, redis_url: str) -> None:
+        """Test basic sorted set writing."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:zset:1", "test:zset:1", "test:zset:2"],
+                "member": ["alice", "bob", "charlie"],
+                "score": [1500.0, 1200.0, 1800.0],
+            }
+        )
+
+        try:
+            count = polars_redis.write_zsets(df, redis_url)
+            assert count == 2  # 2 unique keys
+
+            # Verify zset 1 has 2 members
+            result = subprocess.run(
+                ["redis-cli", "ZCARD", "test:zset:1"],
+                capture_output=True,
+                text=True,
+            )
+            assert int(result.stdout.strip()) == 2
+
+            # Verify scores
+            result = subprocess.run(
+                ["redis-cli", "ZSCORE", "test:zset:1", "alice"],
+                capture_output=True,
+                text=True,
+            )
+            assert float(result.stdout.strip()) == 1500.0
+
+            result = subprocess.run(
+                ["redis-cli", "ZSCORE", "test:zset:1", "bob"],
+                capture_output=True,
+                text=True,
+            )
+            assert float(result.stdout.strip()) == 1200.0
+
+            # Verify zset 2
+            result = subprocess.run(
+                ["redis-cli", "ZSCORE", "test:zset:2", "charlie"],
+                capture_output=True,
+                text=True,
+            )
+            assert float(result.stdout.strip()) == 1800.0
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:zset:1"], capture_output=True)
+            subprocess.run(["redis-cli", "DEL", "test:zset:2"], capture_output=True)
+
+    def test_write_zsets_custom_columns(self, redis_url: str) -> None:
+        """Test sorted set writing with custom column names."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:leaderboard:1", "test:leaderboard:1"],
+                "player": ["player1", "player2"],
+                "points": [100, 200],
+            }
+        )
+
+        try:
+            count = polars_redis.write_zsets(
+                df, redis_url, member_column="player", score_column="points"
+            )
+            assert count == 1
+
+            result = subprocess.run(
+                ["redis-cli", "ZREVRANGE", "test:leaderboard:1", "0", "-1", "WITHSCORES"],
+                capture_output=True,
+                text=True,
+            )
+            lines = result.stdout.strip().split("\n")
+            # player2 should be first (higher score)
+            assert lines[0] == "player2"
+            assert float(lines[1]) == 200.0
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:leaderboard:1"], capture_output=True)
+
+    def test_write_zsets_with_ttl(self, redis_url: str) -> None:
+        """Test sorted set writing with TTL."""
+        import subprocess
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:ttlzset:1", "test:ttlzset:1"],
+                "member": ["a", "b"],
+                "score": [1.0, 2.0],
+            }
+        )
+
+        try:
+            count = polars_redis.write_zsets(df, redis_url, ttl=60)
+            assert count == 1
+
+            result = subprocess.run(
+                ["redis-cli", "TTL", "test:ttlzset:1"],
+                capture_output=True,
+                text=True,
+            )
+            ttl = int(result.stdout.strip())
+            assert 0 < ttl <= 60
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:ttlzset:1"], capture_output=True)
+
+    def test_write_zsets_append_mode(self, redis_url: str) -> None:
+        """Test sorted set writing in append mode updates scores."""
+        import subprocess
+
+        # Create initial sorted set
+        subprocess.run(
+            ["redis-cli", "ZADD", "test:append:zset", "100", "existing"],
+            capture_output=True,
+        )
+
+        df = pl.DataFrame(
+            {
+                "_key": ["test:append:zset", "test:append:zset"],
+                "member": ["existing", "new"],
+                "score": [150.0, 200.0],  # Update existing score
+            }
+        )
+
+        try:
+            count = polars_redis.write_zsets(df, redis_url, if_exists="append")
+            assert count == 1
+
+            # Check updated score
+            result = subprocess.run(
+                ["redis-cli", "ZSCORE", "test:append:zset", "existing"],
+                capture_output=True,
+                text=True,
+            )
+            assert float(result.stdout.strip()) == 150.0
+
+            # Check new member
+            result = subprocess.run(
+                ["redis-cli", "ZSCORE", "test:append:zset", "new"],
+                capture_output=True,
+                text=True,
+            )
+            assert float(result.stdout.strip()) == 200.0
+        finally:
+            subprocess.run(["redis-cli", "DEL", "test:append:zset"], capture_output=True)
+
+
 class TestWriteTTL:
     """Tests for TTL (time-to-live) support in write operations."""
 
@@ -1970,6 +2437,360 @@ class TestSearchHashes:
 
         df = lf.collect()
         assert len(df) == 0
+
+
+@pytest.mark.skipif(
+    not redisearch_available(),
+    reason="RediSearch module not available",
+)
+class TestSearchJson:
+    """Tests for search_json function using RediSearch on JSON documents."""
+
+    @pytest.fixture(scope="class", autouse=True)
+    def setup_json_search_data(self, redis_url: str) -> None:
+        """Set up test JSON data and index for RediSearch tests."""
+        import subprocess
+
+        # Create test JSON documents for search
+        for i in range(1, 21):
+            price = float(10 + i * 5)
+            in_stock = "true" if i % 2 == 0 else "false"
+            category = "electronics" if i <= 10 else "clothing"
+            json_data = (
+                f'{{"name":"Product{i}","price":{price},'
+                f'"category":"{category}","in_stock":{in_stock}}}'
+            )
+            subprocess.run(
+                ["redis-cli", "JSON.SET", f"product:{i}", "$", json_data],
+                capture_output=True,
+            )
+
+        # Drop JSON index if it exists
+        subprocess.run(
+            ["redis-cli", "FT.DROPINDEX", "products_json_idx"],
+            capture_output=True,
+        )
+
+        # Create RediSearch index on JSON documents
+        subprocess.run(
+            [
+                "redis-cli",
+                "FT.CREATE",
+                "products_json_idx",
+                "ON",
+                "JSON",
+                "PREFIX",
+                "1",
+                "product:",
+                "SCHEMA",
+                "$.name",
+                "AS",
+                "name",
+                "TEXT",
+                "$.price",
+                "AS",
+                "price",
+                "NUMERIC",
+                "SORTABLE",
+                "$.category",
+                "AS",
+                "category",
+                "TAG",
+                "$.in_stock",
+                "AS",
+                "in_stock",
+                "TAG",
+            ],
+            capture_output=True,
+        )
+
+        # Wait for indexing
+        import time
+
+        for _ in range(50):
+            result = subprocess.run(
+                ["redis-cli", "FT.INFO", "products_json_idx"],
+                capture_output=True,
+                text=True,
+            )
+            output = result.stdout
+            if "num_docs" in output:
+                lines = output.strip().split("\n")
+                for j, line in enumerate(lines):
+                    if line == "num_docs" and j + 1 < len(lines):
+                        num_docs = int(lines[j + 1])
+                        if num_docs >= 20:
+                            break
+            time.sleep(0.1)
+        else:
+            time.sleep(0.5)
+
+        yield
+
+        # Cleanup
+        subprocess.run(
+            ["redis-cli", "FT.DROPINDEX", "products_json_idx"],
+            capture_output=True,
+        )
+        for i in range(1, 21):
+            subprocess.run(
+                ["redis-cli", "DEL", f"product:{i}"],
+                capture_output=True,
+            )
+
+    def test_search_json_all(self, redis_url: str) -> None:
+        """Test searching all JSON documents with wildcard query."""
+        lf = polars_redis.search_json(
+            redis_url,
+            index="products_json_idx",
+            query="*",
+            schema={
+                "name": pl.Utf8,
+                "price": pl.Float64,
+                "category": pl.Utf8,
+            },
+        )
+
+        df = lf.collect()
+        assert len(df) == 20
+        assert "_key" in df.columns
+        assert "name" in df.columns
+        assert "price" in df.columns
+
+    def test_search_json_numeric_range(self, redis_url: str) -> None:
+        """Test searching JSON with numeric range filter."""
+        # Search for products with price >= 50 (products 8-20 have price >= 50)
+        lf = polars_redis.search_json(
+            redis_url,
+            index="products_json_idx",
+            query="@price:[50 +inf]",
+            schema={
+                "name": pl.Utf8,
+                "price": pl.Float64,
+            },
+        )
+
+        df = lf.collect()
+        assert len(df) >= 1
+        assert all(df["price"] >= 50)
+
+    def test_search_json_tag_filter(self, redis_url: str) -> None:
+        """Test searching JSON with tag filter."""
+        # Search for electronics category
+        lf = polars_redis.search_json(
+            redis_url,
+            index="products_json_idx",
+            query="@category:{electronics}",
+            schema={
+                "name": pl.Utf8,
+                "price": pl.Float64,
+                "category": pl.Utf8,
+            },
+        )
+
+        df = lf.collect()
+        assert len(df) == 10  # Products 1-10 are electronics
+
+    def test_search_json_with_sort(self, redis_url: str) -> None:
+        """Test searching JSON with sorting."""
+        lf = polars_redis.search_json(
+            redis_url,
+            index="products_json_idx",
+            query="*",
+            schema={
+                "name": pl.Utf8,
+                "price": pl.Float64,
+            },
+            sort_by="price",
+            sort_ascending=True,
+        )
+
+        df = lf.head(5).collect()
+        assert len(df) == 5
+        # Prices should be in ascending order
+        prices = df["price"].to_list()
+        assert prices == sorted(prices)
+
+    def test_search_json_combined_query(self, redis_url: str) -> None:
+        """Test searching JSON with combined filters."""
+        # Search for electronics with price < 50
+        lf = polars_redis.search_json(
+            redis_url,
+            index="products_json_idx",
+            query="@category:{electronics} @price:[-inf 49]",
+            schema={
+                "name": pl.Utf8,
+                "price": pl.Float64,
+                "category": pl.Utf8,
+            },
+        )
+
+        df = lf.collect()
+        # Products 1-7 are electronics with price < 50
+        assert len(df) >= 1
+        assert all(df["price"] < 50)
+
+
+@pytest.mark.skipif(
+    not redisearch_available(),
+    reason="RediSearch module not available",
+)
+class TestAggregateJson:
+    """Tests for aggregate_json function using RediSearch FT.AGGREGATE on JSON."""
+
+    @pytest.fixture(scope="class", autouse=True)
+    def setup_json_aggregate_data(self, redis_url: str) -> None:
+        """Set up test JSON data and index for FT.AGGREGATE tests."""
+        import subprocess
+
+        # Create test JSON documents for aggregation
+        categories = ["electronics"] * 10 + ["clothing"] * 5 + ["books"] * 5
+        for i in range(1, 21):
+            price = float(10 + i * 5)
+            rating = float(3 + (i % 3))  # Ratings 3-5
+            category = categories[i - 1]
+            json_data = (
+                f'{{"name":"AggProduct{i}","price":{price},'
+                f'"rating":{rating},"category":"{category}"}}'
+            )
+            subprocess.run(
+                ["redis-cli", "JSON.SET", f"agg_product:{i}", "$", json_data],
+                capture_output=True,
+            )
+
+        # Drop JSON index if it exists
+        subprocess.run(
+            ["redis-cli", "FT.DROPINDEX", "agg_products_json_idx"],
+            capture_output=True,
+        )
+
+        # Create RediSearch index
+        subprocess.run(
+            [
+                "redis-cli",
+                "FT.CREATE",
+                "agg_products_json_idx",
+                "ON",
+                "JSON",
+                "PREFIX",
+                "1",
+                "agg_product:",
+                "SCHEMA",
+                "$.name",
+                "AS",
+                "name",
+                "TEXT",
+                "$.price",
+                "AS",
+                "price",
+                "NUMERIC",
+                "SORTABLE",
+                "$.rating",
+                "AS",
+                "rating",
+                "NUMERIC",
+                "$.category",
+                "AS",
+                "category",
+                "TAG",
+            ],
+            capture_output=True,
+        )
+
+        # Wait for indexing
+        import time
+
+        for _ in range(50):
+            result = subprocess.run(
+                ["redis-cli", "FT.INFO", "agg_products_json_idx"],
+                capture_output=True,
+                text=True,
+            )
+            output = result.stdout
+            if "num_docs" in output:
+                lines = output.strip().split("\n")
+                for j, line in enumerate(lines):
+                    if line == "num_docs" and j + 1 < len(lines):
+                        num_docs = int(lines[j + 1])
+                        if num_docs >= 20:
+                            break
+            time.sleep(0.1)
+        else:
+            time.sleep(0.5)
+
+        yield
+
+        # Cleanup
+        subprocess.run(
+            ["redis-cli", "FT.DROPINDEX", "agg_products_json_idx"],
+            capture_output=True,
+        )
+        for i in range(1, 21):
+            subprocess.run(
+                ["redis-cli", "DEL", f"agg_product:{i}"],
+                capture_output=True,
+            )
+
+    def test_aggregate_json_count_all(self, redis_url: str) -> None:
+        """Test counting all JSON documents."""
+        df = polars_redis.aggregate_json(
+            redis_url,
+            index="agg_products_json_idx",
+            query="*",
+            group_by=[],
+            reduce=[("COUNT", [], "total")],
+        )
+
+        assert len(df) == 1
+        assert int(df["total"][0]) == 20
+
+    def test_aggregate_json_group_by_category(self, redis_url: str) -> None:
+        """Test grouping JSON documents by category."""
+        df = polars_redis.aggregate_json(
+            redis_url,
+            index="agg_products_json_idx",
+            query="*",
+            group_by=["@category"],
+            reduce=[("COUNT", [], "count")],
+        )
+
+        assert len(df) == 3  # electronics, clothing, books
+        # Check totals add up
+        total = sum(int(c) for c in df["count"].to_list())
+        assert total == 20
+
+    def test_aggregate_json_avg_price_by_category(self, redis_url: str) -> None:
+        """Test calculating average price by category."""
+        df = polars_redis.aggregate_json(
+            redis_url,
+            index="agg_products_json_idx",
+            query="*",
+            group_by=["@category"],
+            reduce=[
+                ("COUNT", [], "product_count"),
+                ("AVG", ["@price"], "avg_price"),
+            ],
+        )
+
+        assert len(df) == 3
+        assert "avg_price" in df.columns
+        assert "product_count" in df.columns
+
+    def test_aggregate_json_with_sort(self, redis_url: str) -> None:
+        """Test aggregation with sorting."""
+        df = polars_redis.aggregate_json(
+            redis_url,
+            index="agg_products_json_idx",
+            query="*",
+            group_by=["@category"],
+            reduce=[("COUNT", [], "count")],
+            sort_by=[("@count", False)],  # Descending
+        )
+
+        assert len(df) == 3
+        # Electronics should be first (10 products)
+        counts = [int(c) for c in df["count"].to_list()]
+        assert counts == sorted(counts, reverse=True)
 
 
 @pytest.mark.skipif(

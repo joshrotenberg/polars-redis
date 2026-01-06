@@ -9,6 +9,33 @@ use super::reader::StreamData;
 use crate::error::Result;
 
 /// Schema configuration for Redis Stream scanning.
+///
+/// Defines output columns when scanning Redis Streams. Each stream entry becomes
+/// a row in the output DataFrame.
+///
+/// # Example
+///
+/// ```ignore
+/// use polars_redis::StreamSchema;
+///
+/// let schema = StreamSchema::new(vec![
+///     "user_id".to_string(),
+///     "action".to_string(),
+///     "payload".to_string(),
+/// ])
+/// .with_key(true)
+/// .with_id(true)
+/// .with_timestamp(true);
+/// ```
+///
+/// # Output Schema
+///
+/// - `_key` (optional): The Redis stream key
+/// - `_id` (optional): The entry ID (e.g., "1234567890123-0")
+/// - `_timestamp` (optional): Timestamp extracted from entry ID (Int64 ms)
+/// - `_sequence` (optional): Sequence number from entry ID
+/// - User-defined fields extracted from entry data
+/// - `_index` (optional): Global row number
 #[derive(Debug, Clone)]
 pub struct StreamSchema {
     /// Whether to include the Redis key as a column.

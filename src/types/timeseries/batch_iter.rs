@@ -10,7 +10,37 @@ use crate::connection::RedisConnection;
 use crate::error::{Error, Result};
 use crate::types::hash::BatchConfig;
 
-/// Iterator for scanning RedisTimeSeries and yielding Arrow RecordBatches.
+/// Iterator for scanning RedisTimeSeries in batches as Arrow RecordBatches.
+///
+/// This iterator fetches time series keys matching a pattern and retrieves their
+/// samples, converting them to Arrow RecordBatches for use with Polars.
+/// Each sample becomes a row in the output.
+///
+/// Requires the RedisTimeSeries module to be loaded on the Redis server.
+///
+/// # Example
+///
+/// ```ignore
+/// use polars_redis::{TimeSeriesBatchIterator, TimeSeriesSchema, BatchConfig};
+///
+/// let schema = TimeSeriesSchema::new().with_key(true).with_labels(true);
+/// let config = BatchConfig::new("ts:sensor:*").with_batch_size(1000);
+///
+/// let mut iterator = TimeSeriesBatchIterator::new(url, schema, config)?
+///     .with_range("-", "+")
+///     .with_aggregation("avg", 60000); // 1-minute average
+///
+/// while let Some(batch) = iterator.next_batch()? {
+///     println!("Got {} samples", batch.num_rows());
+/// }
+/// ```
+///
+/// # Output Schema
+///
+/// - `_key` (optional): The Redis time series key
+/// - `timestamp`: The sample timestamp (Int64 milliseconds)
+/// - `value`: The sample value (Float64)
+/// - Label columns (optional): Time series labels as additional columns
 pub struct TimeSeriesBatchIterator {
     /// Tokio runtime for async operations.
     runtime: Runtime,
@@ -301,6 +331,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore] // Requires running Redis instance
     fn test_timeseries_batch_iterator_creation() {
         let schema = TimeSeriesSchema::new();
         let config = BatchConfig::new("sensor:*");
@@ -310,6 +341,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires running Redis instance
     fn test_timeseries_batch_iterator_with_options() {
         let schema = TimeSeriesSchema::new()
             .with_key(true)

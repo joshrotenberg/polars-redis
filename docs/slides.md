@@ -6,8 +6,13 @@ An interactive slide deck covering polars-redis features and usage.
     Open Presentation
 </a>
 
+!!! note "Direct Link"
+    If the button above doesn't work, you can access the slides directly at:
+    [https://joshrotenberg.github.io/polars-redis/slides/](https://joshrotenberg.github.io/polars-redis/slides/)
+
 ## Topics Covered
 
+- What is Polars? (quick primer)
 - What is polars-redis?
 - Scanning Redis Hashes and JSON
 - Writing DataFrames to Redis

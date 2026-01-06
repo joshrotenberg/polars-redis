@@ -14,7 +14,32 @@ use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 use super::reader::StringData;
 use crate::error::{Error, Result};
 
-/// Schema for Redis string values.
+/// Schema for Redis string values, defining how to parse and convert them.
+///
+/// Redis strings are simple key-value pairs. This schema defines what type
+/// the values should be parsed as (e.g., Int64 for counters, Utf8 for text).
+///
+/// # Example
+///
+/// ```ignore
+/// use polars_redis::StringSchema;
+/// use arrow::datatypes::DataType;
+///
+/// // For string counters
+/// let schema = StringSchema::new(DataType::Int64)
+///     .with_key(true)
+///     .with_value_column_name("count");
+///
+/// // For text values
+/// let schema = StringSchema::new(DataType::Utf8)
+///     .with_key(true);
+/// ```
+///
+/// # Output Schema
+///
+/// - `_key` (optional): The Redis key
+/// - `value`: The parsed value (type depends on schema)
+/// - `_ttl` (optional): TTL in seconds
 #[derive(Debug, Clone)]
 pub struct StringSchema {
     /// The Arrow DataType for values.
@@ -25,6 +50,10 @@ pub struct StringSchema {
     key_column_name: String,
     /// Name of the value column.
     value_column_name: String,
+    /// Whether to include the TTL as a column.
+    include_ttl: bool,
+    /// Name of the TTL column.
+    ttl_column_name: String,
 }
 
 impl StringSchema {
@@ -35,6 +64,8 @@ impl StringSchema {
             include_key: true,
             key_column_name: "_key".to_string(),
             value_column_name: "value".to_string(),
+            include_ttl: false,
+            ttl_column_name: "_ttl".to_string(),
         }
     }
 
@@ -53,6 +84,18 @@ impl StringSchema {
     /// Set the name of the value column.
     pub fn with_value_column_name(mut self, name: impl Into<String>) -> Self {
         self.value_column_name = name.into();
+        self
+    }
+
+    /// Set whether to include the TTL as a column.
+    pub fn with_ttl(mut self, include: bool) -> Self {
+        self.include_ttl = include;
+        self
+    }
+
+    /// Set the name of the TTL column.
+    pub fn with_ttl_column_name(mut self, name: impl Into<String>) -> Self {
+        self.ttl_column_name = name.into();
         self
     }
 
@@ -76,12 +119,26 @@ impl StringSchema {
         &self.value_column_name
     }
 
+    /// Whether the TTL column is included.
+    pub fn include_ttl(&self) -> bool {
+        self.include_ttl
+    }
+
+    /// Get the TTL column name.
+    pub fn ttl_column_name(&self) -> &str {
+        &self.ttl_column_name
+    }
+
     /// Convert to Arrow Schema.
     pub fn to_arrow_schema(&self) -> Schema {
-        let mut fields = Vec::with_capacity(2);
+        let mut fields = Vec::with_capacity(3);
 
         if self.include_key {
             fields.push(Field::new(&self.key_column_name, DataType::Utf8, false));
+        }
+
+        if self.include_ttl {
+            fields.push(Field::new(&self.ttl_column_name, DataType::Int64, false));
         }
 
         // Value is nullable (key might not exist)
@@ -106,13 +163,23 @@ pub fn strings_to_record_batch(data: &[StringData], schema: &StringSchema) -> Re
     let arrow_schema = Arc::new(schema.to_arrow_schema());
     let num_rows = data.len();
 
-    let mut arrays: Vec<ArrayRef> = Vec::with_capacity(2);
+    let mut arrays: Vec<ArrayRef> = Vec::with_capacity(3);
 
     // Build key column if included
     if schema.include_key() {
         let mut builder = StringBuilder::with_capacity(num_rows, num_rows * 32);
         for row in data {
             builder.append_value(&row.key);
+        }
+        arrays.push(Arc::new(builder.finish()));
+    }
+
+    // Build TTL column if included
+    if schema.include_ttl() {
+        let mut builder = Int64Builder::with_capacity(num_rows);
+        for row in data {
+            // TTL: -1 = no expiry, -2 = key doesn't exist, positive = seconds remaining
+            builder.append_value(row.ttl.unwrap_or(-1));
         }
         arrays.push(Arc::new(builder.finish()));
     }
@@ -428,6 +495,15 @@ mod tests {
         StringData {
             key: key.to_string(),
             value: value.map(|s| s.to_string()),
+            ttl: None,
+        }
+    }
+
+    fn make_string_data_with_ttl(key: &str, value: Option<&str>, ttl: i64) -> StringData {
+        StringData {
+            key: key.to_string(),
+            value: value.map(|s| s.to_string()),
+            ttl: Some(ttl),
         }
     }
 
@@ -554,5 +630,42 @@ mod tests {
 
         let batch = strings_to_record_batch(&data, &schema).unwrap();
         assert_eq!(batch.num_rows(), 2);
+    }
+
+    #[test]
+    fn test_string_schema_with_ttl() {
+        let schema = StringSchema::new(DataType::Utf8)
+            .with_ttl(true)
+            .with_ttl_column_name("expires_in");
+
+        assert!(schema.include_ttl());
+        assert_eq!(schema.ttl_column_name(), "expires_in");
+    }
+
+    #[test]
+    fn test_strings_to_record_batch_with_ttl() {
+        let schema = StringSchema::new(DataType::Utf8).with_ttl(true);
+        let data = vec![
+            make_string_data_with_ttl("key:1", Some("hello"), 3600),
+            make_string_data_with_ttl("key:2", Some("world"), -1), // no expiry
+            make_string_data_with_ttl("key:3", Some("test"), 60),
+        ];
+
+        let batch = strings_to_record_batch(&data, &schema).unwrap();
+        assert_eq!(batch.num_rows(), 3);
+        assert_eq!(batch.num_columns(), 3); // _key, _ttl, value
+        assert_eq!(batch.schema().field(1).name(), "_ttl");
+    }
+
+    #[test]
+    fn test_strings_to_record_batch_ttl_column_order() {
+        // Verify column order: key, ttl, value
+        let schema = StringSchema::new(DataType::Utf8).with_ttl(true);
+        let data = vec![make_string_data_with_ttl("key:1", Some("hello"), 100)];
+
+        let batch = strings_to_record_batch(&data, &schema).unwrap();
+        assert_eq!(batch.schema().field(0).name(), "_key");
+        assert_eq!(batch.schema().field(1).name(), "_ttl");
+        assert_eq!(batch.schema().field(2).name(), "value");
     }
 }

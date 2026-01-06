@@ -1,6 +1,6 @@
 [package]
 name = "polars-redis"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Redis IO plugin for Polars"
@@ -42,8 +42,8 @@ pyo3-build-config = "0.27"
 [dev-dependencies]
 tokio-test = "0.4"
 proptest = "1.5"
-criterion = { version = "0.5", features = ["html_reports"] }
-docker-wrapper = { version = "0.8", features = ["template-redis"] }
+criterion = { version = "0.8", features = ["html_reports"] }
+docker-wrapper = { version = "0.10.1", features = ["template-redis", "template-redis-cluster", "testing"] }
 
 [[bench]]
 name = "benchmarks"

@@ -1,6 +1,8 @@
 # polars-redis
 
-Query Redis like a database. Transform with Polars. Write back without ETL.
+Query Redis like a database. Transform with [Polars](https://pola.rs/). Write back without ETL.
+
+> **New to Polars?** [Polars](https://pola.rs/) is a lightning-fast DataFrame library for Python and Rust. Check out the [Polars User Guide](https://docs.pola.rs/) to get started.
 
 [![CI](https://github.com/joshrotenberg/polars-redis/actions/workflows/ci.yml/badge.svg)](https://github.com/joshrotenberg/polars-redis/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/polars-redis.svg)](https://pypi.org/project/polars-redis/)
@@ -72,6 +74,41 @@ active_users = lf.filter(pl.col("active")).select(["name", "age"]).collect()
 redis.write_hashes(active_users, url, key_prefix="cache:user:", ttl=3600)
 ```
 
+### RediSearch (Server-Side Filtering)
+
+```python
+from polars_redis import col
+
+# Filter in Redis, not Python - only matching docs are transferred
+df = redis.search_hashes(
+    url,
+    index="users_idx",
+    query=(col("age") > 30) & (col("status") == "active"),
+    schema={"name": pl.Utf8, "age": pl.Int64, "status": pl.Utf8},
+).collect()
+
+# Server-side aggregation
+df = redis.aggregate_hashes(
+    url,
+    index="users_idx",
+    query="*",
+    group_by=["@department"],
+    reduce=[("COUNT", [], "count"), ("AVG", ["@salary"], "avg_salary")],
+)
+```
+
+### Parallel Fetching
+
+```python
+# Speed up large scans with parallel workers
+lf = redis.scan_hashes(
+    url,
+    pattern="user:*",
+    schema={"name": pl.Utf8, "age": pl.Int64},
+    parallel=4,  # Use 4 parallel workers
+)
+```
+
 ## Features
 
 **Read:**
@@ -84,6 +121,12 @@ redis.write_hashes(active_users, url, key_prefix="cache:user:", ttl=3600)
 - Projection pushdown (fetch only requested fields)
 - Schema inference (`infer_hash_schema()`, `infer_json_schema()`)
 - Metadata columns (key, TTL, row index)
+- Parallel fetching for improved throughput
+
+**RediSearch (Predicate Pushdown):**
+- `search_hashes()` - Server-side filtering with FT.SEARCH
+- `aggregate_hashes()` - Server-side aggregation with FT.AGGREGATE
+- Polars-like query builder: `col("age") > 30`
 
 **Write:**
 - `write_hashes()`, `write_json()`, `write_strings()`

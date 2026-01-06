@@ -557,6 +557,189 @@ Write a DataFrame to Redis as sorted sets.
 
 ---
 
+## Detailed Write Functions
+
+### write_hashes_detailed
+
+```python
+def write_hashes_detailed(
+    df: pl.DataFrame,
+    url: str,
+    key_column: str | None = "_key",
+    ttl: int | None = None,
+    key_prefix: str = "",
+    if_exists: str = "replace",
+) -> WriteResult
+```
+
+Write a DataFrame to Redis as hashes with detailed error reporting.
+
+**Parameters:** Same as `write_hashes`.
+
+**Returns:** `WriteResult` object with per-key success/failure information.
+
+---
+
+### WriteResult
+
+```python
+class WriteResult:
+    keys_written: int      # Number of keys successfully written
+    keys_failed: int       # Number of keys that failed
+    keys_skipped: int      # Number of keys skipped (if_exists="fail")
+    succeeded_keys: list[str]  # List of successfully written keys
+    failed_keys: list[str]     # List of keys that failed
+    errors: dict[str, str]     # Map of failed keys to error messages
+
+    def is_complete_success(self) -> bool:
+        """Check if all keys were written successfully."""
+```
+
+---
+
+## Query Builder
+
+### col
+
+```python
+def col(name: str) -> Expr
+```
+
+Create a column expression for building RediSearch queries.
+
+**Parameters:**
+
+- `name`: Field name to query
+
+**Returns:** `Expr` object
+
+---
+
+### cols
+
+```python
+def cols(*names: str) -> MultiFieldExpr
+```
+
+Create a multi-field expression for searching across multiple fields.
+
+**Parameters:**
+
+- `*names`: Field names to search across
+
+**Returns:** `MultiFieldExpr` object
+
+---
+
+### raw
+
+```python
+def raw(query: str) -> Expr
+```
+
+Create a raw RediSearch query expression.
+
+**Parameters:**
+
+- `query`: Raw RediSearch query string
+
+**Returns:** `Expr` object
+
+---
+
+### Expr Methods
+
+#### Comparison Operators
+
+| Operator | Description | Example |
+|----------|-------------|---------|
+| `>` | Greater than | `col("age") > 30` |
+| `>=` | Greater or equal | `col("age") >= 30` |
+| `<` | Less than | `col("age") < 30` |
+| `<=` | Less or equal | `col("age") <= 30` |
+| `==` | Equal | `col("status") == "active"` |
+| `!=` | Not equal | `col("status") != "deleted"` |
+
+#### Logical Operators
+
+| Operator | Description | Example |
+|----------|-------------|---------|
+| `&` | AND | `(col("a") > 1) & (col("b") < 2)` |
+| `\|` | OR | `(col("a") == 1) \| (col("a") == 2)` |
+| `~` | NOT | `~(col("status") == "deleted")` |
+
+#### Range and Membership
+
+```python
+Expr.is_between(lower, upper) -> Expr
+Expr.is_in(values: list) -> Expr
+```
+
+#### Text Search
+
+```python
+Expr.contains(text: str) -> Expr           # Full-text search
+Expr.starts_with(prefix: str) -> Expr      # Prefix match
+Expr.ends_with(suffix: str) -> Expr        # Suffix match
+Expr.contains_substring(text: str) -> Expr # Infix/substring match
+Expr.matches(pattern: str) -> Expr         # Wildcard match
+Expr.matches_exact(pattern: str) -> Expr   # Exact wildcard match
+Expr.fuzzy(term: str, distance: int = 1) -> Expr  # Fuzzy match (distance 1-3)
+Expr.phrase(*words: str, slop: int = None, inorder: bool = None) -> Expr
+```
+
+#### Tag Operations
+
+```python
+Expr.has_tag(tag: str) -> Expr
+Expr.has_any_tag(tags: list[str]) -> Expr
+```
+
+#### Geo Operations
+
+```python
+Expr.within_radius(lon: float, lat: float, radius: float, unit: str = "km") -> Expr
+Expr.within_polygon(points: list[tuple[float, float]]) -> Expr
+```
+
+#### Vector Search
+
+```python
+Expr.knn(k: int, vector_param: str = "query_vec") -> Expr
+Expr.vector_range(radius: float, vector_param: str = "query_vec") -> Expr
+```
+
+#### Relevance
+
+```python
+Expr.boost(weight: float) -> Expr    # Increase relevance weight
+Expr.optional() -> Expr              # Mark as optional (prefer but don't require)
+```
+
+#### Null Checks
+
+```python
+Expr.is_null() -> Expr
+Expr.is_not_null() -> Expr
+```
+
+#### Query Output
+
+```python
+Expr.to_redis() -> str  # Convert to RediSearch query string
+```
+
+---
+
+### MultiFieldExpr Methods
+
+```python
+MultiFieldExpr.contains(text: str) -> Expr      # Search across all fields
+MultiFieldExpr.starts_with(prefix: str) -> Expr # Prefix match across fields
+```
+
+---
+
 ## Schema Inference
 
 ### infer_hash_schema
