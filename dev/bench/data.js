@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1767657109974,
+  "lastUpdate": 1767659717734,
   "repoUrl": "https://github.com/joshrotenberg/polars-redis",
   "entries": {
     "Rust Benchmarks": [
@@ -1055,6 +1055,138 @@ window.BENCHMARK_DATA = {
             "name": "projection/25_of_50_fields",
             "value": 1095,
             "range": "± 3",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "joshrotenberg@gmail.com",
+            "name": "Josh Rotenberg",
+            "username": "joshrotenberg"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "eca251e3a4c2d40e00c004847ef0438587d18d05",
+          "message": "feat: add missing RediSearch query features to query builder (#96)\n\nRust query_builder.rs:\n- Add optional terms support (~query syntax)\n- Add infix/substring matching (*substring*)\n- Add exact wildcard matching (w'pattern')\n- Add phrase with slop and inorder attributes\n- Add multi-field search (@field1|field2:term)\n- Add geo polygon search (WITHIN $poly)\n- Add vector KNN search (*=>[KNN k @field $vec])\n- Add vector range search (VECTOR_RANGE)\n- Add get_params() method for PARAMS extraction\n\nPython query.py:\n- Add contains_substring() for infix matching\n- Add matches_exact() for exact wildcard\n- Add slop/inorder params to phrase()\n- Add optional() method for optional terms\n- Add within_polygon() for geo polygon search\n- Add knn() and vector_range() for vector search\n- Add cols() function for multi-field search\n- Add MultiFieldExpr class\n\nCloses #93",
+          "timestamp": "2026-01-05T16:25:40-08:00",
+          "tree_id": "6b46afdf04cebd979d97ddd45b531572b6830e1b",
+          "url": "https://github.com/joshrotenberg/polars-redis/commit/eca251e3a4c2d40e00c004847ef0438587d18d05"
+        },
+        "date": 1767659717352,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "schema_creation/small_3_fields",
+            "value": 326,
+            "range": "± 7",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/medium_10_fields",
+            "value": 1079,
+            "range": "± 8",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/large_50_fields",
+            "value": 7048,
+            "range": "± 35",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/default",
+            "value": 27,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/with_options",
+            "value": 27,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/100",
+            "value": 253,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/100",
+            "value": 1180,
+            "range": "± 6",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/100",
+            "value": 79,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/1000",
+            "value": 3359,
+            "range": "± 72",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/1000",
+            "value": 12585,
+            "range": "± 335",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/1000",
+            "value": 785,
+            "range": "± 9",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/10000",
+            "value": 37204,
+            "range": "± 558",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/10000",
+            "value": 128737,
+            "range": "± 682",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/10000",
+            "value": 8191,
+            "range": "± 289",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "arrow_schema/to_arrow_schema",
+            "value": 733,
+            "range": "± 13",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/no_filter",
+            "value": 21,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/5_of_50_fields",
+            "value": 963,
+            "range": "± 6",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/25_of_50_fields",
+            "value": 1105,
+            "range": "± 6",
             "unit": "ns/iter"
           }
         ]
