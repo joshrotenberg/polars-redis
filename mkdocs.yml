@@ -68,6 +68,7 @@ nav:
       - RediSearch: guide/redisearch.md
       - Writing Data: guide/writing.md
       - DataFrame Caching: guide/caching.md
+      - Pub/Sub Streaming: guide/pubsub.md
       - Schema Inference: guide/schema-inference.md
       - Configuration: guide/configuration.md
       - Performance: guide/performance.md
