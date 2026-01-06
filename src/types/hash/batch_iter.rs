@@ -117,7 +117,39 @@ impl From<BatchConfig> for ScanOptions {
     }
 }
 
-/// Iterator state for scanning Redis hashes.
+/// Iterator for scanning Redis hashes in batches as Arrow RecordBatches.
+///
+/// This iterator fetches hash keys matching a pattern and retrieves their
+/// field-value pairs, converting them to Arrow RecordBatches for use with Polars.
+///
+/// The iterator uses Redis SCAN for memory-efficient key iteration and pipelines
+/// HGETALL/HMGET commands for efficient data retrieval.
+///
+/// # Example
+///
+/// ```ignore
+/// use polars_redis::{HashBatchIterator, HashSchema, BatchConfig, RedisType};
+///
+/// let schema = HashSchema::new(vec![
+///     ("name".to_string(), RedisType::Utf8),
+///     ("age".to_string(), RedisType::Int64),
+/// ]).with_key(true);
+///
+/// let config = BatchConfig::new("user:*").with_batch_size(1000);
+///
+/// let mut iterator = HashBatchIterator::new(url, schema, config, None)?;
+///
+/// while let Some(batch) = iterator.next_batch()? {
+///     println!("Got {} rows", batch.num_rows());
+/// }
+/// ```
+///
+/// # Performance
+///
+/// - Uses `SCAN` with configurable `COUNT` hint for non-blocking iteration
+/// - Pipelines multiple `HGETALL`/`HMGET` commands per batch
+/// - Supports projection pushdown (only fetch requested fields)
+/// - Memory-efficient streaming (processes one batch at a time)
 pub struct HashBatchIterator {
     /// Tokio runtime for async operations.
     runtime: Runtime,

@@ -13,7 +13,34 @@ use crate::connection::RedisConnection;
 use crate::error::{Error, Result};
 use crate::types::hash::BatchConfig;
 
-/// Iterator for scanning Redis strings and yielding Arrow RecordBatches.
+/// Iterator for scanning Redis strings in batches as Arrow RecordBatches.
+///
+/// This iterator fetches string keys matching a pattern and retrieves their
+/// values, converting them to Arrow RecordBatches for use with Polars.
+///
+/// String values are parsed according to the schema's data type (e.g., Int64,
+/// Float64, Boolean, or Utf8).
+///
+/// # Example
+///
+/// ```ignore
+/// use polars_redis::{StringBatchIterator, StringSchema, BatchConfig, DataType};
+///
+/// let schema = StringSchema::new(DataType::Int64).with_key(true);
+/// let config = BatchConfig::new("counter:*").with_batch_size(1000);
+///
+/// let mut iterator = StringBatchIterator::new(url, schema, config)?;
+///
+/// while let Some(batch) = iterator.next_batch()? {
+///     println!("Got {} rows", batch.num_rows());
+/// }
+/// ```
+///
+/// # Performance
+///
+/// - Uses `SCAN` with configurable `COUNT` hint for non-blocking iteration
+/// - Pipelines multiple `GET` commands per batch
+/// - Memory-efficient streaming (processes one batch at a time)
 pub struct StringBatchIterator {
     /// Tokio runtime for async operations.
     runtime: Runtime,

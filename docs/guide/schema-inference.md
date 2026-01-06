@@ -112,6 +112,105 @@ df = redis.read_hashes(url, pattern="user:*", schema=schema)
 # user:1 will have email=null
 ```
 
+## Confidence Scores
+
+For production use, you may want to validate the quality of inferred schemas before processing large datasets. The `infer_hash_schema_with_confidence` function provides detailed confidence information:
+
+```python
+result = redis.infer_hash_schema_with_confidence(
+    "redis://localhost:6379",
+    pattern="user:*",
+    sample_size=100
+)
+
+# Check overall confidence
+print(f"Average confidence: {result.average_confidence:.1%}")
+print(f"All fields confident: {result.all_confident}")
+
+# Get the schema if confidence is high
+if result.all_confident:
+    df = redis.read_hashes(url, pattern="user:*", schema=result.schema)
+else:
+    # Investigate low-confidence fields
+    for field, conf in result.low_confidence_fields(threshold=0.8):
+        print(f"Warning: {field} has {conf:.0%} confidence")
+```
+
+### SchemaConfidence Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `schema` | `dict` | The inferred schema |
+| `sample_count` | `int` | Number of keys sampled |
+| `average_confidence` | `float` | Average confidence across all fields (0.0-1.0) |
+| `all_confident` | `bool` | Whether all fields have confidence >= 0.9 |
+| `field_info` | `dict` | Detailed per-field inference information |
+
+### Per-Field Information
+
+The `field_info` property provides detailed statistics for each field:
+
+```python
+for name, info in result.field_info.items():
+    print(f"{name}:")
+    print(f"  Type: {info['type']}")
+    print(f"  Confidence: {info['confidence']:.1%}")
+    print(f"  Samples: {info['samples']}")
+    print(f"  Valid: {info['valid']}")
+    print(f"  Nulls: {info['nulls']} ({info['null_ratio']:.1%})")
+    print(f"  Type candidates: {info['type_candidates']}")
+```
+
+### Low Confidence Fields
+
+Use `low_confidence_fields()` to identify fields that may need manual type specification:
+
+```python
+# Get fields with confidence below 80%
+low_conf = result.low_confidence_fields(threshold=0.8)
+for field, confidence in low_conf:
+    print(f"{field}: {confidence:.0%} confidence")
+```
+
+## Schema Overwrite
+
+When schema inference gets a type wrong or you need to enforce specific types, use the overwrite functions:
+
+```python
+# Infer schema but override specific field types
+schema = redis.infer_hash_schema_with_overwrite(
+    "redis://localhost:6379",
+    pattern="user:*",
+    schema_overwrite={
+        "age": pl.Int64,           # Force age to Int64
+        "created_at": pl.Datetime, # Force timestamp field
+        "score": pl.Float64,       # Ensure float precision
+    }
+)
+```
+
+### Use Cases for Overwrite
+
+- **Fix incorrect inference**: When a field looks like one type but should be another
+- **Add missing fields**: Fields not in sampled data will be added
+- **Force timestamp parsing**: Override string fields to `Datetime` or `Date`
+- **Ensure numeric precision**: Override ambiguous numeric fields to specific types
+
+### JSON Schema Overwrite
+
+The same pattern works for JSON documents:
+
+```python
+schema = redis.infer_json_schema_with_overwrite(
+    "redis://localhost:6379",
+    pattern="doc:*",
+    schema_overwrite={
+        "timestamp": pl.Datetime,
+        "count": pl.Int64,
+    }
+)
+```
+
 ## Limitations
 
 - Sampling may miss rare fields (increase `sample_size`)

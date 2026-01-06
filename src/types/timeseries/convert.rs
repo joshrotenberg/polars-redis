@@ -9,6 +9,30 @@ use super::reader::TimeSeriesData;
 use crate::error::Result;
 
 /// Schema configuration for RedisTimeSeries scanning.
+///
+/// Defines output columns when scanning RedisTimeSeries data. Each sample becomes
+/// a row in the output DataFrame.
+///
+/// Requires the RedisTimeSeries module to be loaded on the Redis server.
+///
+/// # Example
+///
+/// ```ignore
+/// use polars_redis::TimeSeriesSchema;
+///
+/// let schema = TimeSeriesSchema::new()
+///     .with_key(true)
+///     .with_labels(vec!["sensor".to_string(), "location".to_string()])
+///     .with_value_column_name("temperature");
+/// ```
+///
+/// # Output Schema
+///
+/// - `_key` (optional): The Redis time series key
+/// - `_ts`: Timestamp in milliseconds (Int64)
+/// - `value`: Sample value (Float64)
+/// - Label columns (optional): Time series labels as additional columns
+/// - `_index` (optional): Global row number
 #[derive(Debug, Clone)]
 pub struct TimeSeriesSchema {
     /// Whether to include the Redis key as a column.

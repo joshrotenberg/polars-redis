@@ -9,6 +9,25 @@ use super::reader::SetData;
 use crate::error::Result;
 
 /// Schema configuration for Redis set scanning.
+///
+/// Defines output columns when scanning Redis sets. Each set member becomes
+/// a row in the output DataFrame.
+///
+/// # Example
+///
+/// ```ignore
+/// use polars_redis::SetSchema;
+///
+/// let schema = SetSchema::new()
+///     .with_key(true)
+///     .with_member_column_name("tag");
+/// ```
+///
+/// # Output Schema
+///
+/// - `_key` (optional): The Redis key
+/// - `member`: The set member value (Utf8)
+/// - `_index` (optional): Row number
 #[derive(Debug, Clone)]
 pub struct SetSchema {
     /// Whether to include the Redis key as a column.
