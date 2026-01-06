@@ -12,6 +12,7 @@ An interactive slide deck covering polars-redis features and usage.
 
 ## Topics Covered
 
+- What is Polars? (quick primer)
 - What is polars-redis?
 - Scanning Redis Hashes and JSON
 - Writing DataFrames to Redis
