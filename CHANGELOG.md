@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.5](https://github.com/joshrotenberg/polars-redis/compare/polars-redis-v0.1.4...polars-redis-v0.1.5) (2026-01-06)
+
+
+### Features
+
+* add cluster support for Stream and TimeSeries types ([#94](https://github.com/joshrotenberg/polars-redis/issues/94)) ([13150e8](https://github.com/joshrotenberg/polars-redis/commit/13150e894a4ab3e97c798921ad14fba354a9026b))
+* add docker-wrapper ContainerGuard for CI integration tests ([#114](https://github.com/joshrotenberg/polars-redis/issues/114)) ([94060e5](https://github.com/joshrotenberg/polars-redis/commit/94060e5722d4ab9c5ccfbe4bce725292fcafca4c))
+* add missing RediSearch query features to query builder ([#96](https://github.com/joshrotenberg/polars-redis/issues/96)) ([eca251e](https://github.com/joshrotenberg/polars-redis/commit/eca251e3a4c2d40e00c004847ef0438587d18d05)), closes [#93](https://github.com/joshrotenberg/polars-redis/issues/93)
+* add per-key error reporting for write operations ([#73](https://github.com/joshrotenberg/polars-redis/issues/73)) ([03d73f0](https://github.com/joshrotenberg/polars-redis/commit/03d73f05eca794b018e841edefa55c295c2e8893))
+* add Python API for Set, List, ZSet, Stream, and TimeSeries types ([#95](https://github.com/joshrotenberg/polars-redis/issues/95)) ([0b61b72](https://github.com/joshrotenberg/polars-redis/commit/0b61b72ab57a00c4991d431523892e6da06dc7de))
+* add Redis Cluster support ([#65](https://github.com/joshrotenberg/polars-redis/issues/65)) ([f8f79c1](https://github.com/joshrotenberg/polars-redis/commit/f8f79c13c5c4f83140413f3446d81ce11798ac33))
+* add schema inference confidence scores ([#74](https://github.com/joshrotenberg/polars-redis/issues/74)) ([bb90c02](https://github.com/joshrotenberg/polars-redis/commit/bb90c0280852d4cf079b560bb574d92dac0df20e))
+* add search_json() and aggregate_json() for RediSearch on JSON documents ([#92](https://github.com/joshrotenberg/polars-redis/issues/92)) ([2f69e63](https://github.com/joshrotenberg/polars-redis/commit/2f69e633263d5d2d21d9c7c334693e803799b00d)), closes [#86](https://github.com/joshrotenberg/polars-redis/issues/86)
+* add TTL support for String type reads ([#88](https://github.com/joshrotenberg/polars-redis/issues/88)) ([#90](https://github.com/joshrotenberg/polars-redis/issues/90)) ([e8d14c4](https://github.com/joshrotenberg/polars-redis/commit/e8d14c40d5b47897cf58ea00f8b0af21111f4e9b))
+* add write support for Set, List, and Sorted Set types ([#87](https://github.com/joshrotenberg/polars-redis/issues/87)) ([#91](https://github.com/joshrotenberg/polars-redis/issues/91)) ([edd8e04](https://github.com/joshrotenberg/polars-redis/commit/edd8e041798a0a12751b3f1a05decc91f6ffc58e))
+
 ## [0.1.4](https://github.com/joshrotenberg/polars-redis/compare/polars-redis-v0.1.3...polars-redis-v0.1.4) (2026-01-04)
 
 
