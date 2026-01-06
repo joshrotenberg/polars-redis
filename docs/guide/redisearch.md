@@ -343,6 +343,9 @@ print(query.to_redis())
 # @type:{eBikes} @price:[-inf (1000]
 ```
 
+!!! tip "More Examples"
+    See [Advanced Query Examples](../examples/advanced-queries.md) for real-world use cases including vector search, geo filtering, fuzzy matching, and dynamic query building.
+
 ## Aggregation with aggregate_hashes()
 
 `aggregate_hashes()` uses FT.AGGREGATE for server-side grouping and aggregation:

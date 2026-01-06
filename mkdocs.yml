@@ -80,6 +80,7 @@ nav:
   - Examples:
       - Python Examples: examples/python.md
       - Rust Examples: examples/rust.md
+      - Advanced Queries: examples/advanced-queries.md
   - Presentation: slides.md
 
 extra:
