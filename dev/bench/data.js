@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1767659717734,
+  "lastUpdate": 1767664655240,
   "repoUrl": "https://github.com/joshrotenberg/polars-redis",
   "entries": {
     "Rust Benchmarks": [
@@ -1187,6 +1187,138 @@ window.BENCHMARK_DATA = {
             "name": "projection/25_of_50_fields",
             "value": 1105,
             "range": "± 6",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "joshrotenberg@gmail.com",
+            "name": "Josh Rotenberg",
+            "username": "joshrotenberg"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c677c329e0f48cafd4680005c0242ced650d5e2c",
+          "message": "test: mark batch iterator tests as ignored (#98) (#109)\n\nThese tests require a running Redis instance and were failing in\nenvironments without Redis available. Mark them with #[ignore] so\nthey can be run explicitly with 'cargo test -- --ignored' when\nRedis is available.\n\nAffected tests:\n- test_hash_batch_iterator_creation\n- test_json_batch_iterator_creation\n- test_string_batch_iterator_creation\n- test_string_batch_iterator_with_int64\n- test_set_batch_iterator_creation\n- test_set_batch_iterator_with_options\n- test_list_batch_iterator_creation\n- test_list_batch_iterator_with_options\n- test_zset_batch_iterator_creation\n- test_zset_batch_iterator_with_options\n- test_stream_batch_iterator_creation\n- test_stream_batch_iterator_with_options\n- test_timeseries_batch_iterator_creation\n- test_timeseries_batch_iterator_with_options\n- test_hash_search_iterator_creation\n\nCloses #98",
+          "timestamp": "2026-01-05T17:47:53-08:00",
+          "tree_id": "5ebb001b08f2b6138d30baad75e5c586cfd8d804",
+          "url": "https://github.com/joshrotenberg/polars-redis/commit/c677c329e0f48cafd4680005c0242ced650d5e2c"
+        },
+        "date": 1767664654819,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "schema_creation/small_3_fields",
+            "value": 314,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/medium_10_fields",
+            "value": 1086,
+            "range": "± 15",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/large_50_fields",
+            "value": 7152,
+            "range": "± 48",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/default",
+            "value": 27,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/with_options",
+            "value": 27,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/100",
+            "value": 249,
+            "range": "± 11",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/100",
+            "value": 1191,
+            "range": "± 8",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/100",
+            "value": 99,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/1000",
+            "value": 3120,
+            "range": "± 75",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/1000",
+            "value": 12465,
+            "range": "± 102",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/1000",
+            "value": 938,
+            "range": "± 6",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/10000",
+            "value": 38352,
+            "range": "± 267",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/10000",
+            "value": 129210,
+            "range": "± 422",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/10000",
+            "value": 9489,
+            "range": "± 59",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "arrow_schema/to_arrow_schema",
+            "value": 771,
+            "range": "± 6",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/no_filter",
+            "value": 20,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/5_of_50_fields",
+            "value": 933,
+            "range": "± 19",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/25_of_50_fields",
+            "value": 1145,
+            "range": "± 4",
             "unit": "ns/iter"
           }
         ]
