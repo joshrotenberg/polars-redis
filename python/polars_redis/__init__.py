@@ -47,12 +47,22 @@ from polars_redis._internal import (
 from polars_redis._read import (
     read_hashes,
     read_json,
+    read_lists,
+    read_sets,
+    read_streams,
     read_strings,
+    read_timeseries,
+    read_zsets,
 )
 from polars_redis._scan import (
     scan_hashes,
     scan_json,
+    scan_lists,
+    scan_sets,
+    scan_streams,
     scan_strings,
+    scan_timeseries,
+    scan_zsets,
 )
 from polars_redis._search import (
     aggregate_hashes,
@@ -75,11 +85,14 @@ from polars_redis._write import (
 from polars_redis.options import (
     HashScanOptions,
     JsonScanOptions,
+    ListScanOptions,
     ScanOptions,
     SearchOptions,
+    SetScanOptions,
     StreamScanOptions,
     StringScanOptions,
     TimeSeriesScanOptions,
+    ZSetScanOptions,
     get_default_batch_size,
     get_default_count_hint,
     get_default_timeout_ms,
@@ -94,10 +107,15 @@ __all__ = [
     "PyHashBatchIterator",
     "PyJsonBatchIterator",
     "PyStringBatchIterator",
-    # Scan functions
+    # Scan functions (lazy)
     "scan_hashes",
     "scan_json",
+    "scan_lists",
+    "scan_sets",
+    "scan_streams",
     "scan_strings",
+    "scan_timeseries",
+    "scan_zsets",
     "search_hashes",
     "search_json",
     "aggregate_hashes",
@@ -105,7 +123,12 @@ __all__ = [
     # Read functions (eager)
     "read_hashes",
     "read_json",
+    "read_lists",
+    "read_sets",
+    "read_streams",
     "read_strings",
+    "read_timeseries",
+    "read_zsets",
     # Write functions
     "write_hashes",
     "write_hashes_detailed",
@@ -127,9 +150,12 @@ __all__ = [
     "ScanOptions",
     "HashScanOptions",
     "JsonScanOptions",
+    "ListScanOptions",
+    "SetScanOptions",
     "StringScanOptions",
     "StreamScanOptions",
     "TimeSeriesScanOptions",
+    "ZSetScanOptions",
     "SearchOptions",
     # Query builder (predicate pushdown)
     "col",

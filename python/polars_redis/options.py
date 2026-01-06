@@ -27,6 +27,9 @@ __all__ = [
     "HashScanOptions",
     "JsonScanOptions",
     "StringScanOptions",
+    "SetScanOptions",
+    "ListScanOptions",
+    "ZSetScanOptions",
     "StreamScanOptions",
     "TimeSeriesScanOptions",
     "SearchOptions",
@@ -363,6 +366,253 @@ class StringScanOptions:
             self.row_index_column_name = name
         if offset is not None:
             self.row_index_offset = offset
+        return self
+
+
+@dataclass
+class SetScanOptions:
+    """Options for scanning Redis sets.
+
+    Example:
+        >>> opts = SetScanOptions(
+        ...     pattern="tags:*",
+        ...     member_column_name="tag",
+        ... )
+
+    Attributes:
+        pattern: Key pattern to match (e.g., "tags:*").
+        batch_size: Number of keys to process per batch.
+        count_hint: SCAN COUNT hint for Redis.
+        n_rows: Maximum total rows to return (None for unlimited).
+        include_key: Whether to include the Redis key as a column.
+        key_column_name: Name of the key column.
+        member_column_name: Name of the member column.
+        include_row_index: Whether to include the row index as a column.
+        row_index_column_name: Name of the row index column.
+    """
+
+    pattern: str = "*"
+    batch_size: int = field(default_factory=get_default_batch_size)
+    count_hint: int = field(default_factory=get_default_count_hint)
+    n_rows: int | None = None
+    include_key: bool = True
+    key_column_name: str = "_key"
+    member_column_name: str = "member"
+    include_row_index: bool = False
+    row_index_column_name: str = "_index"
+
+    def with_pattern(self, pattern: str) -> SetScanOptions:
+        """Set the key pattern."""
+        self.pattern = pattern
+        return self
+
+    def with_batch_size(self, size: int) -> SetScanOptions:
+        """Set the batch size."""
+        self.batch_size = size
+        return self
+
+    def with_count_hint(self, count: int) -> SetScanOptions:
+        """Set the COUNT hint for SCAN."""
+        self.count_hint = count
+        return self
+
+    def with_n_rows(self, n: int) -> SetScanOptions:
+        """Set the maximum number of rows to return."""
+        self.n_rows = n
+        return self
+
+    def with_key(self, include: bool = True, name: str | None = None) -> SetScanOptions:
+        """Configure the key column."""
+        self.include_key = include
+        if name is not None:
+            self.key_column_name = name
+        return self
+
+    def with_member_column_name(self, name: str) -> SetScanOptions:
+        """Set the member column name."""
+        self.member_column_name = name
+        return self
+
+    def with_row_index(self, include: bool = True, name: str | None = None) -> SetScanOptions:
+        """Configure the row index column."""
+        self.include_row_index = include
+        if name is not None:
+            self.row_index_column_name = name
+        return self
+
+
+@dataclass
+class ListScanOptions:
+    """Options for scanning Redis lists.
+
+    Example:
+        >>> opts = ListScanOptions(
+        ...     pattern="queue:*",
+        ...     element_column_name="item",
+        ...     include_position=True,
+        ... )
+
+    Attributes:
+        pattern: Key pattern to match (e.g., "queue:*").
+        batch_size: Number of keys to process per batch.
+        count_hint: SCAN COUNT hint for Redis.
+        n_rows: Maximum total rows to return (None for unlimited).
+        include_key: Whether to include the Redis key as a column.
+        key_column_name: Name of the key column.
+        element_column_name: Name of the element column.
+        include_position: Whether to include the position index.
+        position_column_name: Name of the position column.
+        include_row_index: Whether to include the row index as a column.
+        row_index_column_name: Name of the row index column.
+    """
+
+    pattern: str = "*"
+    batch_size: int = field(default_factory=get_default_batch_size)
+    count_hint: int = field(default_factory=get_default_count_hint)
+    n_rows: int | None = None
+    include_key: bool = True
+    key_column_name: str = "_key"
+    element_column_name: str = "element"
+    include_position: bool = False
+    position_column_name: str = "position"
+    include_row_index: bool = False
+    row_index_column_name: str = "_index"
+
+    def with_pattern(self, pattern: str) -> ListScanOptions:
+        """Set the key pattern."""
+        self.pattern = pattern
+        return self
+
+    def with_batch_size(self, size: int) -> ListScanOptions:
+        """Set the batch size."""
+        self.batch_size = size
+        return self
+
+    def with_count_hint(self, count: int) -> ListScanOptions:
+        """Set the COUNT hint for SCAN."""
+        self.count_hint = count
+        return self
+
+    def with_n_rows(self, n: int) -> ListScanOptions:
+        """Set the maximum number of rows to return."""
+        self.n_rows = n
+        return self
+
+    def with_key(self, include: bool = True, name: str | None = None) -> ListScanOptions:
+        """Configure the key column."""
+        self.include_key = include
+        if name is not None:
+            self.key_column_name = name
+        return self
+
+    def with_element_column_name(self, name: str) -> ListScanOptions:
+        """Set the element column name."""
+        self.element_column_name = name
+        return self
+
+    def with_position(self, include: bool = True, name: str | None = None) -> ListScanOptions:
+        """Configure the position column."""
+        self.include_position = include
+        if name is not None:
+            self.position_column_name = name
+        return self
+
+    def with_row_index(self, include: bool = True, name: str | None = None) -> ListScanOptions:
+        """Configure the row index column."""
+        self.include_row_index = include
+        if name is not None:
+            self.row_index_column_name = name
+        return self
+
+
+@dataclass
+class ZSetScanOptions:
+    """Options for scanning Redis sorted sets.
+
+    Example:
+        >>> opts = ZSetScanOptions(
+        ...     pattern="leaderboard:*",
+        ...     member_column_name="player",
+        ...     include_rank=True,
+        ... )
+
+    Attributes:
+        pattern: Key pattern to match (e.g., "leaderboard:*").
+        batch_size: Number of keys to process per batch.
+        count_hint: SCAN COUNT hint for Redis.
+        n_rows: Maximum total rows to return (None for unlimited).
+        include_key: Whether to include the Redis key as a column.
+        key_column_name: Name of the key column.
+        member_column_name: Name of the member column.
+        score_column_name: Name of the score column.
+        include_rank: Whether to include the rank index.
+        rank_column_name: Name of the rank column.
+        include_row_index: Whether to include the row index as a column.
+        row_index_column_name: Name of the row index column.
+    """
+
+    pattern: str = "*"
+    batch_size: int = field(default_factory=get_default_batch_size)
+    count_hint: int = field(default_factory=get_default_count_hint)
+    n_rows: int | None = None
+    include_key: bool = True
+    key_column_name: str = "_key"
+    member_column_name: str = "member"
+    score_column_name: str = "score"
+    include_rank: bool = False
+    rank_column_name: str = "rank"
+    include_row_index: bool = False
+    row_index_column_name: str = "_index"
+
+    def with_pattern(self, pattern: str) -> ZSetScanOptions:
+        """Set the key pattern."""
+        self.pattern = pattern
+        return self
+
+    def with_batch_size(self, size: int) -> ZSetScanOptions:
+        """Set the batch size."""
+        self.batch_size = size
+        return self
+
+    def with_count_hint(self, count: int) -> ZSetScanOptions:
+        """Set the COUNT hint for SCAN."""
+        self.count_hint = count
+        return self
+
+    def with_n_rows(self, n: int) -> ZSetScanOptions:
+        """Set the maximum number of rows to return."""
+        self.n_rows = n
+        return self
+
+    def with_key(self, include: bool = True, name: str | None = None) -> ZSetScanOptions:
+        """Configure the key column."""
+        self.include_key = include
+        if name is not None:
+            self.key_column_name = name
+        return self
+
+    def with_member_column_name(self, name: str) -> ZSetScanOptions:
+        """Set the member column name."""
+        self.member_column_name = name
+        return self
+
+    def with_score_column_name(self, name: str) -> ZSetScanOptions:
+        """Set the score column name."""
+        self.score_column_name = name
+        return self
+
+    def with_rank(self, include: bool = True, name: str | None = None) -> ZSetScanOptions:
+        """Configure the rank column."""
+        self.include_rank = include
+        if name is not None:
+            self.rank_column_name = name
+        return self
+
+    def with_row_index(self, include: bool = True, name: str | None = None) -> ZSetScanOptions:
+        """Configure the row index column."""
+        self.include_row_index = include
+        if name is not None:
+            self.row_index_column_name = name
         return self
 
 
