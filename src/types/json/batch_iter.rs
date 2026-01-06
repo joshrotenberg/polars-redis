@@ -235,6 +235,7 @@ mod tests {
     use arrow::datatypes::DataType;
 
     #[test]
+    #[ignore] // Requires running Redis instance
     fn test_json_batch_iterator_creation() {
         let schema = JsonSchema::new(vec![
             ("name".to_string(), DataType::Utf8),

@@ -184,6 +184,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore] // Requires running Redis instance
     fn test_zset_batch_iterator_creation() {
         let schema = ZSetSchema::new();
         let config = BatchConfig::new("leaderboard:*");
@@ -193,6 +194,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires running Redis instance
     fn test_zset_batch_iterator_with_options() {
         let schema = ZSetSchema::new()
             .with_key(true)
