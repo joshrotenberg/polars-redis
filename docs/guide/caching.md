@@ -2,6 +2,92 @@
 
 polars-redis provides functions for caching entire DataFrames in Redis using Arrow IPC or Parquet format. This enables using Redis as a high-performance distributed cache for intermediate computation results.
 
+## Caching Decorator
+
+The easiest way to cache function results is with the `@cache` decorator:
+
+```python
+import polars as pl
+import polars_redis as redis
+
+@redis.cache(url="redis://localhost:6379", ttl=3600)
+def expensive_transform(start_date: str, end_date: str) -> pl.DataFrame:
+    # Complex computation...
+    return df
+
+# First call: computes and caches
+result = expensive_transform("2024-01-01", "2024-12-31")
+
+# Second call: returns from cache instantly
+result = expensive_transform("2024-01-01", "2024-12-31")
+```
+
+### Cache Control
+
+```python
+# Force recomputation (updates cache)
+result = expensive_transform("2024-01-01", "2024-12-31", _cache_refresh=True)
+
+# Skip cache entirely (no read or write)
+result = expensive_transform("2024-01-01", "2024-12-31", _cache_skip=True)
+
+# Invalidate specific cached result
+expensive_transform.invalidate("2024-01-01", "2024-12-31")
+
+# Check if result is cached
+if expensive_transform.is_cached("2024-01-01", "2024-12-31"):
+    print("Cache hit!")
+
+# Get the cache key (for debugging)
+key = expensive_transform.cache_key_for("2024-01-01", "2024-12-31")
+```
+
+### Custom Key Generation
+
+```python
+@redis.cache(
+    url="redis://localhost",
+    ttl=3600,
+    key_prefix="transforms",
+    key_fn=lambda start, end: f"{start}_{end}",
+)
+def transform(start_date: str, end_date: str) -> pl.DataFrame:
+    ...
+```
+
+### LazyFrame Support
+
+For functions returning LazyFrames, use `@cache_lazy`:
+
+```python
+@redis.cache_lazy(url="redis://localhost", ttl=3600)
+def build_pipeline(config: dict) -> pl.LazyFrame:
+    return pl.scan_parquet("data.parquet").filter(...)
+
+# First call: collects and caches the result
+lf = build_pipeline({"filter": "active"})
+df = lf.collect()  # Already collected internally
+
+# Second call: returns cached result as LazyFrame
+lf = build_pipeline({"filter": "active"})
+```
+
+### Decorator Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `url` | `str` | required | Redis connection URL |
+| `ttl` | `int` | `None` | Cache TTL in seconds |
+| `key_prefix` | `str` | `"polars_redis:cache"` | Prefix for cache keys |
+| `key_fn` | `Callable` | `None` | Custom key generation function |
+| `format` | `str` | `"ipc"` | Serialization format |
+| `compression` | `str` | `None` | Compression codec |
+| `chunk_size_mb` | `int` | `None` | Chunk size for large DataFrames |
+
+## Manual Caching Functions
+
+For more control, use the caching functions directly:
+
 ## Quick Start
 
 ```python
