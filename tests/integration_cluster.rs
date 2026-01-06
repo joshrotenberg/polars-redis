@@ -24,8 +24,9 @@ use docker_wrapper::template::redis::cluster::{RedisClusterConnection, RedisClus
 
 use arrow::datatypes::DataType;
 use polars_redis::{
-    BatchConfig, ClusterHashBatchIterator, ClusterStringBatchIterator, HashSchema, RedisType,
-    StringSchema,
+    BatchConfig, ClusterHashBatchIterator, ClusterJsonBatchIterator, ClusterListBatchIterator,
+    ClusterSetBatchIterator, ClusterStringBatchIterator, ClusterZSetBatchIterator, HashSchema,
+    JsonSchema, ListSchema, RedisType, SetSchema, StringSchema, ZSetSchema,
 };
 
 /// Cluster configuration constants.
@@ -638,4 +639,481 @@ fn test_cluster_scan_strings_max_rows() {
     assert_eq!(total_rows, 15);
 
     cleanup_cluster_keys("cluster:strmaxrows:*");
+}
+
+// =============================================================================
+// JSON Cluster Tests
+// =============================================================================
+
+/// Set up test JSON documents in the cluster.
+fn setup_cluster_json_docs(prefix: &str, count: usize) {
+    let port_str = cluster_port_base().to_string();
+    for i in 1..=count {
+        let key = format!("{}{}", prefix, i);
+        let json = format!(
+            r#"{{"name": "User{}", "age": {}, "email": "user{}@example.com"}}"#,
+            i,
+            20 + i,
+            i
+        );
+
+        let _ = Command::new("redis-cli")
+            .args(["-p", &port_str, "-c", "JSON.SET", &key, "$", &json])
+            .output();
+    }
+}
+
+/// Test basic JSON scanning across a cluster.
+#[test]
+#[ignore] // Requires Redis Cluster with RedisJSON
+fn test_cluster_scan_json_basic() {
+    if !cluster_available() {
+        eprintln!("Skipping test: Redis Cluster not available");
+        return;
+    }
+
+    let nodes = cluster_nodes();
+    if nodes.is_empty() {
+        return;
+    }
+
+    cleanup_cluster_keys("cluster:json:*");
+    setup_cluster_json_docs("cluster:json:", 20);
+
+    let schema = JsonSchema::new(vec![
+        ("name".to_string(), DataType::Utf8),
+        ("age".to_string(), DataType::Int64),
+        ("email".to_string(), DataType::Utf8),
+    ])
+    .with_key(true);
+
+    let config = BatchConfig::new("cluster:json:*".to_string())
+        .with_batch_size(100)
+        .with_count_hint(50);
+
+    let node_refs: Vec<&str> = nodes.iter().map(|s| s.as_str()).collect();
+    let mut iterator = ClusterJsonBatchIterator::new(&node_refs, schema, config, None)
+        .expect("Failed to create cluster iterator");
+
+    let mut total_rows = 0;
+    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+        total_rows += batch.num_rows();
+        assert!(batch.num_columns() >= 3);
+    }
+
+    assert_eq!(total_rows, 20);
+    assert!(iterator.is_done());
+
+    cleanup_cluster_keys("cluster:json:*");
+}
+
+/// Test JSON scanning with projection in cluster mode.
+#[test]
+#[ignore] // Requires Redis Cluster with RedisJSON
+fn test_cluster_scan_json_projection() {
+    if !cluster_available() {
+        eprintln!("Skipping test: Redis Cluster not available");
+        return;
+    }
+
+    let nodes = cluster_nodes();
+    if nodes.is_empty() {
+        return;
+    }
+
+    cleanup_cluster_keys("cluster:jsonproj:*");
+    setup_cluster_json_docs("cluster:jsonproj:", 15);
+
+    let schema = JsonSchema::new(vec![
+        ("name".to_string(), DataType::Utf8),
+        ("age".to_string(), DataType::Int64),
+        ("email".to_string(), DataType::Utf8),
+    ])
+    .with_key(false);
+
+    let config = BatchConfig::new("cluster:jsonproj:*".to_string()).with_batch_size(100);
+
+    let projection = Some(vec!["name".to_string(), "age".to_string()]);
+    let node_refs: Vec<&str> = nodes.iter().map(|s| s.as_str()).collect();
+    let mut iterator = ClusterJsonBatchIterator::new(&node_refs, schema, config, projection)
+        .expect("Failed to create iterator");
+
+    let mut total_rows = 0;
+    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+        total_rows += batch.num_rows();
+        assert_eq!(batch.num_columns(), 2);
+    }
+
+    assert_eq!(total_rows, 15);
+
+    cleanup_cluster_keys("cluster:jsonproj:*");
+}
+
+// =============================================================================
+// Set Cluster Tests
+// =============================================================================
+
+/// Set up test sets in the cluster.
+fn setup_cluster_sets(prefix: &str, count: usize, members_per_set: usize) {
+    let port_str = cluster_port_base().to_string();
+    for i in 1..=count {
+        let key = format!("{}{}", prefix, i);
+        for j in 1..=members_per_set {
+            let member = format!("member{}_{}", i, j);
+            let _ = Command::new("redis-cli")
+                .args(["-p", &port_str, "-c", "SADD", &key, &member])
+                .output();
+        }
+    }
+}
+
+/// Test basic set scanning across a cluster.
+#[test]
+#[ignore] // Requires Redis Cluster
+fn test_cluster_scan_sets_basic() {
+    if !cluster_available() {
+        eprintln!("Skipping test: Redis Cluster not available");
+        return;
+    }
+
+    let nodes = cluster_nodes();
+    if nodes.is_empty() {
+        return;
+    }
+
+    cleanup_cluster_keys("cluster:set:*");
+    setup_cluster_sets("cluster:set:", 10, 5); // 10 sets, 5 members each = 50 rows
+
+    let schema = SetSchema::new().with_key(true);
+    let config = BatchConfig::new("cluster:set:*".to_string())
+        .with_batch_size(100)
+        .with_count_hint(50);
+
+    let node_refs: Vec<&str> = nodes.iter().map(|s| s.as_str()).collect();
+    let mut iterator = ClusterSetBatchIterator::new(&node_refs, schema, config)
+        .expect("Failed to create cluster iterator");
+
+    let mut total_rows = 0;
+    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+        total_rows += batch.num_rows();
+    }
+
+    assert_eq!(total_rows, 50);
+    assert!(iterator.is_done());
+
+    cleanup_cluster_keys("cluster:set:*");
+}
+
+/// Test set scanning with max_rows in cluster mode.
+#[test]
+#[ignore] // Requires Redis Cluster
+fn test_cluster_scan_sets_max_rows() {
+    if !cluster_available() {
+        eprintln!("Skipping test: Redis Cluster not available");
+        return;
+    }
+
+    let nodes = cluster_nodes();
+    if nodes.is_empty() {
+        return;
+    }
+
+    cleanup_cluster_keys("cluster:setmax:*");
+    setup_cluster_sets("cluster:setmax:", 10, 5); // 50 total rows
+
+    let schema = SetSchema::new().with_key(true);
+    let config = BatchConfig::new("cluster:setmax:*".to_string())
+        .with_batch_size(100)
+        .with_max_rows(20);
+
+    let node_refs: Vec<&str> = nodes.iter().map(|s| s.as_str()).collect();
+    let mut iterator = ClusterSetBatchIterator::new(&node_refs, schema, config)
+        .expect("Failed to create iterator");
+
+    let mut total_rows = 0;
+    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+        total_rows += batch.num_rows();
+    }
+
+    assert_eq!(total_rows, 20);
+
+    cleanup_cluster_keys("cluster:setmax:*");
+}
+
+// =============================================================================
+// List Cluster Tests
+// =============================================================================
+
+/// Set up test lists in the cluster.
+fn setup_cluster_lists(prefix: &str, count: usize, elements_per_list: usize) {
+    let port_str = cluster_port_base().to_string();
+    for i in 1..=count {
+        let key = format!("{}{}", prefix, i);
+        for j in 1..=elements_per_list {
+            let element = format!("element{}_{}", i, j);
+            let _ = Command::new("redis-cli")
+                .args(["-p", &port_str, "-c", "RPUSH", &key, &element])
+                .output();
+        }
+    }
+}
+
+/// Test basic list scanning across a cluster.
+#[test]
+#[ignore] // Requires Redis Cluster
+fn test_cluster_scan_lists_basic() {
+    if !cluster_available() {
+        eprintln!("Skipping test: Redis Cluster not available");
+        return;
+    }
+
+    let nodes = cluster_nodes();
+    if nodes.is_empty() {
+        return;
+    }
+
+    cleanup_cluster_keys("cluster:list:*");
+    setup_cluster_lists("cluster:list:", 8, 6); // 8 lists, 6 elements each = 48 rows
+
+    let schema = ListSchema::new().with_key(true).with_position(true);
+    let config = BatchConfig::new("cluster:list:*".to_string())
+        .with_batch_size(100)
+        .with_count_hint(50);
+
+    let node_refs: Vec<&str> = nodes.iter().map(|s| s.as_str()).collect();
+    let mut iterator = ClusterListBatchIterator::new(&node_refs, schema, config)
+        .expect("Failed to create cluster iterator");
+
+    let mut total_rows = 0;
+    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+        total_rows += batch.num_rows();
+    }
+
+    assert_eq!(total_rows, 48);
+    assert!(iterator.is_done());
+
+    cleanup_cluster_keys("cluster:list:*");
+}
+
+/// Test list scanning with max_rows in cluster mode.
+#[test]
+#[ignore] // Requires Redis Cluster
+fn test_cluster_scan_lists_max_rows() {
+    if !cluster_available() {
+        eprintln!("Skipping test: Redis Cluster not available");
+        return;
+    }
+
+    let nodes = cluster_nodes();
+    if nodes.is_empty() {
+        return;
+    }
+
+    cleanup_cluster_keys("cluster:listmax:*");
+    setup_cluster_lists("cluster:listmax:", 10, 5); // 50 total rows
+
+    let schema = ListSchema::new().with_key(true);
+    let config = BatchConfig::new("cluster:listmax:*".to_string())
+        .with_batch_size(100)
+        .with_max_rows(25);
+
+    let node_refs: Vec<&str> = nodes.iter().map(|s| s.as_str()).collect();
+    let mut iterator = ClusterListBatchIterator::new(&node_refs, schema, config)
+        .expect("Failed to create iterator");
+
+    let mut total_rows = 0;
+    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+        total_rows += batch.num_rows();
+    }
+
+    assert_eq!(total_rows, 25);
+
+    cleanup_cluster_keys("cluster:listmax:*");
+}
+
+// =============================================================================
+// ZSet Cluster Tests
+// =============================================================================
+
+/// Set up test sorted sets in the cluster.
+fn setup_cluster_zsets(prefix: &str, count: usize, members_per_zset: usize) {
+    let port_str = cluster_port_base().to_string();
+    for i in 1..=count {
+        let key = format!("{}{}", prefix, i);
+        for j in 1..=members_per_zset {
+            let member = format!("player{}_{}", i, j);
+            let score = ((i * 100) + j).to_string();
+            let _ = Command::new("redis-cli")
+                .args(["-p", &port_str, "-c", "ZADD", &key, &score, &member])
+                .output();
+        }
+    }
+}
+
+/// Test basic sorted set scanning across a cluster.
+#[test]
+#[ignore] // Requires Redis Cluster
+fn test_cluster_scan_zsets_basic() {
+    if !cluster_available() {
+        eprintln!("Skipping test: Redis Cluster not available");
+        return;
+    }
+
+    let nodes = cluster_nodes();
+    if nodes.is_empty() {
+        return;
+    }
+
+    cleanup_cluster_keys("cluster:zset:*");
+    setup_cluster_zsets("cluster:zset:", 10, 5); // 10 zsets, 5 members each = 50 rows
+
+    let schema = ZSetSchema::new().with_key(true).with_rank(true);
+    let config = BatchConfig::new("cluster:zset:*".to_string())
+        .with_batch_size(100)
+        .with_count_hint(50);
+
+    let node_refs: Vec<&str> = nodes.iter().map(|s| s.as_str()).collect();
+    let mut iterator = ClusterZSetBatchIterator::new(&node_refs, schema, config)
+        .expect("Failed to create cluster iterator");
+
+    let mut total_rows = 0;
+    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+        total_rows += batch.num_rows();
+        // Should have key, member, score, rank columns
+        assert!(batch.num_columns() >= 3);
+    }
+
+    assert_eq!(total_rows, 50);
+    assert!(iterator.is_done());
+
+    cleanup_cluster_keys("cluster:zset:*");
+}
+
+/// Test sorted set scanning with max_rows in cluster mode.
+#[test]
+#[ignore] // Requires Redis Cluster
+fn test_cluster_scan_zsets_max_rows() {
+    if !cluster_available() {
+        eprintln!("Skipping test: Redis Cluster not available");
+        return;
+    }
+
+    let nodes = cluster_nodes();
+    if nodes.is_empty() {
+        return;
+    }
+
+    cleanup_cluster_keys("cluster:zsetmax:*");
+    setup_cluster_zsets("cluster:zsetmax:", 10, 5); // 50 total rows
+
+    let schema = ZSetSchema::new().with_key(true);
+    let config = BatchConfig::new("cluster:zsetmax:*".to_string())
+        .with_batch_size(100)
+        .with_max_rows(15);
+
+    let node_refs: Vec<&str> = nodes.iter().map(|s| s.as_str()).collect();
+    let mut iterator = ClusterZSetBatchIterator::new(&node_refs, schema, config)
+        .expect("Failed to create iterator");
+
+    let mut total_rows = 0;
+    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+        total_rows += batch.num_rows();
+    }
+
+    assert_eq!(total_rows, 15);
+
+    cleanup_cluster_keys("cluster:zsetmax:*");
+}
+
+/// Test sorted set scanning with custom column names.
+#[test]
+#[ignore] // Requires Redis Cluster
+fn test_cluster_scan_zsets_custom_columns() {
+    if !cluster_available() {
+        eprintln!("Skipping test: Redis Cluster not available");
+        return;
+    }
+
+    let nodes = cluster_nodes();
+    if nodes.is_empty() {
+        return;
+    }
+
+    cleanup_cluster_keys("cluster:zsetcol:*");
+    setup_cluster_zsets("cluster:zsetcol:", 5, 4); // 20 total rows
+
+    let schema = ZSetSchema::new()
+        .with_key(true)
+        .with_key_column_name("redis_key")
+        .with_member_column_name("player_name")
+        .with_score_column_name("points");
+
+    let config = BatchConfig::new("cluster:zsetcol:*".to_string()).with_batch_size(100);
+
+    let node_refs: Vec<&str> = nodes.iter().map(|s| s.as_str()).collect();
+    let mut iterator = ClusterZSetBatchIterator::new(&node_refs, schema, config)
+        .expect("Failed to create iterator");
+
+    let mut total_rows = 0;
+    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+        total_rows += batch.num_rows();
+        // Verify column count (key, member, score)
+        assert_eq!(batch.num_columns(), 3);
+    }
+
+    assert_eq!(total_rows, 20);
+
+    cleanup_cluster_keys("cluster:zsetcol:*");
+}
+
+// =============================================================================
+// Data Consistency Tests
+// =============================================================================
+
+/// Test that scanning returns all keys distributed across cluster nodes.
+/// This verifies keys hash to different slots and are all retrieved.
+#[test]
+#[ignore] // Requires Redis Cluster
+fn test_cluster_data_consistency_all_keys_retrieved() {
+    if !cluster_available() {
+        eprintln!("Skipping test: Redis Cluster not available");
+        return;
+    }
+
+    let nodes = cluster_nodes();
+    if nodes.is_empty() {
+        return;
+    }
+
+    cleanup_cluster_keys("cluster:consistency:*");
+
+    // Create keys that will hash to different slots
+    // Using varied key names to ensure distribution
+    let port_str = cluster_port_base().to_string();
+    let test_keys: Vec<String> = (1..=100)
+        .map(|i| format!("cluster:consistency:{}", i))
+        .collect();
+
+    for key in &test_keys {
+        let _ = Command::new("redis-cli")
+            .args(["-p", &port_str, "-c", "HSET", key, "value", "test"])
+            .output();
+    }
+
+    let schema = HashSchema::new(vec![("value".to_string(), RedisType::Utf8)]).with_key(true);
+    let config = BatchConfig::new("cluster:consistency:*".to_string()).with_batch_size(200);
+
+    let node_refs: Vec<&str> = nodes.iter().map(|s| s.as_str()).collect();
+    let mut iterator = ClusterHashBatchIterator::new(&node_refs, schema, config, None)
+        .expect("Failed to create iterator");
+
+    let mut total_rows = 0;
+    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+        total_rows += batch.num_rows();
+    }
+
+    // All 100 keys should be retrieved
+    assert_eq!(total_rows, 100);
+
+    cleanup_cluster_keys("cluster:consistency:*");
 }
