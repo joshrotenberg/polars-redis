@@ -99,7 +99,7 @@ from polars_redis.options import (
 )
 
 # Re-export query builder
-from polars_redis.query import col, raw
+from polars_redis.query import col, cols, raw
 
 __all__ = [
     # Iterators
@@ -159,6 +159,7 @@ __all__ = [
     "SearchOptions",
     # Query builder (predicate pushdown)
     "col",
+    "cols",
     "raw",
     # Environment defaults
     "get_default_batch_size",
