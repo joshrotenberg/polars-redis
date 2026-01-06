@@ -29,6 +29,7 @@ from __future__ import annotations
 from polars_redis._cache import (
     cache_dataframe,
     cache_exists,
+    cache_info,
     cache_ttl,
     delete_cached,
     get_cached_dataframe,
@@ -177,6 +178,7 @@ __all__ = [
     "delete_cached",
     "cache_exists",
     "cache_ttl",
+    "cache_info",
     # Environment defaults
     "get_default_batch_size",
     "get_default_count_hint",

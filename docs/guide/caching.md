@@ -56,6 +56,40 @@ redis.cache_dataframe(
 
 **Compression options for Parquet:** `uncompressed`, `snappy`, `gzip`, `lz4`, `zstd` (default)
 
+## Chunked Storage for Large DataFrames
+
+For large DataFrames that exceed Redis's 512MB value limit or cause memory pressure, polars-redis automatically chunks the data across multiple keys:
+
+```python
+# Automatic chunking (default: 100MB chunks)
+redis.cache_dataframe(large_df, url, key="big_result")
+
+# Custom chunk size (50MB chunks)
+redis.cache_dataframe(large_df, url, key="big_result", chunk_size_mb=50)
+
+# Disable chunking (store as single key)
+redis.cache_dataframe(df, url, key="small_result", chunk_size_mb=0)
+```
+
+Chunked data is stored using the pattern:
+- `{key}:meta` - JSON metadata (format, size, chunk count)
+- `{key}:chunk:0`, `{key}:chunk:1`, ... - Data chunks
+
+Retrieval, deletion, and other operations handle chunked data automatically.
+
+### Inspecting Cached Data
+
+Use `cache_info()` to get details about cached DataFrames:
+
+```python
+info = redis.cache_info(url, key="my_result")
+if info:
+    print(f"Size: {info['size_bytes']} bytes")
+    print(f"Chunked: {info['is_chunked']}")
+    print(f"Chunks: {info['num_chunks']}")
+    print(f"TTL: {info['ttl']}")
+```
+
 ## Time-to-Live (TTL)
 
 Set expiration for cached DataFrames:
@@ -184,10 +218,11 @@ def cache_dataframe(
     compression: str | None = None,
     compression_level: int | None = None,
     ttl: int | None = None,
+    chunk_size_mb: int | None = None,
 ) -> int
 ```
 
-Cache a DataFrame in Redis. Returns bytes written.
+Cache a DataFrame in Redis. Returns bytes written. Set `chunk_size_mb=0` to disable chunking.
 
 ### get_cached_dataframe
 
@@ -240,3 +275,17 @@ def cache_ttl(url: str, key: str) -> int | None
 ```
 
 Get remaining TTL in seconds, or None if no TTL set.
+
+### cache_info
+
+```python
+def cache_info(url: str, key: str) -> dict | None
+```
+
+Get information about a cached DataFrame. Returns a dict with keys:
+- `format`: Serialization format used
+- `size_bytes`: Total size in bytes
+- `is_chunked`: Whether data is stored in chunks
+- `num_chunks`: Number of chunks (1 if not chunked)
+- `chunk_size`: Size of each chunk in bytes
+- `ttl`: Remaining TTL in seconds, or None
