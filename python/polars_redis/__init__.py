@@ -89,6 +89,13 @@ from polars_redis._search import (
     search_hashes,
     search_json,
 )
+from polars_redis._streams import (
+    ack_entries,
+    iter_stream,
+    read_stream,
+    scan_stream,
+    stream_batches,
+)
 from polars_redis._write import (
     WriteResult,
     write_hashes,
@@ -195,6 +202,12 @@ __all__ = [
     "collect_pubsub",
     "subscribe_batches",
     "iter_batches",
+    # Stream consumption (single stream with consumer groups)
+    "read_stream",
+    "scan_stream",
+    "iter_stream",
+    "stream_batches",
+    "ack_entries",
     # Environment defaults
     "get_default_batch_size",
     "get_default_count_hint",
