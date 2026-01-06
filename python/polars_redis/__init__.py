@@ -35,6 +35,10 @@ from polars_redis._cache import (
     get_cached_dataframe,
     scan_cached,
 )
+from polars_redis._decorator import (
+    cache,
+    cache_lazy,
+)
 
 # Re-export from submodules
 from polars_redis._infer import (
@@ -179,6 +183,9 @@ __all__ = [
     "cache_exists",
     "cache_ttl",
     "cache_info",
+    # Caching decorators
+    "cache",
+    "cache_lazy",
     # Environment defaults
     "get_default_batch_size",
     "get_default_count_hint",
