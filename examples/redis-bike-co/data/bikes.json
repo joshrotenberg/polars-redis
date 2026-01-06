@@ -1,0 +1,1336 @@
+{
+  "data": [
+    {
+      "stockcode": "RBC00001",
+      "model": "Deimos",
+      "brand": "Ergonom",
+      "price": 184950,
+      "type": "Enduro Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 14.0
+      },
+      "description": "Redesigned for the 2020 model year, this bike impressed our testers and is the best all-around trail bike we've ever tested. It has a lightweight frame and all-carbon fork, with cables routed internally. It's for the rider who wants both efficiency and capability."
+    },
+    {
+      "stockcode": "RBC00002",
+      "model": "Vanth",
+      "brand": "Tots",
+      "price": 220550,
+      "type": "eBikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 13.0
+      },
+      "description": "If you're looking for the best commuter eBike for your trip to and from the office, that will keep you rolling from home to work. The hydraulic disc brakes provide powerful and modulated braking even in wet conditions, whilst the 3x8 drivetrain offers a huge choice of gears. If you're after a budget option, this is one of the best bikes you could get."
+    },
+    {
+      "stockcode": "RBC00003",
+      "model": "Kirk",
+      "brand": "Bold bicycles",
+      "price": 24999,
+      "type": "Kids Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 7.8
+      },
+      "description": "These bikes are pretty easy to ride while also being lightweight enough and quite durable. At this price point, you get a Shimano 105 hydraulic groupset with a RS510 crank set. The wheels have had a slight upgrade for 2022, so you're now getting DT Swiss R470 rims with the Formula hubs. Put it all together and you get a bike that helps redefine what can be done for this price."
+    },
+    {
+      "stockcode": "RBC00004",
+      "model": "Phoebe",
+      "brand": "Nord",
+      "price": 203475,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "carbon",
+        "weight": 13.1
+      },
+      "description": "This is a mid-travel trail slayer that is a fantastic daily driver or one bike quiver. The Shimano Claris 8-speed groupset gives plenty of gear range to tackle hills and there's room for mudguards and a rack too.  This is the bike for the rider who wants trail manners with low fuss ownership."
+    },
+    {
+      "stockcode": "RBC00005",
+      "model": "Telesto",
+      "brand": "BikeShind",
+      "price": 230000,
+      "type": "Enduro Bikes",
+      "specs": {
+        "material": "carbon",
+        "weight": 16.3
+      },
+      "description": "The new version with 142mm rear, 160mm front travel is longer and slacker than its previous generation, but it's also a bit taller and steeper than much of its competition. With slick-shifting Claris gears from Shimano, this is a bike which doesn't break the bank and delivers craved performance.  That said, we feel this bike is a fantastic option for the rider seeking the versatility that this highly adjustable bike provides."
+    },
+    {
+      "stockcode": "RBC00006",
+      "model": "Jupiter",
+      "brand": "Breakout",
+      "price": 37485,
+      "type": "Kids Bikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 9.1
+      },
+      "description": "The innovative braking system on this bike has been a game changer in the kids' bike world. The hydraulic disc brakes provide powerful and modulated braking even in wet conditions, whilst the 3x8 drivetrain offers a huge choice of gears. It's for the rider who wants both efficiency and capability."
+    },
+    {
+      "stockcode": "RBC00007",
+      "model": "Varuna",
+      "brand": "Breakout",
+      "price": 137821,
+      "type": "Kids Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 11.3
+      },
+      "description": "For shy or agressive riders, paved or dirt trails, this bike boasts kid-friendly geometry and strong quality parts at a minimal price point. The Plush saddle softens over time with use. The included Seatpost, however, is easily adjustable and adds to this bike's fantastic rating, as do the hydraulic disc brakes from Tektro. All in all it's an impressive package for the price, making it very competitive."
+    },
+    {
+      "stockcode": "RBC00008",
+      "model": "Polydeuces",
+      "brand": "7th Generation",
+      "price": 52350,
+      "type": "Road Bikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 11.4
+      },
+      "description": "Sharing features of more expensive bikes, this bike has a compact frame with a sloping top tube, D-Fuse seatpost and carbon fork. That gives great comfort and handling, letting you ride for longer and inspiring confidence. The Shimano gear system effectively does away with an external cassette, so is super low maintenance in terms of wear and tear. It's for the rider who wants both efficiency and capability."
+    },
+    {
+      "stockcode": "RBC00009",
+      "model": "Quaoar",
+      "brand": "nHill",
+      "price": 66650,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 7.9
+      },
+      "description": "Redesigned for the 2020 model year, this bike impressed our testers and is the best all-around trail bike we've ever tested. The Shimano gear system effectively does away with an external cassette, so is super low maintenance in terms of wear and tear. All in all it's an impressive package for the price, making it very competitive."
+    },
+    {
+      "stockcode": "RBC00010",
+      "model": "Salacia",
+      "brand": "Bold bicycles",
+      "price": 74299,
+      "type": "Commuter Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 16.6
+      },
+      "description": "This bike is a great option for anyone who just wants a bike to get about on. With a slick-shifting Claris gears from Shimano, this is a bike which doesn't break the bank and delivers craved performance.  It's for the rider who wants both efficiency and capability."
+    },
+    {
+      "stockcode": "RBC00011",
+      "model": "Weywot",
+      "brand": "BikeShind",
+      "price": 7850,
+      "type": "Kids Mountain Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 13.8
+      },
+      "description": "This bike gives kids aged six years and older a durable and uberlight mountain bike for their first experience on tracks and easy cruising through forests and fields. A set of powerful Shimano hydraulic disc brakes provide ample stopping ability. If you're after a budget option, this is one of the best bikes you could get."
+    },
+    {
+      "stockcode": "RBC00012",
+      "model": "Janeway",
+      "brand": "Tots",
+      "price": 145675,
+      "type": "Enduro Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 14.7
+      },
+      "description": "Redesigned for the 2020 model year, this bike impressed our testers and is the best all-around trail bike we've ever tested. The hydraulic disc brakes provide powerful and modulated braking even in wet conditions, whilst the 3x8 drivetrain offers a huge choice of gears. It comes fully assembled (no convoluted instructions!) and includes a sturdy helmet at no cost."
+    },
+    {
+      "stockcode": "RBC00013",
+      "model": "Ariel",
+      "brand": "Bold bicycles",
+      "price": 202490,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 14.3
+      },
+      "description": "This is a mid-travel trail slayer that is a fantastic daily driver or one bike quiver. The Shimano Claris 8-speed groupset gives plenty of gear range to tackle hills and there's room for mudguards and a rack too.  It's for the rider who wants both efficiency and capability."
+    },
+    {
+      "stockcode": "RBC00014",
+      "model": "Miranda",
+      "brand": "Breakout",
+      "price": 22279,
+      "type": "Kids Mountain Bikes",
+      "specs": {
+        "material": "carbon",
+        "weight": 12.3
+      },
+      "description": "Kids want to ride with as little weight as possible. Especially on an incline! The Shimano gear system effectively does away with an external cassette, so is super low maintenance in terms of wear and tear. This is the bike for the rider who wants trail manners with low fuss ownership."
+    },
+    {
+      "stockcode": "RBC00015",
+      "model": "Hygiea",
+      "brand": "Bicyk",
+      "price": 201355,
+      "type": "Road Bikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 7.0
+      },
+      "description": "This bike delivers a lot of bike for the money. The hydraulic disc brakes provide powerful and modulated braking even in wet conditions, whilst the 3x8 drivetrain offers a huge choice of gears. That said, we feel this bike is a fantastic option for the rider seeking the versatility that this highly adjustable bike provides."
+    },
+    {
+      "stockcode": "RBC00016",
+      "model": "Proteus",
+      "brand": "Ergonom",
+      "price": 210316,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "carbon",
+        "weight": 13.9
+      },
+      "description": "This bike descends with authority, the revised FSR suspension platform is perfection and it eats everything in its path. Try it uphill and it climbs pretty darn well with a supportive pedaling platform and a steep seat tube angle. The carefully crafted 50-34 tooth chainset and 11-32 tooth cassette give an easy-on-the-legs bottom gear for climbing, and the high-quality Vittoria Zaffiro tires give balance and grip.It includes a low-step frame , our memory foam seat, bump-resistant shocks and conveniently placed thumb throttle. If you're after a budget option, this is one of the best bikes you could get."
+    },
+    {
+      "stockcode": "RBC00017",
+      "model": "Weywot",
+      "brand": "BikeShind",
+      "price": 32490,
+      "type": "Kids Mountain Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 7.2
+      },
+      "description": "Small and powerful, this bike is the best ride for the smallest of tikes. The Shimano Claris 8-speed groupset gives plenty of gear range to tackle hills and there's room for mudguards and a rack too.  It's for the rider who wants both efficiency and capability."
+    },
+    {
+      "stockcode": "RBC00018",
+      "model": "Dione",
+      "brand": "Bold bicycles",
+      "price": 228526,
+      "type": "Enduro Bikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 7.1
+      },
+      "description": "This bike fills the space between a pure XC race bike, and a trail bike. It is light, with shorter travel (115mm rear and 120mm front), and quick handling. The carefully crafted 50-34 tooth chainset and 11-32 tooth cassette give an easy-on-the-legs bottom gear for climbing, and the high-quality Vittoria Zaffiro tires give balance and grip.It includes a low-step frame , our memory foam seat, bump-resistant shocks and conveniently placed thumb throttle. It comes fully assembled (no convoluted instructions!) and includes a sturdy helmet at no cost."
+    },
+    {
+      "stockcode": "RBC00019",
+      "model": "Janeway",
+      "brand": "ScramBikes",
+      "price": 18613,
+      "type": "Kids Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 11.2
+      },
+      "description": "The latest kid-specific bike brand on the scene, this brand aims to offer high-end, kid-friendly bike geometry at an economy price point. The Shimano Claris 8-speed groupset gives plenty of gear range to tackle hills and there's room for mudguards and a rack too.  All in all it's an impressive package for the price, making it very competitive."
+    },
+    {
+      "stockcode": "RBC00020",
+      "model": "Phoebe",
+      "brand": "Nord",
+      "price": 162439,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 15.9
+      },
+      "description": "This bike fills the space between a pure XC race bike, and a trail bike. It is light, with shorter travel (115mm rear and 120mm front), and quick handling. At this price point, you get a Shimano 105 hydraulic groupset with a RS510 crank set. The wheels have had a slight upgrade for 2022, so you're now getting DT Swiss R470 rims with the Formula hubs. If you're after a budget option, this is one of the best bikes you could get."
+    },
+    {
+      "stockcode": "RBC00021",
+      "model": "Sol",
+      "brand": "Velorim",
+      "price": 177112,
+      "type": "Road Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 15.8
+      },
+      "description": "Sharing features of more expensive bikes, this bike has a compact frame with a sloping top tube, D-Fuse seatpost and carbon fork. That gives great comfort and handling, letting you ride for longer and inspiring confidence. The carefully crafted 50-34 tooth chainset and 11-32 tooth cassette give an easy-on-the-legs bottom gear for climbing, and the high-quality Vittoria Zaffiro tires give balance and grip.It includes a low-step frame , our memory foam seat, bump-resistant shocks and conveniently placed thumb throttle. All in all it's an impressive package for the price, making it very competitive."
+    },
+    {
+      "stockcode": "RBC00022",
+      "model": "Quaoar",
+      "brand": "Peaknetic",
+      "price": 34577,
+      "type": "Kids Mountain Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 11.8
+      },
+      "description": "This bike gives kids aged six years and older a durable and uberlight mountain bike for their first experience on tracks and easy cruising through forests and fields. At this price point, you get a Shimano 105 hydraulic groupset with a RS510 crank set. The wheels have had a slight upgrade for 2022, so you're now getting DT Swiss R470 rims with the Formula hubs. It comes fully assembled (no convoluted instructions!) and includes a sturdy helmet at no cost."
+    },
+    {
+      "stockcode": "RBC00023",
+      "model": "Saturn",
+      "brand": "nHill",
+      "price": 55435,
+      "type": "Road Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 13.3
+      },
+      "description": "This is our entry-level road bike for 2023 but it not a basic machine. The carefully crafted 50-34 tooth chainset and 11-32 tooth cassette give an easy-on-the-legs bottom gear for climbing, and the high-quality Vittoria Zaffiro tires give balance and grip.It includes a low-step frame , our memory foam seat, bump-resistant shocks and conveniently placed thumb throttle. All bikes are great in their own way, but this bike will be one of the best you've ridden."
+    },
+    {
+      "stockcode": "RBC00024",
+      "model": "Miranda",
+      "brand": "Eva",
+      "price": 23789,
+      "type": "Kids Bikes",
+      "specs": {
+        "material": "carbon",
+        "weight": 10.5
+      },
+      "description": "The latest kid-specific bike brand on the scene, this brand aims to offer high-end, kid-friendly bike geometry at an economy price point. The Shimano gear system effectively does away with an external cassette, so is super low maintenance in terms of wear and tear. All bikes are great in their own way, but this bike will be one of the best you've ridden."
+    },
+    {
+      "stockcode": "RBC00025",
+      "model": "Umbriel",
+      "brand": "nHill",
+      "price": 36052,
+      "type": "Kids Bikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 8.1
+      },
+      "description": "The innovative braking system on this bike has been a game changer in the kids' bike world. The Shimano Claris 8-speed groupset gives plenty of gear range to tackle hills and there's room for mudguards and a rack too.  That said, we feel this bike is a fantastic option for the rider seeking the versatility that this highly adjustable bike provides."
+    },
+    {
+      "stockcode": "RBC00026",
+      "model": "Nereid",
+      "brand": "Peaknetic",
+      "price": 74814,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 8.3
+      },
+      "description": "Redesigned for the 2020 model year, this bike impressed our testers and is the best all-around trail bike we've ever tested. The Shimano Claris 8-speed groupset gives plenty of gear range to tackle hills and there's room for mudguards and a rack too.  That said, we feel this bike is a fantastic option for the rider seeking the versatility that this highly adjustable bike provides."
+    },
+    {
+      "stockcode": "RBC00027",
+      "model": "Salacia",
+      "brand": "Tots",
+      "price": 141533,
+      "type": "Commuter Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 9.9
+      },
+      "description": "A real joy to ride, this bike got very high scores in last year's Bike of the year report. The carefully crafted 50-34 tooth chainset and 11-32 tooth cassette give an easy-on-the-legs bottom gear for climbing, and the high-quality Vittoria Zaffiro tires give balance and grip.It includes a low-step frame , our memory foam seat, bump-resistant shocks and conveniently placed thumb throttle. All bikes are great in their own way, but this bike will be one of the best you've ridden."
+    },
+    {
+      "stockcode": "RBC00028",
+      "model": "Enterprise",
+      "brand": "Bold bicycles",
+      "price": 227103,
+      "type": "Road Bikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 13.0
+      },
+      "description": "This is our entry-level road bike for 2023 but it not a basic machine. The Plush saddle softens over time with use. The included Seatpost, however, is easily adjustable and adds to this bike's fantastic rating, as do the hydraulic disc brakes from Tektro. Put it all together and you get a bike that helps redefine what can be done for this price."
+    },
+    {
+      "stockcode": "RBC00029",
+      "model": "Mimas",
+      "brand": "nHill",
+      "price": 22329,
+      "type": "Kids Mountain Bikes",
+      "specs": {
+        "material": "carbon",
+        "weight": 7.4
+      },
+      "description": "Small and powerful, this bike is the best ride for the smallest of tikes. The Plush saddle softens over time with use. The included Seatpost, however, is easily adjustable and adds to this bike's fantastic rating, as do the hydraulic disc brakes from Tektro. It comes fully assembled (no convoluted instructions!) and includes a sturdy helmet at no cost."
+    },
+    {
+      "stockcode": "RBC00030",
+      "model": "Mimas",
+      "brand": "Bold bicycles",
+      "price": 17066,
+      "type": "Kids Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 8.7
+      },
+      "description": "The latest kid-specific bike brand on the scene, this brand aims to offer high-end, kid-friendly bike geometry at an economy price point. The Shimano gear system effectively does away with an external cassette, so is super low maintenance in terms of wear and tear. This is the bike for the rider who wants trail manners with low fuss ownership."
+    },
+    {
+      "stockcode": "RBC00031",
+      "model": "Scorpion",
+      "brand": "Bold bicycles",
+      "price": 94659,
+      "type": "Commuter Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 11.6
+      },
+      "description": "A real joy to ride, this bike got very high scores in last year's Bike of the year report. The carefully crafted 50-34 tooth chainset and 11-32 tooth cassette give an easy-on-the-legs bottom gear for climbing, and the high-quality Vittoria Zaffiro tires give balance and grip. It includes a low-step frame, our memory foam seat, bump-resistant shocks and conveniently placed thumb throttle. Put it all together and you get a bike that helps redefine what can be done for this price."
+    },
+    {
+      "stockcode": "RBC00032",
+      "model": "Telesto",
+      "brand": "ScramBikes",
+      "price": 84156,
+      "type": "Road Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 13.4
+      },
+      "description": "The women-specific, race-ready frameset has received significant upgrades for 2022 and now has a stiffer front end thanks to the upgraded SL fork. The hydraulic disc brakes provide powerful and modulated braking even in wet conditions, whilst the 3x8 drivetrain offers a huge choice of gears. That said, we feel this bike is a fantastic option for the rider seeking the versatility that this highly adjustable bike provides."
+    },
+    {
+      "stockcode": "RBC00033",
+      "model": "Telesto",
+      "brand": "nHill",
+      "price": 36565,
+      "type": "Kids Mountain Bikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 12.0
+      },
+      "description": "Small and powerful, this bike is the best ride for the smallest of tikes. The carefully crafted 50-34 tooth chainset and 11-32 tooth cassette give an easy-on-the-legs bottom gear for climbing, and the high-quality Vittoria Zaffiro tires give balance and grip. It includes a low-step frame, our memory foam seat, bump-resistant shocks and conveniently placed thumb throttle. If you're after a budget option, this is one of the best bikes you could get."
+    },
+    {
+      "stockcode": "RBC00034",
+      "model": "Callisto",
+      "brand": "7th Generation",
+      "price": 146490,
+      "type": "Road Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 12.1
+      },
+      "description": "This bike delivers a lot of bike for the money. The hydraulic disc brakes provide powerful and modulated braking even in wet conditions, whilst the 3x8 drivetrain offers a huge choice of gears. All in all it's an impressive package for the price, making it very competitive."
+    },
+    {
+      "stockcode": "RBC00035",
+      "model": "Ncc1702",
+      "brand": "nHill",
+      "price": 7471,
+      "type": "Kids Mountain Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 9.4
+      },
+      "description": "This bike is an entry-level kids mountain bike that is a good choice if your MTB enthusiast is just taking to the trails and wants good suspension and easy gearing, without the cost of some more expensive models. It has a lightweight frame and all-carbon fork, with cables routed internally. It comes fully assembled (no convoluted instructions!) and includes a sturdy helmet at no cost."
+    },
+    {
+      "stockcode": "RBC00036",
+      "model": "Jupiter",
+      "brand": "Eva",
+      "price": 86350,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 8.3
+      },
+      "description": "This is a mid-travel trail slayer that is a fantastic daily driver or one bike quiver. At this price point, you get a Shimano 105 hydraulic groupset with a RS510 crank set. The wheels have had a slight upgrade for 2022, so you're now getting DT Swiss R470 rims with the Formula hubs. All in all it's an impressive package for the price, making it very competitive."
+    },
+    {
+      "stockcode": "RBC00037",
+      "model": "Titan",
+      "brand": "Bold bicycles",
+      "price": 242096,
+      "type": "eBikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 14.8
+      },
+      "description": "This bike feels like a higher-quality product than the price indicates. At this price point, you get a Shimano 105 hydraulic groupset with a RS510 crank set. The wheels have had a slight upgrade for 2022, so you're now getting DT Swiss R470 rims with the Formula hubs. It's for the rider who wants both efficiency and capability."
+    },
+    {
+      "stockcode": "RBC00038",
+      "model": "Salacia",
+      "brand": "Bold bicycles",
+      "price": 218723,
+      "type": "Commuter Bikes",
+      "specs": {
+        "material": "carbon",
+        "weight": 12.8
+      },
+      "description": "This bike is a great option for anyone who just wants a bike to get about on At this price point, you get a Shimano 105 hydraulic groupset with a RS510 crank set. The wheels have had a slight upgrade for 2022, so you're now getting DT Swiss R470 rims with the Formula hubs. That said, we feel this bike is a fantastic option for the rider seeking the versatility that this highly adjustable bike provides."
+    },
+    {
+      "stockcode": "RBC00039",
+      "model": "Mercury",
+      "brand": "ScramBikes",
+      "price": 7947,
+      "type": "Kids Mountain Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 8.5
+      },
+      "description": "This bike is an entry-level kids mountain bike that is a good choice if your MTB enthusiast is just taking to the trails and wants good suspension and easy gearing, without the cost of some more expensive models. A set of powerful Shimano hydraulic disc brakes provide ample stopping ability. If you're after a budget option, this is one of the best bikes you could get."
+    },
+    {
+      "stockcode": "RBC00040",
+      "model": "Polydeuces",
+      "brand": "Velorim",
+      "price": 20384,
+      "type": "Kids Mountain Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 14.3
+      },
+      "description": "This bike gives kids aged six years and older a durable and uberlight mountain bike for their first experience on tracks and easy cruising through forests and fields. The Plush saddle softens over time with use. The included Seatpost, however, is easily adjustable and adds to this bike's fantastic rating, as do the hydraulic disc brakes from Tektro. If you're after a budget option, this is one of the best bikes you could get."
+    },
+    {
+      "stockcode": "RBC00041",
+      "model": "Orcus",
+      "brand": "Peaknetic",
+      "price": 229872,
+      "type": "eBikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 10.2
+      },
+      "description": "A city eBike that could double as a short-haul commuter. The hydraulic disc brakes provide powerful and modulated braking even in wet conditions, whilst the 3x8 drivetrain offers a huge choice of gears. This is the bike for the rider who wants trail manners with low fuss ownership."
+    },
+    {
+      "stockcode": "RBC00042",
+      "model": "Tethys",
+      "brand": "Velorim",
+      "price": 176110,
+      "type": "Enduro Bikes",
+      "specs": {
+        "material": "carbon",
+        "weight": 9.7
+      },
+      "description": "This bike descends with authority, the revised FSR suspension platform is perfection and it eats everything in its path. Try it uphill and it climbs pretty darn well with a supportive pedaling platform and a steep seat tube angle. A set of powerful Shimano hydraulic disc brakes provide ample stopping ability. It's for the rider who wants both efficiency and capability."
+    },
+    {
+      "stockcode": "RBC00043",
+      "model": "Janeway",
+      "brand": "Bicyk",
+      "price": 55137,
+      "type": "Enduro Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 10.0
+      },
+      "description": "This bike fills the space between a pure XC race bike, and a trail bike. It is light, with shorter travel (115mm rear and 120mm front), and quick handling. The hydraulic disc brakes provide powerful and modulated braking even in wet conditions, whilst the 3x8 drivetrain offers a huge choice of gears. It's for the rider who wants both efficiency and capability."
+    },
+    {
+      "stockcode": "RBC00044",
+      "model": "Phobos",
+      "brand": "Classic wheels",
+      "price": 7728,
+      "type": "Kids Mountain Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 14.4
+      },
+      "description": "Small and powerful, this bike is the best ride for the smallest of tikes. The Shimano gear system effectively does away with an external cassette, so is super low maintenance in terms of wear and tear. That said, we feel this bike is a fantastic option for the rider seeking the versatility that this highly adjustable bike provides."
+    },
+    {
+      "stockcode": "RBC00045",
+      "model": "Polydeuces",
+      "brand": "Tots",
+      "price": 93830,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 11.1
+      },
+      "description": "The new version with 142mm rear, 160mm front travel is longer and slacker than its previous generation, but it's also a bit taller and steeper than much of its competition.  The hydraulic disc brakes provide powerful and modulated braking even in wet conditions, whilst the 3x8 drivetrain offers a huge choice of gears. That said, we feel this bike is a fantastic option for the rider seeking the versatility that this highly adjustable bike provides."
+    },
+    {
+      "stockcode": "RBC00046",
+      "model": "Rhea",
+      "brand": "Eva",
+      "price": 139881,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 16.1
+      },
+      "description": "The new version with 142mm rear, 160mm front travel is longer and slacker than its previous generation, but it's also a bit taller and steeper than much of its competition.  It has a lightweight frame and all-carbon fork, with cables routed internally. That said, we feel this bike is a fantastic option for the rider seeking the versatility that this highly adjustable bike provides."
+    },
+    {
+      "stockcode": "RBC00047",
+      "model": "Haumea",
+      "brand": "Nord",
+      "price": 155286,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 11.1
+      },
+      "description": "Redesigned for the 2020 model year, this bike impressed our testers and is the best all-around trail bike we've ever tested. The carefully crafted 50-34 tooth chainset and 11-32 tooth cassette give an easy-on-the-legs bottom gear for climbing, and the high-quality Vittoria Zaffiro tires give balance and grip.It includes a low-step frame , our memory foam seat, bump-resistant shocks and conveniently placed thumb throttle. That said, we feel this bike is a fantastic option for the rider seeking the versatility that this highly adjustable bike provides."
+    },
+    {
+      "stockcode": "RBC00048",
+      "model": "Picard",
+      "brand": "Pedal pals",
+      "price": 167197,
+      "type": "Enduro Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 16.6
+      },
+      "description": "This is a mid-travel trail slayer that is a fantastic daily driver or one bike quiver. At this price point, you get a Shimano 105 hydraulic groupset with a RS510 crank set. The wheels have had a slight upgrade for 2022, so you're now getting DT Swiss R470 rims with the Formula hubs. All in all it's an impressive package for the price, making it very competitive."
+    },
+    {
+      "stockcode": "RBC00049",
+      "model": "Mercury",
+      "brand": "BikeShind",
+      "price": 234691,
+      "type": "eBikes",
+      "specs": {
+        "material": "carbon",
+        "weight": 16.2
+      },
+      "description": "Urban riding, gentle off-road ebike. The Shimano Claris 8-speed groupset gives plenty of gear range to tackle hills and there's room for mudguards and a rack too.  It comes fully assembled (no convoluted instructions!) and includes a sturdy helmet at no cost."
+    },
+    {
+      "stockcode": "RBC00050",
+      "model": "Titania",
+      "brand": "Bicyk",
+      "price": 226645,
+      "type": "Road Bikes",
+      "specs": {
+        "material": "carbon",
+        "weight": 16.2
+      },
+      "description": "The bike has a lightweight form factor, making it easier for seniors to use. At this price point, you get a Shimano 105 hydraulic groupset with a RS510 crank set. The wheels have had a slight upgrade for 2022, so you're now getting DT Swiss R470 rims with the Formula hubs. It comes fully assembled (no convoluted instructions!) and includes a sturdy helmet at no cost."
+    },
+    {
+      "stockcode": "RBC00051",
+      "model": "Uranus",
+      "brand": "Breakout",
+      "price": 19924,
+      "type": "Kids Bikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 11.2
+      },
+      "description": "Easy, intuitive, and very lightweight, these bikes are carefully designed to make bike riding as natural as possible. The Shimano Claris 8-speed groupset gives plenty of gear range to tackle hills and there's room for mudguards and a rack too.  It comes fully assembled (no convoluted instructions!) and includes a sturdy helmet at no cost."
+    },
+    {
+      "stockcode": "RBC00052",
+      "model": "Sol",
+      "brand": "Velorim",
+      "price": 16783,
+      "type": "Kids Mountain Bikes",
+      "specs": {
+        "material": "carbon",
+        "weight": 13.2
+      },
+      "description": "This bike is an entry-level kids mountain bike that is a good choice if your MTB enthusiast is just taking to the trails and wants good suspension and easy gearing, without the cost of some more expensive models. At this price point, you get a Shimano 105 hydraulic groupset with a RS510 crank set. The wheels have had a slight upgrade for 2022, so you're now getting DT Swiss R470 rims with the Formula hubs. If you're after a budget option, this is one of the best bikes you could get."
+    },
+    {
+      "stockcode": "RBC00053",
+      "model": "Pallas",
+      "brand": "Velorim",
+      "price": 165821,
+      "type": "eBikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 10.7
+      },
+      "description": "Urban riding, gentle off-road ebike. The Plush saddle softens over time with use. The included Seatpost, however, is easily adjustable and adds to this bike's fantastic rating, as do the hydraulic disc brakes from Tektro. If you're after a budget option, this is one of the best bikes you could get."
+    },
+    {
+      "stockcode": "RBC00054",
+      "model": "Europa",
+      "brand": "Tots",
+      "price": 83844,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 13.8
+      },
+      "description": "Redesigned for the 2020 model year, this bike impressed our testers and is the best all-around trail bike we've ever tested. The Shimano Claris 8-speed groupset gives plenty of gear range to tackle hills and there's room for mudguards and a rack too.  It's for the rider who wants both efficiency and capability."
+    },
+    {
+      "stockcode": "RBC00055",
+      "model": "Uranus",
+      "brand": "Bold bicycles",
+      "price": 156366,
+      "type": "Commuter Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 15.9
+      },
+      "description": "A real joy to ride, this bike got very high scores in last year's Bike of the year report. At this price point, you get a Shimano 105 hydraulic groupset with a RS510 crank set. The wheels have had a slight upgrade for 2022, so you're now getting DT Swiss R470 rims with the Formula hubs. It's for the rider who wants both efficiency and capability."
+    },
+    {
+      "stockcode": "RBC00056",
+      "model": "Vanth",
+      "brand": "nHill",
+      "price": 17547,
+      "type": "Kids Bikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 14.6
+      },
+      "description": "The innovative braking system on this bike has been a game changer in the kids' bike world. It has a lightweight frame and all-carbon fork, with cables routed internally. If you're after a budget option, this is one of the best bikes you could get."
+    },
+    {
+      "stockcode": "RBC00057",
+      "model": "Nereid",
+      "brand": "nHill",
+      "price": 22261,
+      "type": "Kids Mountain Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 7.5
+      },
+      "description": "Kids want to ride with as little weight as possible. Especially on an incline! The carefully crafted 50-34 tooth chainset and 11-32 tooth cassette give an easy-on-the-legs bottom gear for climbing, and the high-quality Vittoria Zaffiro tires give balance and grip.It includes a low-step frame , our memory foam seat, bump-resistant shocks and conveniently placed thumb throttle. All bikes are great in their own way, but this bike will be one of the best you've ridden."
+    },
+    {
+      "stockcode": "RBC00058",
+      "model": "Quaoar",
+      "brand": "Peaknetic",
+      "price": 7764,
+      "type": "Kids Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 9.0
+      },
+      "description": "For shy or agressive riders, paved or dirt trails, this bike boasts kid-friendly geometry and strong quality parts at a minimal price point. The carefully crafted 50-34 tooth chainset and 11-32 tooth cassette give an easy-on-the-legs bottom gear for climbing, and the high-quality Vittoria Zaffiro tires give balance and grip.It includes a low-step frame, our memory foam seat, bump-resistant shocks and conveniently placed thumb throttle. Put it all together and you get a bike that helps redefine what can be done for this price."
+    },
+    {
+      "stockcode": "RBC00059",
+      "model": "Vanth",
+      "brand": "Ergonom",
+      "price": 178352,
+      "type": "Road Bikes",
+      "specs": {
+        "material": "carbon",
+        "weight": 13.5
+      },
+      "description": "Sharing features of more expensive bikes, this bike has a compact frame with a sloping top tube, D-Fuse seatpost and carbon fork. That gives great comfort and handling, letting you ride for longer and inspiring confidence. The Plush saddle softens over time with use. The included Seatpost, however, is easily adjustable and adds to this bike's fantastic rating, as do the hydraulic disc brakes from Tektro. Put it all together and you get a bike that helps redefine what can be done for this price."
+    },
+    {
+      "stockcode": "RBC00060",
+      "model": "Umbriel",
+      "brand": "7th Generation",
+      "price": 183789,
+      "type": "Commuter Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 12.3
+      },
+      "description": "The perfect commuter bike for anyone who is constantly rushing around, and prone to forgetting to charge lights, maintain their bike, or not quite getting round to checking weather reports. With a slick-shifting Claris gears from Shimano, this is a bike which doesn't break the bank and delivers craved performance.  All in all it's an impressive package for the price, making it very competitive."
+    },
+    {
+      "stockcode": "RBC00061",
+      "model": "Titan",
+      "brand": "nHill",
+      "price": 16343,
+      "type": "Kids Bikes",
+      "specs": {
+        "material": "carbon",
+        "weight": 9.5
+      },
+      "description": "The latest kid-specific bike brand on the scene, this brand aims to offer high-end, kid-friendly bike geometry at an economy price point. The hydraulic disc brakes provide powerful and modulated braking even in wet conditions, whilst the 3x8 drivetrain offers a huge choice of gears. It comes fully assembled (no convoluted instructions!) and includes a sturdy helmet at no cost."
+    },
+    {
+      "stockcode": "RBC00062",
+      "model": "Orcus",
+      "brand": "BikeShind",
+      "price": 224732,
+      "type": "Enduro Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 11.2
+      },
+      "description": "This bike descends with authority, the revised FSR suspension platform is perfection and it eats everything in its path. Try it uphill and it climbs pretty darn well with a supportive pedaling platform and a steep seat tube angle. At this price point, you get a Shimano 105 hydraulic groupset with a RS510 crank set. The wheels have had a slight upgrade for 2022, so you're now getting DT Swiss R470 rims with the Formula hubs. Put it all together and you get a bike that helps redefine what can be done for this price."
+    },
+    {
+      "stockcode": "RBC00063",
+      "model": "Oberon",
+      "brand": "Tots",
+      "price": 22281,
+      "type": "Kids Mountain Bikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 13.5
+      },
+      "description": "Small and powerful, this bike is the best ride for the smallest of tikes. The Plush saddle softens over time with use. The included Seatpost, however, is easily adjustable and adds to this bike's fantastic rating, as do the hydraulic disc brakes from Tektro. All in all it's an impressive package for the price, making it very competitive."
+    },
+    {
+      "stockcode": "RBC00064",
+      "model": "Pluto",
+      "brand": "7th Generation",
+      "price": 191615,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 7.6
+      },
+      "description": "This bike fills the space between a pure XC race bike, and a trail bike. It is light, with shorter travel (115mm rear and 120mm front), and quick handling. With a slick-shifting Claris gearset from Shimanos, this is a bike which doesn't break the bank and delivers craved performance.  It comes fully assembled (no convoluted instructions!) and includes a sturdy helmet at no cost."
+    },
+    {
+      "stockcode": "RBC00065",
+      "model": "Charon",
+      "brand": "Classic wheels",
+      "price": 151844,
+      "type": "Enduro Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 9.4
+      },
+      "description": "This is a mid-travel trail slayer that is a fantastic daily driver or one bike quiver. The Shimano Claris 8-speed groupset gives plenty of gear range to tackle hills and there's room for mudguards and a rack too.  It comes fully assembled (no convoluted instructions!) and includes a sturdy helmet at no cost."
+    },
+    {
+      "stockcode": "RBC00066",
+      "model": "Phoebe",
+      "brand": "Tots",
+      "price": 223327,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 14.5
+      },
+      "description": "Redesigned for the 2020 model year, this bike impressed our testers and is the best all-around trail bike we've ever tested. The Shimano Claris 8-speed groupset gives plenty of gear range to tackle hills and there's room for mudguards and a rack too.  It's for the rider who wants both efficiency and capability."
+    },
+    {
+      "stockcode": "RBC00067",
+      "model": "Mars",
+      "brand": "Bicyk",
+      "price": 17350,
+      "type": "Kids Mountain Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 9.5
+      },
+      "description": "Kids want to ride with as little weight as possible. Especially on an incline! The Shimano gear system effectively does away with an external cassette, so is super low maintenance in terms of wear and tear. All bikes are great in their own way, but this bike will be one of the best you've ridden."
+    },
+    {
+      "stockcode": "RBC00068",
+      "model": "Ariel",
+      "brand": "Bold bicycles",
+      "price": 13780,
+      "type": "Kids Mountain Bikes",
+      "specs": {
+        "material": "carbon",
+        "weight": 9.3
+      },
+      "description": "Kids want to ride with as little weight as possible. Especially on an incline! With a slick-shifting Claris gears from Shimano's, this is a bike which doesn't break the bank and delivers craved performance.  Put it all together and you get a bike that helps redefine what can be done for this price."
+    },
+    {
+      "stockcode": "RBC00069",
+      "model": "Hiiaka",
+      "brand": "Peaknetic",
+      "price": 153895,
+      "type": "Enduro Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 9.2
+      },
+      "description": "This bike fills the space between a pure XC race bike, and a trail bike. It is light, with shorter travel (115mm rear and 120mm front), and quick handling. With a slick-shifting Claris gears from Shimano's, this is a bike which doesn't break the bank and delivers craved performance.  It's for the rider who wants both efficiency and capability."
+    },
+    {
+      "stockcode": "RBC00070",
+      "model": "Tethys",
+      "brand": "Nord",
+      "price": 32183,
+      "type": "Kids Mountain Bikes",
+      "specs": {
+        "material": "carbon",
+        "weight": 9.9
+      },
+      "description": "Kids want to ride with as little weight as possible. Especially on an incline! The Shimano Claris 8-speed groupset gives plenty of gear range to tackle hills and there's room for mudguards and a rack too.  All bikes are great in their own way, but this bike will be one of the best you've ridden."
+    },
+    {
+      "stockcode": "RBC00071",
+      "model": "Io",
+      "brand": "7th Generation",
+      "price": 227369,
+      "type": "eBikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 8.7
+      },
+      "description": "Urban riding, gentle off-road ebike. With a slick-shifting Claris gears from Shimano, this is a bike which doesn't break the bank and delivers craved performance.  Put it all together and you get a bike that helps redefine what can be done for this price."
+    },
+    {
+      "stockcode": "RBC00072",
+      "model": "Ariel",
+      "brand": "Velorim",
+      "price": 172833,
+      "type": "Road Bikes",
+      "specs": {
+        "material": "carbon",
+        "weight": 10.9
+      },
+      "description": "The bike has a lightweight form factor, making it easier for seniors to use. The hydraulic disc brakes provide powerful and modulated braking even in wet conditions, whilst the 3x8 drivetrain offers a huge choice of gears. It's for the rider who wants both efficiency and capability."
+    },
+    {
+      "stockcode": "RBC00073",
+      "model": "Makemake",
+      "brand": "Breakout",
+      "price": 174911,
+      "type": "Commuter Bikes",
+      "specs": {
+        "material": "carbon",
+        "weight": 12.9
+      },
+      "description": "The perfect commuter bike for anyone who is constantly rushing around, and prone to forgetting to charge lights, maintain their bike, or not quite getting round to checking weather reports. The Shimano Claris 8-speed groupset gives plenty of gear range to tackle hills and there's room for mudguards and a rack too.  Put it all together and you get a bike that helps redefine what can be done for this price."
+    },
+    {
+      "stockcode": "RBC00074",
+      "model": "Iapetus",
+      "brand": "BikeShind",
+      "price": 87236,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 7.3
+      },
+      "description": "This bike fills the space between a pure XC race bike, and a trail bike. It is light, with shorter travel (115mm rear and 120mm front), and quick handling. With a slick-shifting Claris gears from Shimano, this is a bike which doesn't break the bank and delivers craved performance.  It's for the rider who wants both efficiency and capability."
+    },
+    {
+      "stockcode": "RBC00075",
+      "model": "Tethys",
+      "brand": "Classic wheels",
+      "price": 26242,
+      "type": "Kids Mountain Bikes",
+      "specs": {
+        "material": "carbon",
+        "weight": 15.7
+      },
+      "description": "Small and powerful, this bike is the best ride for the smallest of tikes. At this price point, you get a Shimano 105 hydraulic groupset with a RS510 crank set. The wheels have had a slight upgrade for 2022, so you're now getting DT Swiss R470 rims with the Formula hubs. That said, we feel this bike is a fantastic option for the rider seeking the versatility that this highly adjustable bike provides."
+    },
+    {
+      "stockcode": "RBC00076",
+      "model": "Tethys",
+      "brand": "ScramBikes",
+      "price": 25478,
+      "type": "Kids Mountain Bikes",
+      "specs": {
+        "material": "carbon",
+        "weight": 14.7
+      },
+      "description": "Kids want to ride with as little weight as possible. Especially on an incline! With a slick-shifting Claris gears from Shimano, this is a bike which doesn't break the bank and delivers craved performance.  If you're after a budget option, this is one of the best bikes you could get."
+    },
+    {
+      "stockcode": "RBC00077",
+      "model": "Deimos",
+      "brand": "Bold bicycles",
+      "price": 118471,
+      "type": "Commuter Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 13.7
+      },
+      "description": "This bike is the perfect commuting companion for anyone just looking to get the job done With a slick-shifting Claris gears from Shimano, this is a bike which doesn't break the bank and delivers craved performance.  Put it all together and you get a bike that helps redefine what can be done for this price."
+    },
+    {
+      "stockcode": "RBC00078",
+      "model": "Iapetus",
+      "brand": "ScramBikes",
+      "price": 223002,
+      "type": "Enduro Bikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 11.8
+      },
+      "description": "The new version with 142mm rear, 160mm front travel is longer and slacker than its previous generation, but it's also a bit taller and steeper than much of its competition. With a slick-shifting Claris gears from Shimano, this is a bike which doesn't break the bank and delivers craved performance.  It comes fully assembled (no convoluted instructions!) and includes a sturdy helmet at no cost."
+    },
+    {
+      "stockcode": "RBC00079",
+      "model": "Mars",
+      "brand": "7th Generation",
+      "price": 18730,
+      "type": "Kids Mountain Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 8.9
+      },
+      "description": "This bike is an entry-level kids mountain bike that is a good choice if your MTB enthusiast is just taking to the trails and wants good suspension and easy gearing, without the cost of some more expensive models. The Shimano Claris 8-speed groupset gives plenty of gear range to tackle hills and there's room for mudguards and a rack too.  All bikes are great in their own way, but this bike will be one of the best you've ridden."
+    },
+    {
+      "stockcode": "RBC00080",
+      "model": "Falcon",
+      "brand": "Breakout",
+      "price": 168045,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 9.0
+      },
+      "description": "This bike fills the space between a pure XC race bike, and a trail bike. It is light, with shorter travel (115mm rear and 120mm front), and quick handling. The Shimano gear system effectively does away with an external cassette, so is super low maintenance in terms of wear and tear. This is the bike for the rider who wants trail manners with low fuss ownership."
+    },
+    {
+      "stockcode": "RBC00081",
+      "model": "Phobos",
+      "brand": "Bold bicycles",
+      "price": 161959,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 14.1
+      },
+      "description": "This bike fills the space between a pure XC race bike, and a trail bike. It is light, with shorter travel (115mm rear and 120mm front), and quick handling. The carefully crafted 50-34 tooth chainset and 11-32 tooth cassette give an easy-on-the-legs bottom gear for climbing, and the high-quality Vittoria Zaffiro tires give balance and grip.It includes a low-step frame, our memory foam seat, bump-resistant shocks and conveniently placed thumb throttle. That said, we feel this bike is a fantastic option for the rider seeking the versatility that this highly adjustable bike provides."
+    },
+    {
+      "stockcode": "RBC00082",
+      "model": "Jupiter",
+      "brand": "Peaknetic",
+      "price": 119039,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 8.2
+      },
+      "description": "Redesigned for the 2020 model year, this bike impressed our testers and is the best all-around trail bike we've ever tested. The carefully crafted 50-34 tooth chainset and 11-32 tooth cassette give an easy-on-the-legs bottom gear for climbing, and the high-quality Vittoria Zaffiro tires give balance and grip.It includes a low-step frame, our memory foam seat, bump-resistant shocks and conveniently placed thumb throttle. Put it all together and you get a bike that helps redefine what can be done for this price."
+    },
+    {
+      "stockcode": "RBC00083",
+      "model": "Vesta",
+      "brand": "Peaknetic",
+      "price": 17204,
+      "type": "Kids Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 8.2
+      },
+      "description": "For shy or aggressive riders, paved or dirt trails, this bike boasts kid-friendly geometry and strong quality parts at a minimal price point. The Plush saddle softens over time with use. The included Seatpost, however, is easily adjustable and adds to this bike's fantastic rating, as do the hydraulic disc brakes from Tektro. Put it all together and you get a bike that helps redefine what can be done for this price."
+    },
+    {
+      "stockcode": "RBC00084",
+      "model": "Millenium-falcon",
+      "brand": "Bicyk",
+      "price": 15959,
+      "type": "Kids Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 8.3
+      },
+      "description": "These bikes pretty easy to ride while also being lightweight enough and quite durable. The carefully crafted 50-34 tooth chainset and 11-32 tooth cassette give an easy-on-the-legs bottom gear for climbing, and the high-quality Vittoria Zaffiro tires give balance and grip.It includes a low-step frame , our memory foam seat, bump-resistant shocks and conveniently placed thumb throttle. All bikes are great in their own way, but this bike will be one of the best you've ridden."
+    },
+    {
+      "stockcode": "RBC00085",
+      "model": "Europa",
+      "brand": "BikeShind",
+      "price": 23194,
+      "type": "Kids Mountain Bikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 15.7
+      },
+      "description": "Small and powerful, this bike is the best ride for the smallest of tikes. The Plush saddle softens over time with use. The included Seatpost, however, is easily adjustable and adds to this bike's fantastic rating, as do the hydraulic disc brakes from Tektro. This is the bike for the rider who wants trail manners with low fuss ownership."
+    },
+    {
+      "stockcode": "RBC00086",
+      "model": "Iapetus",
+      "brand": "Bicyk",
+      "price": 221950,
+      "type": "Enduro Bikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 8.6
+      },
+      "description": "This is a mid-travel trail slayer that is a fantastic daily driver or one bike quiver. It has a lightweight frame and all-carbon fork, with cables routed internally. It comes fully assembled (no convoluted instructions!) and includes a sturdy helmet at no cost."
+    },
+    {
+      "stockcode": "RBC00087",
+      "model": "Ncc1702",
+      "brand": "Ergonom",
+      "price": 159085,
+      "type": "Enduro Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 9.4
+      },
+      "description": "The new version with 142mm rear, 160mm front travel is longer and slacker than its previous generation, but it's also a bit taller and steeper than much of its competition. The Shimano gear system effectively does away with an external cassette, so is super low maintenance in terms of wear and tear. It's for the rider who wants both efficiency and capability."
+    },
+    {
+      "stockcode": "RBC00088",
+      "model": "Polydeuces",
+      "brand": "Tots",
+      "price": 190856,
+      "type": "Road Bikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 8.2
+      },
+      "description": "This bike delivers a lot of bike for the money. It has a lightweight frame and all-carbon fork, with cables routed internally. Put it all together and you get a bike that helps redefine what can be done for this price."
+    },
+    {
+      "stockcode": "RBC00089",
+      "model": "Pluto",
+      "brand": "Classic wheels",
+      "price": 87830,
+      "type": "Commuter Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 12.1
+      },
+      "description": "A real joy to ride, this bike got very high scores in last year's Bike of the year report. A set of powerful Shimano hydraulic disc brakes provide ample stopping ability. If you're after a budget option, this is one of the best bikes you could get."
+    },
+    {
+      "stockcode": "RBC00090",
+      "model": "Jupiter",
+      "brand": "Classic wheels",
+      "price": 181693,
+      "type": "Enduro Bikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 11.4
+      },
+      "description": "This is a mid-travel trail slayer that is a fantastic daily driver or one bike quiver. At this price point, you get a Shimano 105 hydraulic groupset with a RS510 crank set. The wheels have had a slight upgrade for 2022, so you're now getting DT Swiss R470 rims with the Formula hubs. All bikes are great in their own way, but this bike will be one of the best you've ridden."
+    },
+    {
+      "stockcode": "RBC00091",
+      "model": "Deimos",
+      "brand": "Bicyk",
+      "price": 22595,
+      "type": "Kids Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 15.1
+      },
+      "description": "The innovative braking system on this bike has been a game changer in the kids' bike world. It has a lightweight frame and all-carbon fork, with cables routed internally. All in all it's an impressive package for the price, making it very competitive."
+    },
+    {
+      "stockcode": "RBC00092",
+      "model": "Eris",
+      "brand": "nHill",
+      "price": 178865,
+      "type": "Enduro Bikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 13.6
+      },
+      "description": "This bike descends with authority, the revised FSR suspension platform is perfection and it eats everything in its path. Try it uphill and it climbs pretty darn well with a supportive pedaling platform and a steep seat tube angle. The Shimano Claris 8-speed groupset gives plenty of gear range to tackle hills and there's room for mudguards and a rack too.  Put it all together and you get a bike that helps redefine what can be done for this price."
+    },
+    {
+      "stockcode": "RBC00093",
+      "model": "Titan",
+      "brand": "Peaknetic",
+      "price": 8359,
+      "type": "Kids Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 8.7
+      },
+      "description": "Easy, intuitive, and very lightweight, these bikes are carefully designed to make bike riding as natural as possible. The carefully crafted 50-34 tooth chainset and 11-32 tooth cassette give an easy-on-the-legs bottom gear for climbing, and the high-quality Vittoria Zaffiro tires give balance and grip. It includes a low-step frame, our memory foam seat, bump-resistant shocks and conveniently placed thumb throttle. It's for the rider who wants both efficiency and capability."
+    },
+    {
+      "stockcode": "RBC00094",
+      "model": "Vesta",
+      "brand": "Bicyk",
+      "price": 185144,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "full-carbon",
+        "weight": 9.6
+      },
+      "description": "This is a mid-travel trail slayer that is a fantastic daily driver or one bike quiver. With a slick-shifting Claris gears from Shimano, this is a bike which doesn't break the bank and delivers craved performance.  All in all it's an impressive package for the price, making it very competitive."
+    },
+    {
+      "stockcode": "RBC00095",
+      "model": "Mimas",
+      "brand": "Eva",
+      "price": 177094,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 13.8
+      },
+      "description": "This bike descends with authority, the revised FSR suspension platform is perfection and it eats everything in its path. Try it uphill and it climbs pretty darn well with a supportive pedaling platform and a steep seat tube angle. A set of powerful Shimano hydraulic disc brakes provide ample stopping ability. Put it all together and you get a bike that helps redefine what can be done for this price."
+    },
+    {
+      "stockcode": "RBC00096",
+      "model": "Proteus",
+      "brand": "nHill",
+      "price": 171679,
+      "type": "Enduro Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 16.8
+      },
+      "description": "This bike descends with authority, the revised FSR suspension platform is perfection and it eats everything in its path. Try it uphill and it climbs pretty darn well with a supportive pedaling platform and a steep seat tube angle. At this price point, you get a Shimano 105 hydraulic groupset with a RS510 crank set. The wheels have had a slight upgrade for 2022, so you're now getting DT Swiss R470 rims with the Formula hubs. It's for the rider who wants both efficiency and capability."
+    },
+    {
+      "stockcode": "RBC00097",
+      "model": "Triton",
+      "brand": "Bicyk",
+      "price": 154234,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 9.1
+      },
+      "description": "This bike fills the space between a pure XC race bike, and a trail bike. It is light, with shorter travel (115mm rear and 120mm front), and quick handling. A set of powerful Shimano hydraulic disc brakes provide ample stopping ability. It comes fully assembled (no convoluted instructions!) and includes a sturdy helmet at no cost."
+    },
+    {
+      "stockcode": "RBC00098",
+      "model": "Ganymede",
+      "brand": "Tots",
+      "price": 9439,
+      "type": "Kids Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 12.0
+      },
+      "description": "The innovative braking system on this bike has been a game changer in the kids' bike world. The hydraulic disc brakes provide powerful and modulated braking even in wet conditions, whilst the 3x8 drivetrain offers a huge choice of gears. If you're after a budget option, this is one of the best bikes you could get."
+    },
+    {
+      "stockcode": "RBC00099",
+      "model": "Proteus",
+      "brand": "ScramBikes",
+      "price": 153712,
+      "type": "Road Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 12.5
+      },
+      "description": "This is our entry-level road bike for 2013 but it not a basic machine. The Shimano Claris 8-speed groupset gives plenty of gear range to tackle hills and there's room for mudguards and a rack too.  Put it all together and you get a bike that helps redefine what can be done for this price."
+    },
+    {
+      "stockcode": "RBC00100",
+      "model": "Europa",
+      "brand": "Eva",
+      "price": 198677,
+      "type": "Commuter Bikes",
+      "specs": {
+        "material": "carbon",
+        "weight": 13.9
+      },
+      "description": "This bike is a great option for anyone who just wants a bike to get about on. A set of powerful Shimano hydraulic disc brakes provide ample stopping ability. That said, we feel this bike is a fantastic option for the rider seeking the versatility that this highly adjustable bike provides."
+    },
+    {
+      "stockcode": "RBC00101",
+      "model": "Jigger",
+      "brand": "Velorim",
+      "price": 22242,
+      "type": "Kids Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 10.0
+      },
+      "description": "Small and powerful, the Jigger is the best ride for the smallest of tikes! This is the tiniest kids’ pedal bike on the market available without a coaster brake, the Jigger is the vehicle of choice for the rare tenacious little rider raring to go. We say rare because this smokin’ little bike is not ideal for a nervous first-time rider, but it’s a true giddy up for a true speedster. The Jigger is a 12 inch lightweight kids bicycle and it will meet your little one’s need for speed. It’s a single speed bike that makes learning to pump pedals simple and intuitive. It even has  a handle in the bottom of the saddle so you can easily help your child during training!  The Jigger is among the most lightweight children’s bikes on the planet. It is designed so that 2-3 year-olds fit comfortably in a molded ride position that allows for efficient riding, balanced handling and agility. The Jigger’s frame design and gears work together so your buddingbiker can stand up out of the seat, stop rapidly, rip over trails and pump tracks. The Jigger’s is amazing on dirt or pavement. Your tike will speed down the bike path in no time. The Jigger will ship with a coaster brake. A freewheel kit is provided at no cost."
+    },
+    {
+      "stockcode": "RBC00102",
+      "model": "Hillcraft",
+      "brand": "Bicyk",
+      "price": 9856,
+      "type": "Kids Mountain Bikes",
+      "specs": {
+        "material": "carbon",
+        "weight": 11.1
+      },
+      "description": "Kids want to ride with as little weight as possible. Especially on an incline! They may be at the age when a 27.5\" wheel bike is just too clumsy coming off a 24\" bike. The Hillcraft 26 is just the solution they need! Imagine 120mm travel. Boost front/rear.  You have NOTHING to tweak because it is easy to assemble right out of the box. The Hillcraft 26 is an efficient trail trekking machine. Up or down does not matter - dominate the trails going both down and up with this amazing bike. The name Monarch comes from Monarch trail in Colorado where we love to ride.  It’s a highly technical, steep and rocky trail but the rip on the waydown is so fulfilling.  Don’t ride the trail on a hardtail! It is so much more fun on the full suspension Hillcraft!  Hit your local trail with the Hillcraft Monarch 26 to get to where you want to go."
+    },
+    {
+      "stockcode": "RBC00103",
+      "model": "Chook air 5",
+      "brand": "Nord",
+      "price": 7139,
+      "type": "Kids Mountain Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 9.1
+      },
+      "description": "The Chook Air 5 gives kids aged six years and older a durable and uberlight mountain bike for their first experience on tracks and easy cruising through forests and fields. The lower top tube makes it easy to mount and dismount in any situation, giving your kids greater safety on the trails. The Chook Air 5 is the perfect intro to mountain biking."
+    },
+    {
+      "stockcode": "RBC00104",
+      "model": "Eva 291",
+      "brand": "Eva",
+      "price": 180092,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "carbon",
+        "weight": 9.1
+      },
+      "description": "The sister company to Nord, Eva launched in 2005 as the first and only women-dedicated bicycle brand. Designed by women for women, all Eva bikes are optimized for the feminine physique using analytics from a body metrics database. If you like 29ers, try the Eva 291. It’s a brand new bike for 2022.. This full-suspension, cross-country ride has been designed for velocity. The 291 has 100mm of front and rear travel, a superlight aluminum frame and fast-rolling 29-inch wheels. Yippee!"
+    },
+    {
+      "stockcode": "RBC00105",
+      "model": "Kahuna",
+      "brand": "Noka Bikes",
+      "price": 163616,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 9.8
+      },
+      "description": "Whether you want to try your hand at XC racing or are looking for a lively trail bike that's just as inspiring on the climbs as it is over rougher ground, the Wilder is one heck of a bike built specifically for short women. Both the frames and components have been tweaked to include a women’s saddle, different bars and unique colourway."
+    },
+    {
+      "stockcode": "RBC00106",
+      "model": "XBN 2.1 Alloy",
+      "brand": "Breakout",
+      "price": 166727,
+      "type": "Road Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 7.2
+      },
+      "description": "The XBN 2.1 Alloy is our entry-level road bike – but that’s not to say that it’s a basic machine. With an internal weld aluminium frame, a full carbon fork, and the slick-shifting Claris gears from Shimano, this is a bike which doesn’t break the bank and delivers craved performance. The 6061 alloy frame is triple-butted which ensures a lighter weight and smoother ride. And it’s comfortable with dropped seat stays and the carbon fork. The carefully crafted 50-34 tooth chainset and 11-32 tooth cassette give an easy-on-the-legs bottom gear for climbing, and the high-quality Vittoria Zaffiro tires balance grip, rolling friction and puncture protection when coasting down the other side."
+    },
+    {
+      "stockcode": "RBC00107",
+      "model": "WattBike",
+      "brand": "ScramBikes",
+      "price": 189474,
+      "type": "eBikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 15.2
+      },
+      "description": "The WattBike is the best e-bike for people who still feel young at heart. It has a Bafang 500 watt geared hub motor that can reach 20 miles per hour on both steep inclines and city streets. The lithium-ion battery, which gets nearly 40 miles per charge, has a lightweight form factor, making it easier for seniors to use. It comes fully assembled (no convoluted instructions!) and includes a sturdy helmet at no cost. The Plush saddle softens over time with use. The included Seatpost, however, is easily adjustable and adds to this bike’s fantastic rating for seniors, as do the hydraulic disc brakes from Tektro."
+    },
+    {
+      "stockcode": "RBC00108",
+      "model": "Soothe Electric bike",
+      "brand": "Peaknetic",
+      "price": 160641,
+      "type": "eBikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 14.7
+      },
+      "description": "The Soothe is an everyday electric bike, from the makers of Exercycle  bikes, that conveys style while you get around the city. The Soothe lives up to its name by keeping your posture upright and relaxed for the ride ahead, keeping those aches and pains from riding at bay. It includes a low-step frame , our memory foam seat, bump-resistant shocks and conveniently placed thumb throttle."
+    },
+    {
+      "stockcode": "RBC00109",
+      "model": "Secto",
+      "brand": "Peaknetic",
+      "price": 135423,
+      "type": "Commuter Bikes",
+      "specs": {
+        "material": "aluminium",
+        "weight": 10.0
+      },
+      "description": "If you struggle with stiff fingers or a kinked neck or back after a few minutes on the road, this lightweight, aluminum bike alleviates those issues and allows you to enjoy the ride. From the ergonomic grips to the lumbar-supporting seat position, the Roll Low-Entry offers incredible comfort. The rear-inclined seat tube facilitates stability by allowing you to put a foot on the ground to balance at a stop, and the low step-over frame makes it accessible for all ability and mobility levels. The saddle is very soft, with a wide back to support your hip joints and a cutout in the center to redistribute that pressure. Rim brakes deliver satisfactory braking control, and the wide tires provide a smooth, stable ride on paved roads and gravel. Rack and fender mounts facilitate setting up the Roll Low-Entry as your preferred commuter, and the BMX-like handlebar offers space for mounting a flashlight, bell, or phone holder."
+    },
+    {
+      "stockcode": "RBC00110",
+      "model": "Summit",
+      "brand": "nHill",
+      "price": 118856,
+      "type": "Mountain Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 11.3
+      },
+      "description": "This budget mountain bike from nHill performs well both on bike paths and on the trail. The fork with 100mm of travel absorbs rough terrain. Fat Kenda Booster tires give you grip in corners and on wet trails. The Shimano Tourney drivetrain offered enough gears for finding a comfortable pace to ride uphill, and the Tektro hydraulic disc brakes break smoothly. Whether you want an affordable bike that you can take to work, but also take trail riding on the weekends or you’re just after a stable, comfortable ride for the bike path, the Summit gives a good value for money."
+    },
+    {
+      "stockcode": "RBC00111",
+      "model": "ThrillCycle",
+      "brand": "BikeShind",
+      "price": 167139,
+      "type": "Commuter Bikes",
+      "specs": {
+        "material": "alloy",
+        "weight": 12.7
+      },
+      "description": "An artsy, retro-inspired bicycle that’s as functional as it is pretty: The ThrillCycle steel frame offers a smooth ride. A 9-speed drivetrain has enough gears for coasting in the city, but we wouldn’t suggest taking it to the mountains. Fenders protect you from mud, and a rear basket lets you transport groceries, flowers and books. The ThrillCycle comes with a limited lifetime warranty, so this little guy will last you long past graduation."
+    }
+  ]
+}

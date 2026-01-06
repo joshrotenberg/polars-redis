@@ -1,0 +1,80 @@
+{
+  "data": [
+    { 
+      "storecode": "CH",
+      "storename": "Chennai",
+      "address": {
+        "street": "Arcot Road",
+        "city": "Chennai",
+        "state": "Tamil Nadu",
+        "pin": "600026",
+        "country": "India"
+      },
+      "position": "80.2057207,13.0511065",
+      "amenities": [
+        "parking", "rentals", "repairs"
+      ]
+    },
+    { 
+      "storecode": "KO",
+      "storename": "Kochi",
+      "address": {
+        "street": "Mulamkuzhi Beach Road",
+        "city": "Kochi",
+        "state": "Kerala",
+        "pin": "682002",
+        "country": "India"
+      },
+      "position": "76.2415241,9.9436983",
+      "amenities": [
+        "parking", "rentals", "repairs", "wifi"
+      ]
+    },
+    { 
+      "storecode": "BE",
+      "storename": "Bengaluru",
+      "address": {
+        "street": "Palace Road",
+        "city": "Bengaluru",
+        "state": "Karnataka",
+        "pin": "560001",
+        "country": "India"
+      },
+      "position": "77.5120754,12.9918699",
+      "amenities": [
+        "rentals", "repairs", "cafe", "wifi"
+      ]
+    },
+    { 
+      "storecode": "MU",
+      "storename": "Mumbai",
+      "address": {
+        "street": "Trident Road",
+        "city": "Mumbai",
+        "state": "Maharashtra",
+        "pin": "400098",
+        "country": "India"
+      },
+      "position": "72.8305678,19.0666028",
+      "amenities": [
+        "parking", "repairs"
+      ]
+
+    },
+    { 
+      "storecode": "KA",
+      "storename": "Kanpur",
+      "address": {
+        "street": "Second Street",
+        "city": "Kanpur",
+        "state": "Uttar Pradesh",
+        "pin": "208003",
+        "country": "India"
+      },
+      "position": "80.3060951,26.4497247",
+      "amenities": [
+        "parking", "wifi", "repairs"
+      ]
+    }
+  ]
+}
