@@ -11,7 +11,6 @@ import json
 import threading
 import time
 from typing import Any
-from unittest.mock import MagicMock, patch
 
 import polars as pl
 import pytest
@@ -541,32 +540,28 @@ class TestSubscribeBatches:
 class TestPubsubUnit:
     """Unit tests that don't require Redis."""
 
-    def test_empty_dataframe_with_schema(self) -> None:
+    def test_empty_dataframe_with_schema(self, redis_url: str, redis_available: bool) -> None:
         """Test that empty DataFrame has correct schema."""
-        from polars_redis._pubsub import collect_pubsub
+        if not redis_available:
+            pytest.skip("Redis not available")
 
-        # Mock the redis module - patch where it's imported, not where defined
-        with patch("redis.Redis") as mock_redis_class:
-            mock_client = MagicMock()
-            mock_pubsub = MagicMock()
-            mock_redis_class.from_url.return_value = mock_client
-            mock_client.pubsub.return_value = mock_pubsub
-            mock_pubsub.get_message.return_value = None
+        import polars_redis as pr
 
-            df = collect_pubsub(
-                "redis://localhost",
-                channels=["test"],
-                timeout_ms=10,
-                schema={"id": pl.Int64, "name": pl.Utf8},
-                include_channel=True,
-                include_timestamp=True,
-            )
+        # Collect with very short timeout - should return empty DataFrame
+        df = pr.collect_pubsub(
+            redis_url,
+            channels=["test:unit:empty_schema"],
+            timeout_ms=50,
+            schema={"id": pl.Int64, "name": pl.Utf8},
+            include_channel=True,
+            include_timestamp=True,
+        )
 
-            assert len(df) == 0
-            assert "_channel" in df.columns
-            assert "_received_at" in df.columns
-            assert "id" in df.columns
-            assert "name" in df.columns
+        assert len(df) == 0
+        assert "_channel" in df.columns
+        assert "_received_at" in df.columns
+        assert "id" in df.columns
+        assert "name" in df.columns
 
     def test_imports(self) -> None:
         """Test that pubsub functions are importable."""
