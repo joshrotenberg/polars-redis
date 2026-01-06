@@ -240,6 +240,11 @@ fn polars_redis_internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_write_sets, m)?)?;
     m.add_function(wrap_pyfunction!(py_write_lists, m)?)?;
     m.add_function(wrap_pyfunction!(py_write_zsets, m)?)?;
+    m.add_function(wrap_pyfunction!(py_cache_set, m)?)?;
+    m.add_function(wrap_pyfunction!(py_cache_get, m)?)?;
+    m.add_function(wrap_pyfunction!(py_cache_delete, m)?)?;
+    m.add_function(wrap_pyfunction!(py_cache_exists, m)?)?;
+    m.add_function(wrap_pyfunction!(py_cache_ttl, m)?)?;
     #[cfg(feature = "cluster")]
     m.add_class::<PyClusterHashBatchIterator>()?;
     #[cfg(feature = "cluster")]
@@ -461,6 +466,195 @@ impl PyHashBatchIterator {
     fn rows_yielded(&self) -> usize {
         self.inner.rows_yielded()
     }
+}
+
+// ============================================================================
+// Cache functions for DataFrame caching
+// ============================================================================
+
+#[cfg(feature = "python")]
+/// Store bytes in Redis with optional TTL.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `key` - Redis key
+/// * `data` - Bytes to store
+/// * `ttl` - Optional TTL in seconds
+///
+/// # Returns
+/// Number of bytes written.
+#[pyfunction]
+#[pyo3(signature = (url, key, data, ttl = None))]
+fn py_cache_set(url: &str, key: &str, data: &[u8], ttl: Option<i64>) -> PyResult<usize> {
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    rt.block_on(async {
+        let client = redis::Client::open(url)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyConnectionError, _>(e.to_string()))?;
+
+        let mut conn = client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyConnectionError, _>(e.to_string()))?;
+
+        let len = data.len();
+
+        if let Some(seconds) = ttl {
+            redis::cmd("SETEX")
+                .arg(key)
+                .arg(seconds)
+                .arg(data)
+                .query_async::<()>(&mut conn)
+                .await
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+        } else {
+            redis::cmd("SET")
+                .arg(key)
+                .arg(data)
+                .query_async::<()>(&mut conn)
+                .await
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+        }
+
+        Ok(len)
+    })
+}
+
+#[cfg(feature = "python")]
+/// Retrieve bytes from Redis.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `key` - Redis key
+///
+/// # Returns
+/// Bytes if key exists, None otherwise.
+#[pyfunction]
+fn py_cache_get(py: Python<'_>, url: &str, key: &str) -> PyResult<Option<Py<PyAny>>> {
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    rt.block_on(async {
+        let client = redis::Client::open(url)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyConnectionError, _>(e.to_string()))?;
+
+        let mut conn = client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyConnectionError, _>(e.to_string()))?;
+
+        let result: Option<Vec<u8>> = redis::cmd("GET")
+            .arg(key)
+            .query_async(&mut conn)
+            .await
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        match result {
+            Some(data) => Ok(Some(pyo3::types::PyBytes::new(py, &data).into())),
+            None => Ok(None),
+        }
+    })
+}
+
+#[cfg(feature = "python")]
+/// Delete a key from Redis.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `key` - Redis key
+///
+/// # Returns
+/// True if key was deleted, False if it didn't exist.
+#[pyfunction]
+fn py_cache_delete(url: &str, key: &str) -> PyResult<bool> {
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    rt.block_on(async {
+        let client = redis::Client::open(url)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyConnectionError, _>(e.to_string()))?;
+
+        let mut conn = client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyConnectionError, _>(e.to_string()))?;
+
+        let deleted: i64 = redis::cmd("DEL")
+            .arg(key)
+            .query_async(&mut conn)
+            .await
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        Ok(deleted > 0)
+    })
+}
+
+#[cfg(feature = "python")]
+/// Check if a key exists in Redis.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `key` - Redis key
+///
+/// # Returns
+/// True if key exists, False otherwise.
+#[pyfunction]
+fn py_cache_exists(url: &str, key: &str) -> PyResult<bool> {
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    rt.block_on(async {
+        let client = redis::Client::open(url)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyConnectionError, _>(e.to_string()))?;
+
+        let mut conn = client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyConnectionError, _>(e.to_string()))?;
+
+        let exists: i64 = redis::cmd("EXISTS")
+            .arg(key)
+            .query_async(&mut conn)
+            .await
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        Ok(exists > 0)
+    })
+}
+
+#[cfg(feature = "python")]
+/// Get the TTL of a key in Redis.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `key` - Redis key
+///
+/// # Returns
+/// TTL in seconds, or None if key doesn't exist or has no TTL.
+#[pyfunction]
+fn py_cache_ttl(url: &str, key: &str) -> PyResult<Option<i64>> {
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    rt.block_on(async {
+        let client = redis::Client::open(url)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyConnectionError, _>(e.to_string()))?;
+
+        let mut conn = client
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyConnectionError, _>(e.to_string()))?;
+
+        let ttl: i64 = redis::cmd("TTL")
+            .arg(key)
+            .query_async(&mut conn)
+            .await
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        // TTL returns -2 if key doesn't exist, -1 if no TTL
+        if ttl < 0 { Ok(None) } else { Ok(Some(ttl)) }
+    })
 }
 
 // ============================================================================
