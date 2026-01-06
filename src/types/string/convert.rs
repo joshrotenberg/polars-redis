@@ -14,7 +14,32 @@ use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 use super::reader::StringData;
 use crate::error::{Error, Result};
 
-/// Schema for Redis string values.
+/// Schema for Redis string values, defining how to parse and convert them.
+///
+/// Redis strings are simple key-value pairs. This schema defines what type
+/// the values should be parsed as (e.g., Int64 for counters, Utf8 for text).
+///
+/// # Example
+///
+/// ```ignore
+/// use polars_redis::StringSchema;
+/// use arrow::datatypes::DataType;
+///
+/// // For string counters
+/// let schema = StringSchema::new(DataType::Int64)
+///     .with_key(true)
+///     .with_value_column_name("count");
+///
+/// // For text values
+/// let schema = StringSchema::new(DataType::Utf8)
+///     .with_key(true);
+/// ```
+///
+/// # Output Schema
+///
+/// - `_key` (optional): The Redis key
+/// - `value`: The parsed value (type depends on schema)
+/// - `_ttl` (optional): TTL in seconds
 #[derive(Debug, Clone)]
 pub struct StringSchema {
     /// The Arrow DataType for values.

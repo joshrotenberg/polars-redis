@@ -10,7 +10,32 @@ use crate::connection::RedisConnection;
 use crate::error::{Error, Result};
 use crate::types::hash::BatchConfig;
 
-/// Iterator for scanning Redis lists and yielding Arrow RecordBatches.
+/// Iterator for scanning Redis lists in batches as Arrow RecordBatches.
+///
+/// This iterator fetches list keys matching a pattern and retrieves their
+/// elements, converting them to Arrow RecordBatches for use with Polars.
+/// Each element becomes a row in the output.
+///
+/// # Example
+///
+/// ```ignore
+/// use polars_redis::{ListBatchIterator, ListSchema, BatchConfig};
+///
+/// let schema = ListSchema::new().with_key(true).with_position(true);
+/// let config = BatchConfig::new("queue:*").with_batch_size(1000);
+///
+/// let mut iterator = ListBatchIterator::new(url, schema, config)?;
+///
+/// while let Some(batch) = iterator.next_batch()? {
+///     println!("Got {} elements", batch.num_rows());
+/// }
+/// ```
+///
+/// # Output Schema
+///
+/// - `_key` (optional): The Redis key
+/// - `element`: The list element value (Utf8)
+/// - `position` (optional): The element's position in the list (Int64)
 pub struct ListBatchIterator {
     /// Tokio runtime for async operations.
     runtime: Runtime,

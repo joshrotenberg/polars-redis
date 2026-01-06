@@ -262,6 +262,31 @@ fn parse_datetime_parts(date_str: &str, time_str: &str) -> Option<i64> {
 }
 
 /// Schema for a Redis hash, mapping field names to types.
+///
+/// Defines how Redis hash fields should be converted to Arrow/Polars columns.
+/// Each field is mapped to a [`RedisType`] which determines parsing behavior.
+///
+/// # Example
+///
+/// ```ignore
+/// use polars_redis::{HashSchema, RedisType};
+///
+/// let schema = HashSchema::new(vec![
+///     ("name".to_string(), RedisType::Utf8),
+///     ("age".to_string(), RedisType::Int64),
+///     ("score".to_string(), RedisType::Float64),
+///     ("active".to_string(), RedisType::Boolean),
+/// ])
+/// .with_key(true)
+/// .with_key_column_name("_key")
+/// .with_ttl(true);
+/// ```
+///
+/// # Optional Metadata Columns
+///
+/// - Key column: Include the Redis key as a column (default: true, name: "_key")
+/// - TTL column: Include the key's TTL in seconds (default: false, name: "_ttl")
+/// - Row index: Include a row number column (default: false, name: "_index")
 #[derive(Debug, Clone)]
 pub struct HashSchema {
     /// Ordered list of field names.

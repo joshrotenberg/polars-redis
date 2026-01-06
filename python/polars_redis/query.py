@@ -444,7 +444,36 @@ class Expr:
     # =========================================================================
 
     def to_redis(self) -> str:
-        """Convert the expression to a RediSearch query string."""
+        """Convert this expression to a RediSearch query string.
+
+        Returns the query in RediSearch syntax that will be sent to Redis
+        when using search_hashes() or search_json(). This is useful for:
+
+        - Debugging queries to see the generated RediSearch syntax
+        - Understanding what will be sent to Redis
+        - Copying the query for use with redis-cli or other tools
+
+        Returns:
+            str: RediSearch query string in FT.SEARCH syntax.
+
+        Example:
+            >>> from polars_redis.query import col
+            >>>
+            >>> # Simple comparison
+            >>> query = col("age") > 30
+            >>> print(query.to_redis())
+            '@age:[(30 +inf]'
+            >>>
+            >>> # Combined conditions
+            >>> query = (col("type") == "eBikes") & (col("price") < 1000)
+            >>> print(query.to_redis())
+            '@type:{eBikes} @price:[-inf (1000]'
+            >>>
+            >>> # Text search with fuzzy matching
+            >>> query = col("title").fuzzy("python", distance=1)
+            >>> print(query.to_redis())
+            '@title:%python%'
+        """
 
         # Comparison operators
         if self._op == "gt":

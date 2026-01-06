@@ -255,3 +255,103 @@ All write functions return the number of keys successfully written:
 count = redis.write_hashes(df, url)
 print(f"Wrote {count} of {len(df)} rows")
 ```
+
+## Detailed Error Handling
+
+For production workflows where you need granular error reporting, use the `_detailed` variants of write functions. These return a `WriteResult` object with per-key success/failure information.
+
+### WriteResult Class
+
+```python
+result = redis.write_hashes_detailed(df, "redis://localhost:6379")
+
+# Check counts
+result.keys_written   # Number of keys successfully written
+result.keys_failed    # Number of keys that failed
+result.keys_skipped   # Number of keys skipped (when if_exists="fail")
+
+# Access key lists
+result.succeeded_keys  # List of successfully written keys
+result.failed_keys     # List of keys that failed
+
+# Get error details
+result.errors          # Dict mapping failed keys to error messages
+
+# Check for complete success
+if result.is_complete_success():
+    print("All keys written successfully")
+```
+
+### Basic Usage
+
+```python
+import polars as pl
+import polars_redis as redis
+
+df = pl.DataFrame({
+    "_key": ["user:1", "user:2", "user:3"],
+    "name": ["Alice", "Bob", "Charlie"],
+    "age": [30, 25, 35],
+})
+
+result = redis.write_hashes_detailed(df, "redis://localhost:6379")
+
+print(f"Wrote {result.keys_written} keys")
+print(f"Failed: {result.keys_failed}")
+print(f"Skipped: {result.keys_skipped}")
+
+if not result.is_complete_success():
+    for key, error in result.errors.items():
+        print(f"  {key}: {error}")
+```
+
+### Retry Pattern
+
+The detailed result enables retry logic for failed keys:
+
+```python
+import polars as pl
+import polars_redis as redis
+
+def write_with_retry(df, url, max_retries=3):
+    """Write with automatic retry for failed keys."""
+    remaining = df
+    total_written = 0
+    
+    for attempt in range(max_retries):
+        result = redis.write_hashes_detailed(remaining, url)
+        total_written += result.keys_written
+        
+        if result.is_complete_success():
+            break
+            
+        if result.keys_failed > 0:
+            print(f"Attempt {attempt + 1}: {result.keys_failed} failures")
+            # Filter to only failed keys for retry
+            remaining = remaining.filter(
+                pl.col("_key").is_in(result.failed_keys)
+            )
+    
+    return total_written
+
+# Usage
+df = pl.DataFrame({
+    "_key": ["user:1", "user:2", "user:3"],
+    "name": ["Alice", "Bob", "Charlie"],
+    "age": [30, 25, 35],
+})
+
+written = write_with_retry(df, "redis://localhost:6379")
+print(f"Successfully wrote {written} keys")
+```
+
+### When to Use Detailed Functions
+
+Use `write_hashes_detailed()` when you need to:
+
+- **Implement retry logic**: Retry only the keys that failed
+- **Log specific failures**: Record which keys failed and why
+- **Partial success handling**: Accept partial writes in non-critical workflows
+- **Debugging**: Identify problematic keys during development
+
+For simple scripts where you just need a count, the regular `write_hashes()` is sufficient.

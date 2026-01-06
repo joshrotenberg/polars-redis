@@ -10,11 +10,41 @@ use crate::connection::RedisConnection;
 use crate::error::{Error, Result};
 use crate::types::hash::BatchConfig;
 
-/// Iterator for scanning Redis Streams and yielding Arrow RecordBatches.
+/// Iterator for scanning Redis Streams in batches as Arrow RecordBatches.
+///
+/// This iterator fetches stream keys matching a pattern and retrieves their
+/// entries, converting them to Arrow RecordBatches for use with Polars.
+/// Each entry becomes a row in the output.
 ///
 /// Supports two modes:
 /// 1. Single stream: Provide a specific key and iterate through entries
 /// 2. Multi-stream: Provide a pattern to SCAN and fetch entries from each
+///
+/// # Example
+///
+/// ```ignore
+/// use polars_redis::{StreamBatchIterator, StreamSchema, BatchConfig};
+///
+/// let schema = StreamSchema::new(vec![
+///     ("user_id".to_string(), DataType::Utf8),
+///     ("action".to_string(), DataType::Utf8),
+/// ]).with_key(true).with_entry_id(true);
+///
+/// let config = BatchConfig::new("events:*").with_batch_size(1000);
+///
+/// let mut iterator = StreamBatchIterator::new(url, schema, config)?;
+///
+/// while let Some(batch) = iterator.next_batch()? {
+///     println!("Got {} entries", batch.num_rows());
+/// }
+/// ```
+///
+/// # Output Schema
+///
+/// - `_key` (optional): The Redis stream key
+/// - `_entry_id` (optional): The stream entry ID (e.g., "1234567890-0")
+/// - `_timestamp` (optional): Entry timestamp extracted from ID (Int64 ms)
+/// - User-defined fields from the stream entries
 pub struct StreamBatchIterator {
     /// Tokio runtime for async operations.
     runtime: Runtime,

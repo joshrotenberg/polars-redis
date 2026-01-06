@@ -10,7 +10,38 @@ use crate::connection::RedisConnection;
 use crate::error::{Error, Result};
 use crate::types::hash::BatchConfig;
 
-/// Iterator state for scanning Redis JSON documents.
+/// Iterator for scanning RedisJSON documents in batches as Arrow RecordBatches.
+///
+/// This iterator fetches JSON keys matching a pattern and retrieves their
+/// document contents, converting them to Arrow RecordBatches for use with Polars.
+///
+/// Requires the RedisJSON module to be loaded on the Redis server.
+///
+/// # Example
+///
+/// ```ignore
+/// use polars_redis::{JsonBatchIterator, JsonSchema, BatchConfig, DataType};
+///
+/// let schema = JsonSchema::new(vec![
+///     ("$.name".to_string(), DataType::Utf8),
+///     ("$.age".to_string(), DataType::Int64),
+/// ]).with_key(true);
+///
+/// let config = BatchConfig::new("doc:*").with_batch_size(1000);
+///
+/// let mut iterator = JsonBatchIterator::new(url, schema, config, None)?;
+///
+/// while let Some(batch) = iterator.next_batch()? {
+///     println!("Got {} rows", batch.num_rows());
+/// }
+/// ```
+///
+/// # Performance
+///
+/// - Uses `SCAN` with configurable `COUNT` hint for non-blocking iteration
+/// - Pipelines multiple `JSON.GET` commands per batch
+/// - Supports JSONPath projection (only fetch requested paths)
+/// - Memory-efficient streaming (processes one batch at a time)
 pub struct JsonBatchIterator {
     /// Tokio runtime for async operations.
     runtime: Runtime,
