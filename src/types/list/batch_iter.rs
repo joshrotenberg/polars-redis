@@ -184,6 +184,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore] // Requires running Redis instance
     fn test_list_batch_iterator_creation() {
         let schema = ListSchema::new();
         let config = BatchConfig::new("queue:*");
@@ -193,6 +194,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires running Redis instance
     fn test_list_batch_iterator_with_options() {
         let schema = ListSchema::new()
             .with_key(true)

@@ -301,6 +301,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore] // Requires running Redis instance
     fn test_timeseries_batch_iterator_creation() {
         let schema = TimeSeriesSchema::new();
         let config = BatchConfig::new("sensor:*");
@@ -310,6 +311,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires running Redis instance
     fn test_timeseries_batch_iterator_with_options() {
         let schema = TimeSeriesSchema::new()
             .with_key(true)

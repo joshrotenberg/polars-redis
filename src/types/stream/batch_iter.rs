@@ -294,6 +294,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore] // Requires running Redis instance
     fn test_stream_batch_iterator_creation() {
         let schema = StreamSchema::new();
         let config = BatchConfig::new("events:*");
@@ -303,6 +304,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires running Redis instance
     fn test_stream_batch_iterator_with_options() {
         let schema = StreamSchema::new()
             .with_key(true)

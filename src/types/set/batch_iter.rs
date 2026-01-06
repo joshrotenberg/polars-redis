@@ -184,6 +184,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore] // Requires running Redis instance
     fn test_set_batch_iterator_creation() {
         let schema = SetSchema::new();
         let config = BatchConfig::new("tags:*");
@@ -193,6 +194,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires running Redis instance
     fn test_set_batch_iterator_with_options() {
         let schema = SetSchema::new()
             .with_key(true)
