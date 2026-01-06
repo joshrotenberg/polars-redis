@@ -58,6 +58,11 @@ from polars_redis._internal import (
     RedisScanner,
     scan_keys,
 )
+from polars_redis._pubsub import (
+    collect_pubsub,
+    iter_batches,
+    subscribe_batches,
+)
 from polars_redis._read import (
     read_hashes,
     read_json,
@@ -186,6 +191,10 @@ __all__ = [
     # Caching decorators
     "cache",
     "cache_lazy",
+    # Pub/Sub streaming
+    "collect_pubsub",
+    "subscribe_batches",
+    "iter_batches",
     # Environment defaults
     "get_default_batch_size",
     "get_default_count_hint",

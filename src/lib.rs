@@ -123,6 +123,7 @@ mod error;
 mod infer;
 pub mod options;
 pub mod parallel;
+pub mod pubsub;
 #[cfg(feature = "search")]
 pub mod query_builder;
 mod scanner;
