@@ -67,6 +67,7 @@ nav:
       - Scanning Data: guide/scanning.md
       - RediSearch: guide/redisearch.md
       - Writing Data: guide/writing.md
+      - DataFrame Caching: guide/caching.md
       - Schema Inference: guide/schema-inference.md
       - Configuration: guide/configuration.md
       - Performance: guide/performance.md

@@ -24,7 +24,8 @@ polars = { version = "0.52", default-features = false, features = [
     "timezones",
     "temporal",
 ] }
-arrow = { version = "57", default-features = false, features = ["ipc"] }
+arrow = { version = "57", default-features = false, features = ["ipc", "ipc_compression"] }
+parquet = { version = "57", default-features = false, features = ["arrow", "snap", "zstd", "lz4"] }
 
 # Python bindings (optional for pure Rust usage)
 pyo3 = { version = "0.27", features = ["extension-module"], optional = true }
@@ -32,6 +33,7 @@ pyo3 = { version = "0.27", features = ["extension-module"], optional = true }
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+bytes = "1.5"
 
 # Error handling
 thiserror = "2.0"

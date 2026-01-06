@@ -740,6 +740,117 @@ MultiFieldExpr.starts_with(prefix: str) -> Expr # Prefix match across fields
 
 ---
 
+## DataFrame Caching
+
+### cache_dataframe
+
+```python
+def cache_dataframe(
+    df: pl.DataFrame,
+    url: str,
+    key: str,
+    *,
+    format: Literal["ipc", "parquet"] = "ipc",
+    compression: str | None = None,
+    compression_level: int | None = None,
+    ttl: int | None = None,
+) -> int
+```
+
+Cache a DataFrame in Redis using Arrow IPC or Parquet format.
+
+**Parameters:**
+
+- `df`: DataFrame to cache
+- `url`: Redis connection URL
+- `key`: Redis key for storage
+- `format`: Serialization format (`"ipc"` or `"parquet"`)
+- `compression`: Compression codec (IPC: lz4, zstd; Parquet: snappy, gzip, lz4, zstd)
+- `compression_level`: Compression level (codec-specific)
+- `ttl`: TTL in seconds (optional)
+
+**Returns:** Number of bytes written
+
+---
+
+### get_cached_dataframe
+
+```python
+def get_cached_dataframe(
+    url: str,
+    key: str,
+    *,
+    format: Literal["ipc", "parquet"] = "ipc",
+    columns: list[str] | None = None,
+    n_rows: int | None = None,
+) -> pl.DataFrame | None
+```
+
+Retrieve a cached DataFrame from Redis.
+
+**Parameters:**
+
+- `url`: Redis connection URL
+- `key`: Redis key to retrieve
+- `format`: Serialization format (must match cache_dataframe)
+- `columns`: Columns to read (Parquet only)
+- `n_rows`: Maximum rows to read (Parquet only)
+
+**Returns:** DataFrame or None if key doesn't exist
+
+---
+
+### scan_cached
+
+```python
+def scan_cached(
+    url: str,
+    key: str,
+    *,
+    format: Literal["ipc", "parquet"] = "ipc",
+) -> pl.LazyFrame | None
+```
+
+Retrieve cached data as a LazyFrame.
+
+**Returns:** LazyFrame or None if key doesn't exist
+
+---
+
+### delete_cached
+
+```python
+def delete_cached(url: str, key: str) -> bool
+```
+
+Delete a cached DataFrame from Redis.
+
+**Returns:** True if deleted, False if key didn't exist
+
+---
+
+### cache_exists
+
+```python
+def cache_exists(url: str, key: str) -> bool
+```
+
+Check if a cached DataFrame exists in Redis.
+
+---
+
+### cache_ttl
+
+```python
+def cache_ttl(url: str, key: str) -> int | None
+```
+
+Get the remaining TTL of a cached DataFrame.
+
+**Returns:** TTL in seconds, or None if no TTL or key doesn't exist
+
+---
+
 ## Schema Inference
 
 ### infer_hash_schema
