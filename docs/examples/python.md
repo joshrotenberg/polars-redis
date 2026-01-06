@@ -1,6 +1,6 @@
 # Python Examples
 
-Example scripts are in [`examples/python/`](https://github.com/joshrotenberg/polars-redis/tree/master/examples/python).
+Example scripts are in [`examples/python/`](https://github.com/joshrotenberg/polars-redis/tree/main/examples/python).
 
 ## Basic Hashes
 
