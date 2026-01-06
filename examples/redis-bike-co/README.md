@@ -2,10 +2,20 @@
 
 This example demonstrates how to use **polars-redis** with a realistic dataset from [Redis Bike Co](https://github.com/redis-developer/redis-bike-co), a fictional bicycle retail company.
 
+## Why polars-redis?
+
+The original Redis Bike Co example uses redis-py with manual JSON handling. This example shows how polars-redis simplifies the workflow:
+
+| Task | Traditional (redis-py) | polars-redis |
+|------|------------------------|--------------|
+| Load 111 bikes | 112 Redis calls (scan + N gets) | Batched writes |
+| Read all bikes | Loop + manual JSON parsing | `scan_json().collect()` |
+| Filter by type | Client-side filtering | Server-side with query builder |
+| Analytics | Manual aggregation | Native Polars operations |
+
 ## Dataset
 
-The dataset includes:
-- **111 bikes** with details like brand, model, price, type, material, and weight
+- **111 bikes** with brand, model, price, type, material, weight, and description
 - **5 stores** with location and amenity information
 
 ## Prerequisites
@@ -20,9 +30,14 @@ The dataset includes:
    pip install polars-redis
    ```
 
-3. **redis-py** (optional, for creating search indexes):
+3. **redis-py** (for creating search indexes):
    ```bash
    pip install redis
+   ```
+
+4. **numpy** (for vector search example):
+   ```bash
+   pip install numpy
    ```
 
 ## Quick Start
@@ -30,80 +45,77 @@ The dataset includes:
 ### Load Data
 
 ```bash
-python load_data.py
-```
-
-This loads all bikes and stores into Redis with key patterns:
-- `redisbikeco:bike:{stockcode}`
-- `redisbikeco:store:{storecode}`
-
-To also create a RediSearch index:
-```bash
 python load_data.py --create-index
 ```
 
-### Query Data
+This loads all bikes and stores into Redis and creates a RediSearch index.
 
-```python
-import polars_redis as redis
+### Run the Notebook
 
-# Define schema
-bike_schema = {
-    "stockcode": pl.Utf8,
-    "model": pl.Utf8,
-    "brand": pl.Utf8,
-    "price": pl.Int64,
-    "type": pl.Utf8,
-    "description": pl.Utf8,
-    "material": pl.Utf8,
-    "weight": pl.Float64,
-}
-
-# Scan all bikes
-bikes = redis.scan_json(
-    "redis://localhost:6379",
-    pattern="redisbikeco:bike:*",
-    schema=bike_schema,
-).collect()
-
-print(f"Total bikes: {len(bikes)}")
-print(bikes.head())
+```bash
+jupyter notebook redis_bike_co.ipynb
 ```
 
-### Search with Query Builder
+## What's Demonstrated
 
+### 1. Schema Inference
+Automatically detect field types with confidence scores:
+```python
+schema = redis.infer_json_schema_with_confidence(
+    url, pattern="redisbikeco:bike:*", sample_size=20
+)
+# Returns: {field: (type, confidence), ...}
+```
+
+### 2. Pythonic Query Builder
+Write queries in Python, compile to RediSearch syntax:
 ```python
 from polars_redis.query import col
 
-# Find eBikes under a price threshold
-ebikes = redis.search_json(
-    "redis://localhost:6379",
-    index="bikes_idx",
-    query=(col("type") == "eBikes") & (col("price") < 200000),
-    schema=bike_schema,
-).collect()
+query = (
+    (col("type") == "Mountain Bikes") &
+    (col("price") < 200000) &
+    (col("material") == "carbon")
+)
+# Compiles to: (@type:{Mountain Bikes}) (@price:[-inf 200000]) (@material:{carbon})
+```
 
-print(ebikes)
+### 3. Vector Similarity Search
+Find semantically similar items using KNN:
+```python
+knn_query = col("embedding").knn(k=5, vector_param="query_vec")
+```
+
+### 4. Real-World Analytics
+Find underpriced inventory by comparing to category averages:
+```python
+# Join bikes with category stats, calculate z-scores
+underpriced = (
+    bikes.join(category_stats, on=["type", "material"])
+    .with_columns(
+        ((pl.col("price") - pl.col("avg_price")) / pl.col("std_price"))
+        .alias("price_zscore")
+    )
+    .filter(pl.col("price_zscore") < -1)
+)
+```
+
+### 5. Performance Comparison
+Benchmark showing batched fetching vs individual calls:
+```
+Traditional approach: 45.2ms (112 Redis calls)
+polars-redis:         12.1ms (batched)
 ```
 
 ## Files
 
 | File | Description |
 |------|-------------|
-| `load_data.py` | Script to load JSON data into Redis |
-| `redis_bike_co.ipynb` | Jupyter notebook with detailed examples |
-| `data/bikes.json` | Bike product catalog (111 items) |
+| `load_data.py` | CLI script to load data and create indexes |
+| `redis_bike_co.ipynb` | Comprehensive Jupyter notebook |
+| `data/bikes.json` | Bike catalog (111 items) |
 | `data/stores.json` | Store locations (5 stores) |
-
-## Features Demonstrated
-
-- **Writing data**: `write_json()` to store DataFrames as Redis JSON documents
-- **Schema inference**: `infer_json_schema()` and `infer_json_schema_with_confidence()`
-- **Lazy scanning**: `scan_json()` with batched fetching
-- **RediSearch queries**: `search_json()` with the query builder
-- **Aggregations**: `aggregate_json()` for server-side computations
-- **Polars operations**: Filtering, grouping, sorting, and analytics
 
 ## Data Source
 
-The bike and store data is from the [redis-developer/redis-bike-co](https://github.com/redis-developer/redis-bike-co) repository, used for Redis learning materials.
+Data from [redis-developer/redis-bike-co](https://github.com/redis-developer/redis-bike-co), used for Redis learning materials.
