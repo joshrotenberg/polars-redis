@@ -151,7 +151,7 @@ let mut iterator = StringBatchIterator::new(
 ### infer_hash_schema
 
 ```rust
-use polars_redis::infer::infer_hash_schema;
+use polars_redis::io::infer::infer_hash_schema;
 
 let (fields, keys_sampled) = infer_hash_schema(
     "redis://localhost:6379",
@@ -168,7 +168,7 @@ for (name, type_str) in &fields {
 ### infer_json_schema
 
 ```rust
-use polars_redis::infer::infer_json_schema;
+use polars_redis::io::infer::infer_json_schema;
 
 let (fields, keys_sampled) = infer_json_schema(
     "redis://localhost:6379",

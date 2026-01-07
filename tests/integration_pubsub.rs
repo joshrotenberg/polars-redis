@@ -6,7 +6,7 @@
 use std::thread;
 use std::time::Duration;
 
-use polars_redis::pubsub::{PubSubConfig, collect_pubsub};
+use polars_redis::client::pubsub::{PubSubConfig, collect_pubsub};
 
 mod common;
 use common::{redis_available, redis_cli, redis_url};

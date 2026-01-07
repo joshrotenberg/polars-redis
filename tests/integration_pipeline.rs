@@ -2,7 +2,7 @@
 //!
 //! These tests require a running Redis instance at localhost:6379.
 
-use polars_redis::pipeline::{CommandResult, Pipeline, Transaction};
+use polars_redis::client::pipeline::{CommandResult, Pipeline, Transaction};
 
 /// Test that pipeline creation works.
 #[test]

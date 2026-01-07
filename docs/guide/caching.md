@@ -386,7 +386,7 @@ The caching functionality is also available in Rust for pure Rust applications.
 use arrow::array::{Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use polars_redis::cache::{
+use polars_redis::io::cache::{
     cache_record_batch, get_cached_record_batch, delete_cached,
     cache_exists, cache_ttl, cache_info,
     CacheConfig, CacheFormat, IpcCompression, ParquetCompressionType,
@@ -422,7 +422,7 @@ delete_cached("redis://localhost:6379", "my_result").unwrap();
 ### Configuration (Rust)
 
 ```rust
-use polars_redis::cache::{CacheConfig, IpcCompression, ParquetCompressionType};
+use polars_redis::io::cache::{CacheConfig, IpcCompression, ParquetCompressionType};
 
 // IPC with compression
 let config = CacheConfig::ipc()

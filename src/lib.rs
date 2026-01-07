@@ -115,94 +115,112 @@ use pyo3::prelude::*;
 #[cfg(feature = "python")]
 use std::collections::HashMap;
 
-pub mod cache;
+// Module organization:
+// - io/       : DataFrame I/O operations (read, write, cache, search)
+// - client/   : General Redis operations (geo, keys, pipeline, pubsub)
+// - (top-level): Shared infrastructure (connection, error, schema, options, etc.)
+
+pub mod client;
 #[cfg(feature = "cluster")]
 pub mod cluster;
 mod connection;
 mod error;
-pub mod geo;
 #[cfg(feature = "search")]
 pub mod index;
-mod infer;
-pub mod keys;
+pub mod io;
 pub mod options;
 pub mod parallel;
-pub mod pipeline;
-pub mod pubsub;
 #[cfg(feature = "search")]
 pub mod query_builder;
-mod scanner;
 mod schema;
 #[cfg(feature = "search")]
-pub mod search;
-#[cfg(feature = "search")]
 pub mod smart;
-mod types;
-mod write;
 
+// Re-exports for backwards compatibility - all public API remains at crate root
+
+// Cluster support
 #[cfg(feature = "cluster")]
 pub use cluster::{ClusterKeyScanner, DirectClusterKeyScanner};
+
+// Connection
 pub use connection::{ConnectionConfig, RedisConn, RedisConnection};
+
+// Error handling
 pub use error::{Error, Result};
-pub use geo::{
+
+// Client operations (geo, keys, pipeline, pubsub)
+pub use client::geo::{
     GeoAddResult, GeoLocation, GeoSort, GeoUnit, geo_add, geo_dist, geo_dist_matrix, geo_hash,
     geo_pos, geo_radius, geo_radius_by_member,
 };
+pub use client::keys::{
+    DeleteResult, KeyInfo, RenameResult, TtlResult, delete_keys, delete_keys_pattern, exists_keys,
+    get_ttl, key_info, persist_keys, rename_keys, set_ttl, set_ttl_individual,
+};
+pub use client::pipeline::{CommandResult, Pipeline, PipelineResult, Transaction};
+pub use client::pubsub::{PubSubConfig, PubSubMessage, PubSubStats, collect_pubsub};
+
+// IO operations (types, write, cache, infer, search)
+pub use io::cache::{
+    CacheConfig, CacheFormat, CacheInfo, IpcCompression, ParquetCompressionType, cache_exists,
+    cache_info, cache_record_batch, cache_ttl, delete_cached, get_cached_record_batch,
+};
+pub use io::infer::{
+    FieldInferenceInfo, InferredSchema, InferredSchemaWithConfidence, infer_hash_schema,
+    infer_hash_schema_with_confidence, infer_json_schema,
+};
+pub use io::types::hash::{BatchConfig, HashBatchIterator, HashFetcher};
+#[cfg(feature = "cluster")]
+pub use io::types::hash::{ClusterHashBatchIterator, ClusterHashFetcher};
+#[cfg(feature = "search")]
+pub use io::types::hash::{HashSearchIterator, SearchBatchConfig};
+#[cfg(feature = "cluster")]
+pub use io::types::json::ClusterJsonBatchIterator;
+pub use io::types::json::{JsonBatchIterator, JsonSchema};
+#[cfg(feature = "cluster")]
+pub use io::types::list::ClusterListBatchIterator;
+pub use io::types::list::{ListBatchIterator, ListSchema};
+#[cfg(feature = "cluster")]
+pub use io::types::set::ClusterSetBatchIterator;
+pub use io::types::set::{SetBatchIterator, SetSchema};
+#[cfg(feature = "cluster")]
+pub use io::types::stream::ClusterStreamBatchIterator;
+pub use io::types::stream::{StreamBatchIterator, StreamSchema};
+#[cfg(feature = "cluster")]
+pub use io::types::string::ClusterStringBatchIterator;
+pub use io::types::string::{StringBatchIterator, StringSchema};
+#[cfg(feature = "cluster")]
+pub use io::types::timeseries::ClusterTimeSeriesBatchIterator;
+pub use io::types::timeseries::{TimeSeriesBatchIterator, TimeSeriesSchema};
+#[cfg(feature = "cluster")]
+pub use io::types::zset::ClusterZSetBatchIterator;
+pub use io::types::zset::{ZSetBatchIterator, ZSetSchema};
+pub use io::write::{
+    KeyError, WriteMode, WriteResult, WriteResultDetailed, write_hashes, write_hashes_detailed,
+    write_json, write_lists, write_sets, write_strings, write_zsets,
+};
+
+// Search/index support
 #[cfg(feature = "search")]
 pub use index::{
     DistanceMetric, Field, GeoField, GeoShapeField, Index, IndexDiff, IndexInfo, IndexType,
     NumericField, TagField, TextField, VectorAlgorithm, VectorField,
 };
-pub use infer::{
-    FieldInferenceInfo, InferredSchema, InferredSchemaWithConfidence, infer_hash_schema,
-    infer_hash_schema_with_confidence, infer_json_schema,
-};
-pub use keys::{
-    DeleteResult, KeyInfo, RenameResult, TtlResult, delete_keys, delete_keys_pattern, exists_keys,
-    get_ttl, key_info, persist_keys, rename_keys, set_ttl, set_ttl_individual,
-};
+#[cfg(feature = "search")]
+pub use query_builder::{Predicate, PredicateBuilder, Value};
+#[cfg(feature = "search")]
+pub use smart::{DetectedIndex, ExecutionStrategy, QueryPlan};
+
+// Options and configuration
 pub use options::{
     HashScanOptions, JsonScanOptions, KeyColumn, ParallelStrategy, RowIndex, RowIndexColumn,
     ScanOptions, StreamScanOptions, StringScanOptions, TimeSeriesScanOptions, TtlColumn,
     get_default_batch_size, get_default_count_hint, get_default_timeout_ms,
 };
 pub use parallel::{FetchResult, KeyBatch, ParallelConfig, ParallelFetch};
-pub use pipeline::{CommandResult, Pipeline, PipelineResult, Transaction};
-#[cfg(feature = "search")]
-pub use query_builder::{Predicate, PredicateBuilder, Value};
+
+// Schema types
 pub use schema::{HashSchema, RedisType};
-#[cfg(feature = "search")]
-pub use smart::{DetectedIndex, ExecutionStrategy, QueryPlan};
-pub use types::hash::{BatchConfig, HashBatchIterator, HashFetcher};
-#[cfg(feature = "cluster")]
-pub use types::hash::{ClusterHashBatchIterator, ClusterHashFetcher};
-#[cfg(feature = "search")]
-pub use types::hash::{HashSearchIterator, SearchBatchConfig};
-#[cfg(feature = "cluster")]
-pub use types::json::ClusterJsonBatchIterator;
-pub use types::json::{JsonBatchIterator, JsonSchema};
-#[cfg(feature = "cluster")]
-pub use types::list::ClusterListBatchIterator;
-pub use types::list::{ListBatchIterator, ListSchema};
-#[cfg(feature = "cluster")]
-pub use types::set::ClusterSetBatchIterator;
-pub use types::set::{SetBatchIterator, SetSchema};
-#[cfg(feature = "cluster")]
-pub use types::stream::ClusterStreamBatchIterator;
-pub use types::stream::{StreamBatchIterator, StreamSchema};
-#[cfg(feature = "cluster")]
-pub use types::string::ClusterStringBatchIterator;
-pub use types::string::{StringBatchIterator, StringSchema};
-#[cfg(feature = "cluster")]
-pub use types::timeseries::ClusterTimeSeriesBatchIterator;
-pub use types::timeseries::{TimeSeriesBatchIterator, TimeSeriesSchema};
-#[cfg(feature = "cluster")]
-pub use types::zset::ClusterZSetBatchIterator;
-pub use types::zset::{ZSetBatchIterator, ZSetSchema};
-pub use write::{
-    KeyError, WriteMode, WriteResult, WriteResultDetailed, write_hashes, write_hashes_detailed,
-    write_json, write_lists, write_sets, write_strings, write_zsets,
-};
 
 /// Serialize an Arrow RecordBatch to IPC format bytes.
 ///
@@ -523,7 +541,7 @@ impl PyHashBatchIterator {
 /// Pipelines batch multiple Redis commands and execute them in a single round-trip.
 #[pyclass]
 pub struct PyPipeline {
-    inner: pipeline::Pipeline,
+    inner: client::pipeline::Pipeline,
 }
 
 #[cfg(feature = "python")]
@@ -532,7 +550,7 @@ impl PyPipeline {
     /// Create a new pipeline.
     #[new]
     fn new(url: String) -> PyResult<Self> {
-        let inner = pipeline::Pipeline::new(&url)
+        let inner = client::pipeline::Pipeline::new(&url)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyConnectionError, _>(e.to_string()))?;
         Ok(Self { inner })
     }
@@ -796,34 +814,34 @@ pub struct PyCommandResult {
 }
 
 #[cfg(feature = "python")]
-impl From<pipeline::CommandResult> for PyCommandResult {
-    fn from(result: pipeline::CommandResult) -> Self {
+impl From<client::pipeline::CommandResult> for PyCommandResult {
+    fn from(result: client::pipeline::CommandResult) -> Self {
         match result {
-            pipeline::CommandResult::Ok => PyCommandResult {
+            client::pipeline::CommandResult::Ok => PyCommandResult {
                 result_type: "ok".to_string(),
                 value_str: None,
                 value_int: None,
                 value_arr: None,
             },
-            pipeline::CommandResult::String(s) => PyCommandResult {
+            client::pipeline::CommandResult::String(s) => PyCommandResult {
                 result_type: "string".to_string(),
                 value_str: Some(s),
                 value_int: None,
                 value_arr: None,
             },
-            pipeline::CommandResult::Int(i) => PyCommandResult {
+            client::pipeline::CommandResult::Int(i) => PyCommandResult {
                 result_type: "int".to_string(),
                 value_str: None,
                 value_int: Some(i),
                 value_arr: None,
             },
-            pipeline::CommandResult::Bulk(s) => PyCommandResult {
+            client::pipeline::CommandResult::Bulk(s) => PyCommandResult {
                 result_type: "bulk".to_string(),
                 value_str: Some(s),
                 value_int: None,
                 value_arr: None,
             },
-            pipeline::CommandResult::Array(arr) => {
+            client::pipeline::CommandResult::Array(arr) => {
                 let py_arr: Vec<PyCommandResult> = arr.into_iter().map(|v| v.into()).collect();
                 PyCommandResult {
                     result_type: "array".to_string(),
@@ -832,13 +850,13 @@ impl From<pipeline::CommandResult> for PyCommandResult {
                     value_arr: Some(py_arr),
                 }
             },
-            pipeline::CommandResult::Nil => PyCommandResult {
+            client::pipeline::CommandResult::Nil => PyCommandResult {
                 result_type: "nil".to_string(),
                 value_str: None,
                 value_int: None,
                 value_arr: None,
             },
-            pipeline::CommandResult::Error(e) => PyCommandResult {
+            client::pipeline::CommandResult::Error(e) => PyCommandResult {
                 result_type: "error".to_string(),
                 value_str: Some(e),
                 value_int: None,
@@ -979,7 +997,7 @@ impl PyPipelineResult {
 /// Transactions execute Redis commands atomically using MULTI/EXEC.
 #[pyclass]
 pub struct PyTransaction {
-    inner: pipeline::Transaction,
+    inner: client::pipeline::Transaction,
 }
 
 #[cfg(feature = "python")]
@@ -988,7 +1006,7 @@ impl PyTransaction {
     /// Create a new transaction.
     #[new]
     fn new(url: String) -> PyResult<Self> {
-        let inner = pipeline::Transaction::new(&url)
+        let inner = client::pipeline::Transaction::new(&url)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyConnectionError, _>(e.to_string()))?;
         Ok(Self { inner })
     }
@@ -1411,7 +1429,7 @@ fn py_geo_add(
     key: &str,
     locations: Vec<(String, f64, f64)>,
 ) -> PyResult<std::collections::HashMap<String, usize>> {
-    use crate::geo::geo_add;
+    use crate::client::geo::geo_add;
 
     let result = geo_add(url, key, &locations)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
@@ -1450,7 +1468,7 @@ fn py_geo_radius(
     count: Option<usize>,
     sort: Option<&str>,
 ) -> PyResult<Vec<std::collections::HashMap<String, Py<PyAny>>>> {
-    use crate::geo::{GeoSort, geo_radius};
+    use crate::client::geo::{GeoSort, geo_radius};
 
     let geo_sort = match sort {
         Some("ASC") | Some("asc") => Some(GeoSort::Asc),
@@ -1518,7 +1536,7 @@ fn py_geo_radius_by_member(
     count: Option<usize>,
     sort: Option<&str>,
 ) -> PyResult<Vec<std::collections::HashMap<String, Py<PyAny>>>> {
-    use crate::geo::{GeoSort, geo_radius_by_member};
+    use crate::client::geo::{GeoSort, geo_radius_by_member};
 
     let geo_sort = match sort {
         Some("ASC") | Some("asc") => Some(GeoSort::Asc),
@@ -1582,7 +1600,7 @@ fn py_geo_dist(
     member2: &str,
     unit: &str,
 ) -> PyResult<Option<f64>> {
-    use crate::geo::geo_dist;
+    use crate::client::geo::geo_dist;
 
     geo_dist(url, key, member1, member2, unit)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
@@ -1604,7 +1622,7 @@ fn py_geo_pos(
     key: &str,
     members: Vec<String>,
 ) -> PyResult<Vec<std::collections::HashMap<String, Py<PyAny>>>> {
-    use crate::geo::geo_pos;
+    use crate::client::geo::geo_pos;
 
     let locations = geo_pos(url, key, &members)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
@@ -1651,7 +1669,7 @@ fn py_geo_dist_matrix(
     members: Vec<String>,
     unit: &str,
 ) -> PyResult<Vec<Vec<Option<f64>>>> {
-    use crate::geo::geo_dist_matrix;
+    use crate::client::geo::geo_dist_matrix;
 
     geo_dist_matrix(url, key, &members, unit)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
@@ -1673,7 +1691,7 @@ fn py_geo_hash(
     key: &str,
     members: Vec<String>,
 ) -> PyResult<Vec<(String, Option<String>)>> {
-    use crate::geo::geo_hash;
+    use crate::client::geo::geo_hash;
 
     geo_hash(url, key, &members)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
@@ -1700,7 +1718,7 @@ fn py_key_info(
     pattern: &str,
     include_memory: bool,
 ) -> PyResult<Vec<std::collections::HashMap<String, Py<PyAny>>>> {
-    use crate::keys::key_info;
+    use crate::client::keys::key_info;
 
     let info = key_info(url, pattern, Some(include_memory))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
@@ -1751,7 +1769,7 @@ fn py_set_ttl(
     keys: Vec<String>,
     ttl_seconds: i64,
 ) -> PyResult<std::collections::HashMap<String, Py<PyAny>>> {
-    use crate::keys::set_ttl;
+    use crate::client::keys::set_ttl;
 
     let result = set_ttl(url, &keys, ttl_seconds)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
@@ -1788,7 +1806,7 @@ fn py_set_ttl_individual(
     url: &str,
     keys_and_ttls: Vec<(String, i64)>,
 ) -> PyResult<std::collections::HashMap<String, Py<PyAny>>> {
-    use crate::keys::set_ttl_individual;
+    use crate::client::keys::set_ttl_individual;
 
     let result = set_ttl_individual(url, &keys_and_ttls)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
@@ -1825,7 +1843,7 @@ fn py_delete_keys(
     url: &str,
     keys: Vec<String>,
 ) -> PyResult<std::collections::HashMap<String, usize>> {
-    use crate::keys::delete_keys;
+    use crate::client::keys::delete_keys;
 
     let result = delete_keys(url, &keys)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
@@ -1850,7 +1868,7 @@ fn py_delete_keys_pattern(
     url: &str,
     pattern: &str,
 ) -> PyResult<std::collections::HashMap<String, usize>> {
-    use crate::keys::delete_keys_pattern;
+    use crate::client::keys::delete_keys_pattern;
 
     let result = delete_keys_pattern(url, pattern)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
@@ -1875,7 +1893,7 @@ fn py_rename_keys(
     url: &str,
     renames: Vec<(String, String)>,
 ) -> PyResult<std::collections::HashMap<String, Py<PyAny>>> {
-    use crate::keys::rename_keys;
+    use crate::client::keys::rename_keys;
 
     let result = rename_keys(url, &renames)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
@@ -1912,7 +1930,7 @@ fn py_persist_keys(
     url: &str,
     keys: Vec<String>,
 ) -> PyResult<std::collections::HashMap<String, Py<PyAny>>> {
-    use crate::keys::persist_keys;
+    use crate::client::keys::persist_keys;
 
     let result = persist_keys(url, &keys)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
@@ -1946,7 +1964,7 @@ fn py_persist_keys(
 /// A list of (key, exists) tuples.
 #[pyfunction]
 fn py_exists_keys(url: &str, keys: Vec<String>) -> PyResult<Vec<(String, bool)>> {
-    use crate::keys::exists_keys;
+    use crate::client::keys::exists_keys;
 
     exists_keys(url, &keys)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
@@ -1963,7 +1981,7 @@ fn py_exists_keys(url: &str, keys: Vec<String>) -> PyResult<Vec<(String, bool)>>
 /// A list of (key, ttl) tuples. TTL is -1 if no expiry, -2 if key doesn't exist.
 #[pyfunction]
 fn py_get_ttl(url: &str, keys: Vec<String>) -> PyResult<Vec<(String, i64)>> {
-    use crate::keys::get_ttl;
+    use crate::client::keys::get_ttl;
 
     get_ttl(url, &keys)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
@@ -2655,7 +2673,7 @@ fn py_aggregate(
     load: Option<Vec<String>>,
 ) -> PyResult<Vec<std::collections::HashMap<String, String>>> {
     use crate::connection::RedisConnection;
-    use crate::search::{AggregateConfig, ApplyExpr, ReduceOp, SortBy, aggregate};
+    use crate::io::search::{AggregateConfig, ApplyExpr, ReduceOp, SortBy, aggregate};
 
     let rt = tokio::runtime::Runtime::new()
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
@@ -2810,7 +2828,7 @@ impl PyTimeSeriesBatchIterator {
             .with_row_index_column_name(&row_index_column_name)
             .with_label_columns(label_columns);
 
-        let mut config = types::hash::BatchConfig::new(pattern)
+        let mut config = io::types::hash::BatchConfig::new(pattern)
             .with_batch_size(batch_size)
             .with_count_hint(count_hint);
 
@@ -3739,7 +3757,7 @@ impl PyListBatchIterator {
             .with_row_index(include_row_index)
             .with_row_index_column_name(&row_index_column_name);
 
-        let mut config = types::hash::BatchConfig::new(pattern)
+        let mut config = io::types::hash::BatchConfig::new(pattern)
             .with_batch_size(batch_size)
             .with_count_hint(count_hint);
 
@@ -3959,7 +3977,7 @@ impl PySetBatchIterator {
             .with_row_index(include_row_index)
             .with_row_index_column_name(&row_index_column_name);
 
-        let mut config = types::hash::BatchConfig::new(pattern)
+        let mut config = io::types::hash::BatchConfig::new(pattern)
             .with_batch_size(batch_size)
             .with_count_hint(count_hint);
 
@@ -4131,7 +4149,7 @@ impl PyZSetBatchIterator {
             .with_row_index(include_row_index)
             .with_row_index_column_name(&row_index_column_name);
 
-        let mut config = types::hash::BatchConfig::new(pattern)
+        let mut config = io::types::hash::BatchConfig::new(pattern)
             .with_batch_size(batch_size)
             .with_count_hint(count_hint);
 
@@ -4324,7 +4342,7 @@ impl PyStreamBatchIterator {
             .with_row_index_column_name(&row_index_column_name)
             .set_fields(fields);
 
-        let mut config = types::hash::BatchConfig::new(pattern)
+        let mut config = io::types::hash::BatchConfig::new(pattern)
             .with_batch_size(batch_size)
             .with_count_hint(count_hint);
 

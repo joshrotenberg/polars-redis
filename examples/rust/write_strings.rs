@@ -8,7 +8,7 @@
 //! Prerequisites:
 //!     - Redis running on localhost:6379
 
-use polars_redis::write::{WriteMode, write_strings};
+use polars_redis::io::write::{WriteMode, write_strings};
 use std::env;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

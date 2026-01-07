@@ -8,7 +8,7 @@ use std::sync::Arc;
 use arrow::array::{Float64Array, Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use polars_redis::cache::{
+use polars_redis::io::cache::{
     CacheConfig, CacheFormat, IpcCompression, ParquetCompressionType, cache_exists, cache_info,
     cache_record_batch, cache_ttl, delete_cached, get_cached_record_batch,
 };

@@ -45,7 +45,7 @@ use arrow::array::{Float64Array, Int64Array, RecordBatch, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
-use polars_redis::cache::{
+use polars_redis::io::cache::{
     CacheConfig, IpcCompression, ParquetCompressionType, cache_record_batch, delete_cached,
     get_cached_record_batch,
 };
