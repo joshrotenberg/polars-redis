@@ -120,6 +120,7 @@ pub mod cache;
 pub mod cluster;
 mod connection;
 mod error;
+pub mod geo;
 #[cfg(feature = "search")]
 pub mod index;
 mod infer;
@@ -142,6 +143,10 @@ mod write;
 pub use cluster::{ClusterKeyScanner, DirectClusterKeyScanner};
 pub use connection::{ConnectionConfig, RedisConn, RedisConnection};
 pub use error::{Error, Result};
+pub use geo::{
+    GeoAddResult, GeoLocation, GeoSort, GeoUnit, geo_add, geo_dist, geo_dist_matrix, geo_hash,
+    geo_pos, geo_radius, geo_radius_by_member,
+};
 #[cfg(feature = "search")]
 pub use index::{
     DistanceMetric, Field, GeoField, GeoShapeField, Index, IndexDiff, IndexInfo, IndexType,
@@ -264,6 +269,13 @@ fn polars_redis_internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyTransaction>()?;
     m.add_class::<PyCommandResult>()?;
     m.add_class::<PyPipelineResult>()?;
+    m.add_function(wrap_pyfunction!(py_geo_add, m)?)?;
+    m.add_function(wrap_pyfunction!(py_geo_radius, m)?)?;
+    m.add_function(wrap_pyfunction!(py_geo_radius_by_member, m)?)?;
+    m.add_function(wrap_pyfunction!(py_geo_dist, m)?)?;
+    m.add_function(wrap_pyfunction!(py_geo_pos, m)?)?;
+    m.add_function(wrap_pyfunction!(py_geo_dist_matrix, m)?)?;
+    m.add_function(wrap_pyfunction!(py_geo_hash, m)?)?;
     #[cfg(feature = "cluster")]
     m.add_class::<PyClusterHashBatchIterator>()?;
     #[cfg(feature = "cluster")]
@@ -1363,6 +1375,294 @@ fn py_cache_ttl(url: &str, key: &str) -> PyResult<Option<i64>> {
         // TTL returns -2 if key doesn't exist, -1 if no TTL
         if ttl < 0 { Ok(None) } else { Ok(Some(ttl)) }
     })
+}
+
+// ============================================================================
+// Geospatial Python bindings
+// ============================================================================
+
+#[cfg(feature = "python")]
+/// Add locations to a geo set.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `key` - Redis key for the geo set
+/// * `locations` - List of (name, longitude, latitude) tuples
+///
+/// # Returns
+/// A dict with `added` and `updated` counts.
+#[pyfunction]
+fn py_geo_add(
+    url: &str,
+    key: &str,
+    locations: Vec<(String, f64, f64)>,
+) -> PyResult<std::collections::HashMap<String, usize>> {
+    use crate::geo::geo_add;
+
+    let result = geo_add(url, key, &locations)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    let mut dict = std::collections::HashMap::new();
+    dict.insert("added".to_string(), result.added);
+    dict.insert("updated".to_string(), result.updated);
+    Ok(dict)
+}
+
+#[cfg(feature = "python")]
+/// Query locations within a radius.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `key` - Redis key for the geo set
+/// * `longitude` - Center longitude
+/// * `latitude` - Center latitude
+/// * `radius` - Search radius
+/// * `unit` - Distance unit (m, km, mi, ft)
+/// * `count` - Optional maximum number of results
+/// * `sort` - Optional sort order ("ASC" or "DESC")
+///
+/// # Returns
+/// A list of dicts with name, longitude, latitude, distance.
+#[pyfunction]
+#[pyo3(signature = (url, key, longitude, latitude, radius, unit = "m", count = None, sort = None))]
+#[allow(clippy::too_many_arguments)]
+fn py_geo_radius(
+    url: &str,
+    key: &str,
+    longitude: f64,
+    latitude: f64,
+    radius: f64,
+    unit: &str,
+    count: Option<usize>,
+    sort: Option<&str>,
+) -> PyResult<Vec<std::collections::HashMap<String, Py<PyAny>>>> {
+    use crate::geo::{GeoSort, geo_radius};
+
+    let geo_sort = match sort {
+        Some("ASC") | Some("asc") => Some(GeoSort::Asc),
+        Some("DESC") | Some("desc") => Some(GeoSort::Desc),
+        Some(_) => {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "sort must be 'ASC' or 'DESC'",
+            ));
+        },
+        None => None,
+    };
+
+    let locations = geo_radius(url, key, longitude, latitude, radius, unit, count, geo_sort)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    Python::attach(|py| {
+        locations
+            .into_iter()
+            .map(|loc| {
+                let mut dict = std::collections::HashMap::new();
+                dict.insert(
+                    "name".to_string(),
+                    loc.name.into_pyobject(py)?.into_any().unbind(),
+                );
+                dict.insert(
+                    "longitude".to_string(),
+                    loc.longitude.into_pyobject(py)?.into_any().unbind(),
+                );
+                dict.insert(
+                    "latitude".to_string(),
+                    loc.latitude.into_pyobject(py)?.into_any().unbind(),
+                );
+                dict.insert(
+                    "distance".to_string(),
+                    loc.distance.into_pyobject(py)?.into_any().unbind(),
+                );
+                Ok(dict)
+            })
+            .collect()
+    })
+}
+
+#[cfg(feature = "python")]
+/// Query locations within a radius of another member.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `key` - Redis key for the geo set
+/// * `member` - Name of the member to search from
+/// * `radius` - Search radius
+/// * `unit` - Distance unit (m, km, mi, ft)
+/// * `count` - Optional maximum number of results
+/// * `sort` - Optional sort order ("ASC" or "DESC")
+///
+/// # Returns
+/// A list of dicts with name, longitude, latitude, distance.
+#[pyfunction]
+#[pyo3(signature = (url, key, member, radius, unit = "m", count = None, sort = None))]
+fn py_geo_radius_by_member(
+    url: &str,
+    key: &str,
+    member: &str,
+    radius: f64,
+    unit: &str,
+    count: Option<usize>,
+    sort: Option<&str>,
+) -> PyResult<Vec<std::collections::HashMap<String, Py<PyAny>>>> {
+    use crate::geo::{GeoSort, geo_radius_by_member};
+
+    let geo_sort = match sort {
+        Some("ASC") | Some("asc") => Some(GeoSort::Asc),
+        Some("DESC") | Some("desc") => Some(GeoSort::Desc),
+        Some(_) => {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "sort must be 'ASC' or 'DESC'",
+            ));
+        },
+        None => None,
+    };
+
+    let locations = geo_radius_by_member(url, key, member, radius, unit, count, geo_sort)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    Python::attach(|py| {
+        locations
+            .into_iter()
+            .map(|loc| {
+                let mut dict = std::collections::HashMap::new();
+                dict.insert(
+                    "name".to_string(),
+                    loc.name.into_pyobject(py)?.into_any().unbind(),
+                );
+                dict.insert(
+                    "longitude".to_string(),
+                    loc.longitude.into_pyobject(py)?.into_any().unbind(),
+                );
+                dict.insert(
+                    "latitude".to_string(),
+                    loc.latitude.into_pyobject(py)?.into_any().unbind(),
+                );
+                dict.insert(
+                    "distance".to_string(),
+                    loc.distance.into_pyobject(py)?.into_any().unbind(),
+                );
+                Ok(dict)
+            })
+            .collect()
+    })
+}
+
+#[cfg(feature = "python")]
+/// Get distance between two members.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `key` - Redis key for the geo set
+/// * `member1` - First member name
+/// * `member2` - Second member name
+/// * `unit` - Distance unit (m, km, mi, ft)
+///
+/// # Returns
+/// Distance as float, or None if either member doesn't exist.
+#[pyfunction]
+#[pyo3(signature = (url, key, member1, member2, unit = "m"))]
+fn py_geo_dist(
+    url: &str,
+    key: &str,
+    member1: &str,
+    member2: &str,
+    unit: &str,
+) -> PyResult<Option<f64>> {
+    use crate::geo::geo_dist;
+
+    geo_dist(url, key, member1, member2, unit)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+#[cfg(feature = "python")]
+/// Get positions of members.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `key` - Redis key for the geo set
+/// * `members` - List of member names
+///
+/// # Returns
+/// A list of dicts with name, longitude, latitude.
+#[pyfunction]
+fn py_geo_pos(
+    url: &str,
+    key: &str,
+    members: Vec<String>,
+) -> PyResult<Vec<std::collections::HashMap<String, Py<PyAny>>>> {
+    use crate::geo::geo_pos;
+
+    let locations = geo_pos(url, key, &members)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    Python::attach(|py| {
+        locations
+            .into_iter()
+            .map(|loc| {
+                let mut dict = std::collections::HashMap::new();
+                dict.insert(
+                    "name".to_string(),
+                    loc.name.into_pyobject(py)?.into_any().unbind(),
+                );
+                dict.insert(
+                    "longitude".to_string(),
+                    loc.longitude.into_pyobject(py)?.into_any().unbind(),
+                );
+                dict.insert(
+                    "latitude".to_string(),
+                    loc.latitude.into_pyobject(py)?.into_any().unbind(),
+                );
+                Ok(dict)
+            })
+            .collect()
+    })
+}
+
+#[cfg(feature = "python")]
+/// Calculate distance matrix between members.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `key` - Redis key for the geo set
+/// * `members` - List of member names
+/// * `unit` - Distance unit (m, km, mi, ft)
+///
+/// # Returns
+/// A 2D list of distances where result[i][j] is distance from members[i] to members[j].
+#[pyfunction]
+#[pyo3(signature = (url, key, members, unit = "m"))]
+fn py_geo_dist_matrix(
+    url: &str,
+    key: &str,
+    members: Vec<String>,
+    unit: &str,
+) -> PyResult<Vec<Vec<Option<f64>>>> {
+    use crate::geo::geo_dist_matrix;
+
+    geo_dist_matrix(url, key, &members, unit)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+#[cfg(feature = "python")]
+/// Get geohash strings for members.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `key` - Redis key for the geo set
+/// * `members` - List of member names
+///
+/// # Returns
+/// A list of (name, geohash) tuples. Geohash is None if member doesn't exist.
+#[pyfunction]
+fn py_geo_hash(
+    url: &str,
+    key: &str,
+    members: Vec<String>,
+) -> PyResult<Vec<(String, Option<String>)>> {
+    use crate::geo::geo_hash;
+
+    geo_hash(url, key, &members)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
 // ============================================================================
