@@ -23,8 +23,125 @@ use redis::aio::ConnectionManager;
 use crate::error::Result;
 use crate::types::hash::HashData;
 
-/// Configuration for RediSearch FT.SEARCH queries.
+/// Options for SUMMARIZE in FT.SEARCH results.
+///
+/// SUMMARIZE returns a snippet of the matching text with the search terms
+/// highlighted, useful for search result previews.
+#[derive(Debug, Clone, Default)]
+pub struct SummarizeOptions {
+    /// Fields to summarize (None = all TEXT fields).
+    pub fields: Option<Vec<String>>,
+    /// Number of fragments to return per field.
+    pub frags: Option<usize>,
+    /// Length of each fragment in words.
+    pub len: Option<usize>,
+    /// Separator between fragments.
+    pub separator: Option<String>,
+}
+
+impl SummarizeOptions {
+    /// Create new summarize options.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set fields to summarize.
+    pub fn with_fields(mut self, fields: Vec<String>) -> Self {
+        self.fields = Some(fields);
+        self
+    }
+
+    /// Set number of fragments per field.
+    pub fn with_frags(mut self, frags: usize) -> Self {
+        self.frags = Some(frags);
+        self
+    }
+
+    /// Set fragment length in words.
+    pub fn with_len(mut self, len: usize) -> Self {
+        self.len = Some(len);
+        self
+    }
+
+    /// Set separator between fragments.
+    pub fn with_separator(mut self, separator: impl Into<String>) -> Self {
+        self.separator = Some(separator.into());
+        self
+    }
+}
+
+/// Options for HIGHLIGHT in FT.SEARCH results.
+///
+/// HIGHLIGHT wraps matching terms with open/close tags for display.
 #[derive(Debug, Clone)]
+pub struct HighlightOptions {
+    /// Fields to highlight (None = all TEXT fields).
+    pub fields: Option<Vec<String>>,
+    /// Opening tag for highlighted terms.
+    pub open_tag: String,
+    /// Closing tag for highlighted terms.
+    pub close_tag: String,
+}
+
+impl Default for HighlightOptions {
+    fn default() -> Self {
+        Self {
+            fields: None,
+            open_tag: "<b>".to_string(),
+            close_tag: "</b>".to_string(),
+        }
+    }
+}
+
+impl HighlightOptions {
+    /// Create new highlight options with default tags.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set fields to highlight.
+    pub fn with_fields(mut self, fields: Vec<String>) -> Self {
+        self.fields = Some(fields);
+        self
+    }
+
+    /// Set opening tag for highlighted terms.
+    pub fn with_open_tag(mut self, tag: impl Into<String>) -> Self {
+        self.open_tag = tag.into();
+        self
+    }
+
+    /// Set closing tag for highlighted terms.
+    pub fn with_close_tag(mut self, tag: impl Into<String>) -> Self {
+        self.close_tag = tag.into();
+        self
+    }
+
+    /// Set both open and close tags.
+    pub fn with_tags(mut self, open: impl Into<String>, close: impl Into<String>) -> Self {
+        self.open_tag = open.into();
+        self.close_tag = close.into();
+        self
+    }
+}
+
+/// Configuration for RediSearch FT.SEARCH queries.
+///
+/// This struct provides comprehensive configuration for FT.SEARCH including
+/// query modifiers, result formatting, and advanced options.
+///
+/// # Example
+///
+/// ```ignore
+/// use polars_redis::search::{SearchConfig, HighlightOptions};
+///
+/// let config = SearchConfig::new("articles_idx", "python programming")
+///     .with_verbatim(true)  // Exact match, no stemming
+///     .with_language("english")
+///     .with_highlight(HighlightOptions::new().with_tags("<em>", "</em>"))
+///     .with_limit(100);
+/// ```
+#[derive(Debug, Clone, Default)]
 pub struct SearchConfig {
     /// RediSearch index name.
     pub index: String,
@@ -38,6 +155,36 @@ pub struct SearchConfig {
     pub sort_by: Option<(String, bool)>,
     /// Whether to return document content (default: true).
     pub nocontent: bool,
+    /// Whether to include relevance scores.
+    pub withscores: bool,
+    /// Disable stemming (exact term matching).
+    pub verbatim: bool,
+    /// Include stop words in the query.
+    pub nostopwords: bool,
+    /// Language for stemming.
+    pub language: Option<String>,
+    /// Custom scorer function (e.g., "BM25", "TFIDF", "DISMAX").
+    pub scorer: Option<String>,
+    /// Limit search to specific document keys.
+    pub inkeys: Option<Vec<String>>,
+    /// Limit search to specific fields.
+    pub infields: Option<Vec<String>>,
+    /// Query timeout in milliseconds.
+    pub timeout: Option<u64>,
+    /// RediSearch dialect version (1, 2, 3, or 4).
+    pub dialect: Option<u8>,
+    /// Additional PARAMS for parameterized queries.
+    pub params: Option<HashMap<String, Vec<u8>>>,
+    /// Options for generating text snippets.
+    pub summarize: Option<SummarizeOptions>,
+    /// Options for highlighting matching terms.
+    pub highlight: Option<HighlightOptions>,
+    /// Default slop for phrase queries.
+    pub slop: Option<usize>,
+    /// Whether phrase terms must appear in order.
+    pub inorder: Option<bool>,
+    /// Query expander to use.
+    pub expander: Option<String>,
 }
 
 impl SearchConfig {
@@ -50,10 +197,7 @@ impl SearchConfig {
         Self {
             index: index.into(),
             query: query.into(),
-            limit: None,
-            offset: 0,
-            sort_by: None,
-            nocontent: false,
+            ..Default::default()
         }
     }
 
@@ -82,6 +226,96 @@ impl SearchConfig {
     /// Set whether to return only document IDs (no content).
     pub fn with_nocontent(mut self, nocontent: bool) -> Self {
         self.nocontent = nocontent;
+        self
+    }
+
+    /// Include relevance scores in results.
+    pub fn with_scores(mut self, withscores: bool) -> Self {
+        self.withscores = withscores;
+        self
+    }
+
+    /// Disable stemming for exact term matching.
+    pub fn with_verbatim(mut self, verbatim: bool) -> Self {
+        self.verbatim = verbatim;
+        self
+    }
+
+    /// Include stop words in the query.
+    pub fn with_nostopwords(mut self, nostopwords: bool) -> Self {
+        self.nostopwords = nostopwords;
+        self
+    }
+
+    /// Set the language for stemming.
+    pub fn with_language(mut self, language: impl Into<String>) -> Self {
+        self.language = Some(language.into());
+        self
+    }
+
+    /// Set the scoring function (e.g., "BM25", "TFIDF", "DISMAX").
+    pub fn with_scorer(mut self, scorer: impl Into<String>) -> Self {
+        self.scorer = Some(scorer.into());
+        self
+    }
+
+    /// Limit search to specific document keys.
+    pub fn with_inkeys(mut self, keys: Vec<String>) -> Self {
+        self.inkeys = Some(keys);
+        self
+    }
+
+    /// Limit search to specific fields.
+    pub fn with_infields(mut self, fields: Vec<String>) -> Self {
+        self.infields = Some(fields);
+        self
+    }
+
+    /// Set query timeout in milliseconds.
+    pub fn with_timeout(mut self, timeout_ms: u64) -> Self {
+        self.timeout = Some(timeout_ms);
+        self
+    }
+
+    /// Set RediSearch dialect version (1, 2, 3, or 4).
+    pub fn with_dialect(mut self, dialect: u8) -> Self {
+        self.dialect = Some(dialect);
+        self
+    }
+
+    /// Set additional PARAMS for parameterized queries.
+    pub fn with_params(mut self, params: HashMap<String, Vec<u8>>) -> Self {
+        self.params = Some(params);
+        self
+    }
+
+    /// Configure text summarization for search results.
+    pub fn with_summarize(mut self, options: SummarizeOptions) -> Self {
+        self.summarize = Some(options);
+        self
+    }
+
+    /// Configure term highlighting for search results.
+    pub fn with_highlight(mut self, options: HighlightOptions) -> Self {
+        self.highlight = Some(options);
+        self
+    }
+
+    /// Set default slop for phrase queries.
+    pub fn with_slop(mut self, slop: usize) -> Self {
+        self.slop = Some(slop);
+        self
+    }
+
+    /// Set whether phrase terms must appear in order.
+    pub fn with_inorder(mut self, inorder: bool) -> Self {
+        self.inorder = Some(inorder);
+        self
+    }
+
+    /// Set the query expander to use.
+    pub fn with_expander(mut self, expander: impl Into<String>) -> Self {
+        self.expander = Some(expander.into());
         self
     }
 }

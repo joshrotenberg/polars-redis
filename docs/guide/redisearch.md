@@ -502,6 +502,214 @@ salary_stats = redis.aggregate_hashes(
 print(salary_stats)
 ```
 
+## Advanced Search Options
+
+For fine-grained control over search behavior, use `SearchOptions`:
+
+```python
+from polars_redis.options import SearchOptions, HighlightOptions, SummarizeOptions
+
+# Create options with advanced settings
+opts = SearchOptions(
+    index="articles_idx",
+    query="python programming",
+    verbatim=True,           # Disable stemming
+    language="english",       # Stemming language
+    scorer="BM25",           # Scoring algorithm
+    dialect=4,               # RediSearch dialect
+).with_highlight(
+    open_tag="<mark>",
+    close_tag="</mark>",
+).with_summarize(
+    len=50,
+    separator="...",
+)
+
+df = redis.search_hashes(
+    "redis://localhost:6379",
+    options=opts,
+    schema={"title": pl.Utf8, "body": pl.Utf8},
+).collect()
+```
+
+### Query Modifiers
+
+| Option | Description |
+|--------|-------------|
+| `verbatim` | Disable stemming for exact term matching |
+| `no_stopwords` | Include stop words in the query |
+| `language` | Language for stemming (e.g., "english", "spanish") |
+| `scorer` | Scoring function: "BM25", "TFIDF", "DISMAX" |
+| `expander` | Query expander: "SYNONYM" |
+| `slop` | Default slop for phrase queries |
+| `in_order` | Require phrase terms in order |
+| `dialect` | RediSearch dialect version (1-4) |
+
+### Filtering Options
+
+| Option | Description |
+|--------|-------------|
+| `in_keys` | Limit search to specific document keys |
+| `in_fields` | Limit search to specific fields |
+| `timeout_ms` | Query timeout in milliseconds |
+
+### Result Enrichment
+
+#### Highlighting
+
+Wrap matching terms in custom tags:
+
+```python
+opts = SearchOptions(
+    index="articles_idx",
+    query="python",
+).with_highlight(
+    fields=["title", "body"],
+    open_tag="<em>",
+    close_tag="</em>",
+)
+```
+
+#### Summarization
+
+Generate text snippets with matched terms:
+
+```python
+opts = SearchOptions(
+    index="articles_idx",
+    query="machine learning",
+).with_summarize(
+    fields=["body"],
+    frags=3,      # Number of fragments
+    len=30,       # Fragment length in words
+    separator="...",
+)
+```
+
+### Relevance Scores
+
+Include relevance scores in results:
+
+```python
+opts = SearchOptions(
+    index="articles_idx",
+    query="python",
+).with_score(True, "_relevance")
+
+df = redis.search_hashes(
+    "redis://localhost:6379",
+    options=opts,
+    schema={"title": pl.Utf8},
+).collect()
+
+# Results include _relevance column with scores
+```
+
+## Enhanced Client-Side Operations
+
+Some operations can't be pushed to RediSearch but execute efficiently in Polars after fetching results. These enable powerful filtering beyond RediSearch's capabilities.
+
+### Regex Matching
+
+```python
+# Match email patterns (runs in Polars)
+query = col("email").matches_regex(r".*@gmail\.com$")
+
+# Combine with server-side filter
+query = (col("status") == "active") & col("email").matches_regex(r".*@company\.com")
+```
+
+### Case-Insensitive Matching
+
+```python
+# Case-insensitive contains
+query = col("name").icontains("john")
+
+# Case-insensitive equality
+query = col("department").iequals("ENGINEERING")
+```
+
+### Multiple Substring Matching
+
+```python
+# Match any of multiple substrings
+query = col("description").contains_any(["python", "rust", "go"])
+```
+
+### String Similarity
+
+Match strings using Levenshtein distance:
+
+```python
+# Find names similar to "john" (80% similarity threshold)
+query = col("name").similar_to("john", threshold=0.8)
+```
+
+### Date/Time Operations
+
+Parse and filter by date fields:
+
+```python
+# Date comparisons
+query = col("created_at").as_date() > "2024-01-01"
+query = col("updated_at").as_datetime() >= "2024-06-15T12:00:00"
+
+# Date part extraction
+query = col("birth_date").as_date().year() == 1990
+query = col("created_at").as_date().month().is_in([1, 2, 3])  # Q1
+query = col("event_time").as_datetime().hour() >= 9
+
+# Available date parts: year(), month(), day(), weekday(), hour(), minute()
+```
+
+### Array/JSON Operations
+
+For JSON documents:
+
+```python
+# Check if array contains value
+query = col("tags").array_contains("python")
+
+# Filter by array length
+query = col("items").array_len() > 5
+
+# Extract nested JSON value
+query = col("metadata").json_path("$.user.role") == "admin"
+```
+
+## Hybrid Query Execution
+
+When queries combine server-side and client-side operations, polars-redis automatically splits execution:
+
+```python
+# This query has both server-pushable and client-side parts
+query = (col("age") > 30) & col("email").matches_regex(r".*@gmail\.com")
+
+# Check what runs where
+print(query.is_client_side)  # True
+
+# Extract server portion
+server_filter = query.get_server_filter()
+print(server_filter.to_redis())  # @age:[(30 +inf]
+
+# Extract client portion
+client_filter = query.get_client_filter()
+print(client_filter._op)  # "regex"
+
+# View execution plan
+print(query.explain())
+# RediSearch: @age:[(30 +inf]
+# Polars filter: pl.col("email").str.contains(r".*@gmail\.com")
+```
+
+### Execution Strategy
+
+1. **Pure server-side**: All predicates pushed to RediSearch
+2. **Pure client-side**: Fetch all, filter in Polars
+3. **Hybrid**: Push what we can, filter rest in Polars
+
+The query builder automatically optimizes for minimum data transfer.
+
 ## Performance Comparison
 
 | Method | Data Transfer | Use Case |
