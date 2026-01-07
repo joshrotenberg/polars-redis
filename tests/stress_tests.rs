@@ -505,11 +505,11 @@ fn stress_continuous_scan_60s() {
                     total_rows_scanned += batch.num_rows();
                 }
                 iteration_count += 1;
-            }
+            },
             Err(e) => {
                 eprintln!("Error on iteration {}: {}", iteration_count, e);
                 errors += 1;
-            }
+            },
         }
 
         // Brief pause between iterations

@@ -465,7 +465,7 @@ impl PyHashBatchIterator {
                 }
 
                 Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
-            }
+            },
             None => Ok(None),
         }
     }
@@ -821,7 +821,7 @@ impl PyClusterHashBatchIterator {
                 }
 
                 Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
-            }
+            },
             None => Ok(None),
         }
     }
@@ -965,7 +965,7 @@ impl PyClusterJsonBatchIterator {
                 }
 
                 Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
-            }
+            },
             None => Ok(None),
         }
     }
@@ -1037,7 +1037,7 @@ impl PyClusterStringBatchIterator {
                     "Unknown value type '{}'. Supported: utf8, int64, float64, bool, date, datetime",
                     value_type
                 )));
-            }
+            },
         };
 
         let string_schema = StringSchema::new(dtype)
@@ -1102,7 +1102,7 @@ impl PyClusterStringBatchIterator {
                 }
 
                 Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
-            }
+            },
             None => Ok(None),
         }
     }
@@ -1273,7 +1273,7 @@ impl PyHashSearchIterator {
                 }
 
                 Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
-            }
+            },
             None => Ok(None),
         }
     }
@@ -1575,7 +1575,7 @@ impl PyTimeSeriesBatchIterator {
                 }
 
                 Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
-            }
+            },
             None => Ok(None),
         }
     }
@@ -1743,7 +1743,7 @@ impl PyJsonBatchIterator {
                 }
 
                 Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
-            }
+            },
             None => Ok(None),
         }
     }
@@ -1832,7 +1832,7 @@ impl PyStringBatchIterator {
                     "Unknown value type '{}'. Supported: utf8, int64, float64, bool, date, datetime",
                     value_type
                 )));
-            }
+            },
         };
 
         let string_schema = StringSchema::new(dtype)
@@ -1902,7 +1902,7 @@ impl PyStringBatchIterator {
                 }
 
                 Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
-            }
+            },
             None => Ok(None),
         }
     }
@@ -2492,7 +2492,7 @@ impl PyListBatchIterator {
                 }
 
                 Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
-            }
+            },
             None => Ok(None),
         }
     }
@@ -2714,7 +2714,7 @@ impl PySetBatchIterator {
                 }
 
                 Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
-            }
+            },
             None => Ok(None),
         }
     }
@@ -2886,7 +2886,7 @@ impl PyZSetBatchIterator {
                 }
 
                 Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
-            }
+            },
             None => Ok(None),
         }
     }
@@ -3085,7 +3085,7 @@ impl PyStreamBatchIterator {
                 }
 
                 Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
-            }
+            },
             None => Ok(None),
         }
     }

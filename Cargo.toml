@@ -73,3 +73,7 @@ path = "examples/rust/scan_hashes.rs"
 [[example]]
 name = "scan_json"
 path = "examples/rust/scan_json.rs"
+
+# Clippy lints aligned with Polars conventions
+[lints.clippy]
+collapsible_if = "allow"

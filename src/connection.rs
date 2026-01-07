@@ -217,7 +217,7 @@ impl RedisConnection {
                     #[cfg(feature = "cluster")]
                     cluster_client: None,
                 })
-            }
+            },
             #[cfg(feature = "cluster")]
             ConnectionConfig::Cluster { nodes } => {
                 let cluster_client = ClusterClient::new(nodes.clone())
@@ -227,7 +227,7 @@ impl RedisConnection {
                     client: None,
                     cluster_client: Some(cluster_client),
                 })
-            }
+            },
         }
     }
 
@@ -263,12 +263,12 @@ impl RedisConnection {
             ConnectionConfig::Single { .. } => {
                 let manager = self.get_connection_manager().await?;
                 Ok(RedisConn::Single(manager))
-            }
+            },
             #[cfg(feature = "cluster")]
             ConnectionConfig::Cluster { .. } => {
                 let cluster = self.get_cluster_connection().await?;
                 Ok(RedisConn::Cluster(cluster))
-            }
+            },
         }
     }
 

@@ -236,7 +236,7 @@ fn build_int64_column(data: &[StringData]) -> Result<ArrayRef> {
                     ))
                 })?;
                 builder.append_value(parsed);
-            }
+            },
             None => builder.append_null(),
         }
     }
@@ -258,7 +258,7 @@ fn build_float64_column(data: &[StringData]) -> Result<ArrayRef> {
                     ))
                 })?;
                 builder.append_value(parsed);
-            }
+            },
             None => builder.append_null(),
         }
     }
@@ -280,7 +280,7 @@ fn build_boolean_column(data: &[StringData]) -> Result<ArrayRef> {
                     ))
                 })?;
                 builder.append_value(parsed);
-            }
+            },
             None => builder.append_null(),
         }
     }
@@ -302,7 +302,7 @@ fn build_date_column(data: &[StringData]) -> Result<ArrayRef> {
                     ))
                 })?;
                 builder.append_value(parsed);
-            }
+            },
             None => builder.append_null(),
         }
     }
@@ -324,7 +324,7 @@ fn build_datetime_column(data: &[StringData]) -> Result<ArrayRef> {
                     ))
                 })?;
                 builder.append_value(parsed);
-            }
+            },
             None => builder.append_null(),
         }
     }

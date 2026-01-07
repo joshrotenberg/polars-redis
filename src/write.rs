@@ -444,7 +444,7 @@ async fn write_hashes_detailed_async(
                             });
                         }
                     }
-                }
+                },
                 Err(e) => {
                     // Entire pipeline failed - mark all keys as failed
                     for (key, _) in key_command_counts {
@@ -454,7 +454,7 @@ async fn write_hashes_detailed_async(
                             error: e.to_string(),
                         });
                     }
-                }
+                },
             }
         }
     }

@@ -954,7 +954,7 @@ impl Index {
                         field = field.sortable();
                     }
                     index = index.with_field(field);
-                }
+                },
                 RedisType::Utf8 => {
                     if text_set.contains(field_name.as_str()) {
                         let mut field = TextField::new(field_name);
@@ -969,14 +969,14 @@ impl Index {
                         }
                         index = index.with_field(field);
                     }
-                }
+                },
                 RedisType::Boolean => {
                     let mut field = TagField::new(field_name);
                     if is_sortable {
                         field = field.sortable();
                     }
                     index = index.with_field(field);
-                }
+                },
                 RedisType::Date | RedisType::Datetime => {
                     // Date/Datetime are stored as strings, treat as TAG for exact match
                     // or use NUMERIC if stored as timestamps
@@ -985,7 +985,7 @@ impl Index {
                         field = field.sortable();
                     }
                     index = index.with_field(field);
-                }
+                },
             }
         }
 
