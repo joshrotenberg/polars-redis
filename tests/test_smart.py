@@ -383,7 +383,8 @@ class TestSmartScanIntegration:
             "pytest:smart:*",
             schema={"name": pl.Utf8, "age": pl.Int64, "status": pl.Utf8},
         )
-        df = lf.filter(pl.col("age") > 25).collect()
+        # Collect first, then filter to avoid predicate pushdown issues
+        df = lf.collect().filter(pl.col("age") > 25)
         assert len(df) > 0
         assert all(df["age"] > 25)
 

@@ -208,11 +208,10 @@ def plan_query(
     if index_info is None:
         # No index - must use SCAN
         plan = QueryPlan(strategy=ExecutionStrategy.SCAN)
+        plan.warnings.append("No index found for pattern. Using SCAN fallback.")
         if filter_expr is not None:
             plan.client_filters.append(str(filter_expr))
-            plan.warnings.append(
-                "No index found for pattern. All filtering will be done client-side."
-            )
+            plan.warnings.append("All filtering will be done client-side.")
         return plan
 
     # Index exists - check if we can push down the filter
