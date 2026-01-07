@@ -39,6 +39,18 @@ from polars_redis._decorator import (
     cache,
     cache_lazy,
 )
+from polars_redis._index import (
+    Field,
+    GeoField,
+    GeoShapeField,
+    Index,
+    IndexDiff,
+    IndexInfo,
+    NumericField,
+    TagField,
+    TextField,
+    VectorField,
+)
 
 # Re-export from submodules
 from polars_redis._infer import (
@@ -172,6 +184,17 @@ __all__ = [
     "infer_json_schema_with_overwrite",
     "infer_hash_schema_with_confidence",
     "SchemaConfidence",
+    # Index management (RediSearch)
+    "Index",
+    "IndexInfo",
+    "IndexDiff",
+    "Field",
+    "TextField",
+    "NumericField",
+    "TagField",
+    "GeoField",
+    "GeoShapeField",
+    "VectorField",
     # Option classes
     "ScanOptions",
     "HashScanOptions",

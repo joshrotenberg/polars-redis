@@ -120,6 +120,8 @@ pub mod cache;
 pub mod cluster;
 mod connection;
 mod error;
+#[cfg(feature = "search")]
+pub mod index;
 mod infer;
 pub mod options;
 pub mod parallel;
@@ -137,6 +139,11 @@ mod write;
 pub use cluster::{ClusterKeyScanner, DirectClusterKeyScanner};
 pub use connection::{ConnectionConfig, RedisConn, RedisConnection};
 pub use error::{Error, Result};
+#[cfg(feature = "search")]
+pub use index::{
+    DistanceMetric, Field, GeoField, GeoShapeField, Index, IndexDiff, IndexInfo, IndexType,
+    NumericField, TagField, TextField, VectorAlgorithm, VectorField,
+};
 pub use infer::{
     FieldInferenceInfo, InferredSchema, InferredSchemaWithConfidence, infer_hash_schema,
     infer_hash_schema_with_confidence, infer_json_schema,

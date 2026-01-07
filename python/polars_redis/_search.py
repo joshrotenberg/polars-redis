@@ -29,12 +29,14 @@ if TYPE_CHECKING:
     from polars import DataFrame, Expr
     from polars.type_aliases import SchemaDict
 
+    from polars_redis._index import Index
+
 from polars_redis.query import Expr as QueryExpr
 
 
 def search_hashes(
     url: str,
-    index: str = "",
+    index: str | Index = "",
     query: str | QueryExpr = "*",
     schema: dict | None = None,
     *,
@@ -48,6 +50,7 @@ def search_hashes(
     batch_size: int = 1000,
     sort_by: str | None = None,
     sort_ascending: bool = True,
+    create_index: bool = True,
 ) -> pl.LazyFrame:
     """Search Redis hashes using RediSearch and return a LazyFrame.
 
@@ -57,11 +60,13 @@ def search_hashes(
 
     Requires:
         - RediSearch module installed on Redis server
-        - An existing RediSearch index on the hash data
+        - An existing RediSearch index on the hash data (or pass an Index object)
 
     Args:
         url: Redis connection URL (e.g., "redis://localhost:6379").
-        index: RediSearch index name (e.g., "users_idx").
+        index: RediSearch index name (e.g., "users_idx") or an Index object.
+            When an Index object is passed, the index will be auto-created
+            if it doesn't exist (controlled by create_index parameter).
         query: RediSearch query - either a string (e.g., "@age:[30 +inf]")
             or a query expression built with col() (e.g., col("age") > 30).
         schema: Dictionary mapping field names to Polars dtypes.
@@ -76,6 +81,8 @@ def search_hashes(
         batch_size: Number of documents to fetch per batch.
         sort_by: Optional field name to sort results by.
         sort_ascending: Sort direction (default: True for ascending).
+        create_index: When index is an Index object, automatically create
+            the index if it doesn't exist (default: True).
 
     Returns:
         A Polars LazyFrame that will search Redis when collected.
@@ -96,6 +103,25 @@ def search_hashes(
         ...     "redis://localhost:6379",
         ...     index="users_idx",
         ...     query=(col("age") > 30) & (col("status") == "active"),
+        ...     schema={"name": pl.Utf8, "age": pl.Int64, "status": pl.Utf8}
+        ... )
+        >>> df = lf.collect()
+
+        >>> # Search with Index object (auto-creates index)
+        >>> from polars_redis import Index, TextField, NumericField, TagField
+        >>> idx = Index(
+        ...     name="users_idx",
+        ...     prefix="user:",
+        ...     schema=[
+        ...         TextField("name", sortable=True),
+        ...         NumericField("age", sortable=True),
+        ...         TagField("status"),
+        ...     ]
+        ... )
+        >>> lf = search_hashes(
+        ...     "redis://localhost:6379",
+        ...     index=idx,  # Auto-creates if not exists
+        ...     query=col("age") > 30,
         ...     schema={"name": pl.Utf8, "age": pl.Int64, "status": pl.Utf8}
         ... )
         >>> df = lf.collect()
@@ -128,6 +154,9 @@ def search_hashes(
     Raises:
         RuntimeError: If RediSearch support is not available.
     """
+    # Import here to avoid circular import
+    from polars_redis._index import Index as IndexClass
+
     # If options object provided, use its values
     if options is not None:
         index = options.index
@@ -141,6 +170,16 @@ def search_hashes(
         batch_size = options.batch_size
         sort_by = options.sort_by
         sort_ascending = options.sort_ascending
+
+    # Handle Index object
+    index_name: str
+    if isinstance(index, IndexClass):
+        if create_index:
+            index.ensure_exists(url)
+        index_name = index.name
+    else:
+        index_name = index
+
     if not _HAS_SEARCH:
         raise RuntimeError(
             "RediSearch support is not available. "
@@ -193,7 +232,7 @@ def search_hashes(
         # Create the iterator
         iterator = PyHashSearchIterator(
             url=url,
-            index=index,
+            index=index_name,
             query=query,
             schema=internal_schema,
             batch_size=effective_batch_size,
@@ -241,7 +280,7 @@ def search_hashes(
 
 def search_json(
     url: str,
-    index: str = "",
+    index: str | Index = "",
     query: str | QueryExpr = "*",
     schema: dict | None = None,
     *,
@@ -255,6 +294,7 @@ def search_json(
     batch_size: int = 1000,
     sort_by: str | None = None,
     sort_ascending: bool = True,
+    create_index: bool = True,
 ) -> pl.LazyFrame:
     """Search RedisJSON documents using RediSearch and return a LazyFrame.
 
@@ -265,11 +305,13 @@ def search_json(
     Requires:
         - RediSearch module installed on Redis server
         - RedisJSON module installed on Redis server
-        - An existing RediSearch index created with ON JSON
+        - An existing RediSearch index created with ON JSON (or pass an Index object)
 
     Args:
         url: Redis connection URL (e.g., "redis://localhost:6379").
-        index: RediSearch index name (e.g., "products_idx").
+        index: RediSearch index name (e.g., "products_idx") or an Index object.
+            When an Index object is passed, the index will be auto-created
+            if it doesn't exist (controlled by create_index parameter).
         query: RediSearch query - either a string (e.g., "@price:[0 100]")
             or a query expression built with col() (e.g., col("price") < 100).
         schema: Dictionary mapping field names to Polars dtypes.
@@ -285,6 +327,8 @@ def search_json(
         batch_size: Number of documents to fetch per batch.
         sort_by: Optional field name to sort results by.
         sort_ascending: Sort direction (default: True for ascending).
+        create_index: When index is an Index object, automatically create
+            the index if it doesn't exist (default: True).
 
     Returns:
         A Polars LazyFrame that will search Redis when collected.
@@ -332,6 +376,9 @@ def search_json(
         the index, not the JSON paths. For example, if your index was created with
         `$.product_name AS name`, use "name" in the schema.
     """
+    # Import here to avoid circular import
+    from polars_redis._index import Index as IndexClass
+
     # If options object provided, use its values
     if options is not None:
         index = options.index
@@ -345,6 +392,15 @@ def search_json(
         batch_size = options.batch_size
         sort_by = options.sort_by
         sort_ascending = options.sort_ascending
+
+    # Handle Index object
+    index_name: str
+    if isinstance(index, IndexClass):
+        if create_index:
+            index.ensure_exists(url)
+        index_name = index.name
+    else:
+        index_name = index
 
     if not _HAS_SEARCH:
         raise RuntimeError(
@@ -413,7 +469,7 @@ def search_json(
         # Create the iterator
         iterator = PyHashSearchIterator(
             url=url,
-            index=index,
+            index=index_name,
             query=query,
             schema=internal_schema,
             batch_size=effective_batch_size,
