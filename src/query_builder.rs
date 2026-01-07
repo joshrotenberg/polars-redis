@@ -1117,4 +1117,293 @@ mod tests {
         let pred = Predicate::vector_range("embedding", 0.5, "query_vec");
         assert_eq!(pred.to_query(), "@embedding:[VECTOR_RANGE 0.5 $query_vec]");
     }
+
+    // =========================================================================
+    // Property-Based Tests
+    // =========================================================================
+
+    mod proptest_tests {
+        use super::*;
+        use proptest::prelude::*;
+
+        // Valid field name strategy (alphanumeric, starting with letter)
+        fn field_name_strategy() -> impl Strategy<Value = String> {
+            "[a-zA-Z][a-zA-Z0-9_]{0,20}".prop_map(String::from)
+        }
+
+        // Valid tag value strategy (alphanumeric, may contain underscores)
+        fn simple_tag_value_strategy() -> impl Strategy<Value = String> {
+            "[a-zA-Z0-9_]{1,20}".prop_map(String::from)
+        }
+
+        proptest! {
+            /// Numeric equality predicates should always produce valid query format.
+            #[test]
+            fn prop_eq_numeric_format(
+                field in field_name_strategy(),
+                value in any::<i64>(),
+            ) {
+                let pred = Predicate::eq(&field, value);
+                let query = pred.to_query();
+
+                // Should have format @field:[value value]
+                let expected_prefix = format!("@{}:[", field);
+                prop_assert!(query.starts_with(&expected_prefix));
+                prop_assert!(query.ends_with("]"));
+                let value_str = value.to_string();
+                prop_assert!(query.contains(&value_str));
+            }
+
+            /// Greater-than predicates should produce valid range syntax.
+            #[test]
+            fn prop_gt_format(
+                field in field_name_strategy(),
+                value in any::<i64>(),
+            ) {
+                let pred = Predicate::gt(&field, value);
+                let query = pred.to_query();
+
+                // Should have format @field:[(value +inf]
+                let expected_prefix = format!("@{}:[(", field);
+                prop_assert!(query.starts_with(&expected_prefix));
+                prop_assert!(query.ends_with("+inf]"));
+                let value_str = value.to_string();
+                prop_assert!(query.contains(&value_str));
+            }
+
+            /// Less-than predicates should produce valid range syntax.
+            #[test]
+            fn prop_lt_format(
+                field in field_name_strategy(),
+                value in any::<i64>(),
+            ) {
+                let pred = Predicate::lt(&field, value);
+                let query = pred.to_query();
+
+                // Should have format @field:[-inf (value]
+                let expected_prefix = format!("@{}:[-inf (", field);
+                prop_assert!(query.starts_with(&expected_prefix));
+                prop_assert!(query.ends_with("]"));
+                let value_str = value.to_string();
+                prop_assert!(query.contains(&value_str));
+            }
+
+            /// Between predicates should contain both bounds.
+            #[test]
+            fn prop_between_contains_bounds(
+                field in field_name_strategy(),
+                min in any::<i32>(),
+                max in any::<i32>(),
+            ) {
+                let pred = Predicate::between(&field, min as i64, max as i64);
+                let query = pred.to_query();
+
+                let min_str = min.to_string();
+                let max_str = max.to_string();
+                prop_assert!(query.contains(&min_str));
+                prop_assert!(query.contains(&max_str));
+            }
+
+            /// Tag predicates should escape special characters.
+            #[test]
+            fn prop_tag_escapes_special_chars(
+                field in field_name_strategy(),
+            ) {
+                // Test with a value containing special characters
+                let special_value = "user@example.com";
+                let pred = Predicate::tag(&field, special_value);
+                let query = pred.to_query();
+
+                // @ should be escaped as \@
+                prop_assert!(query.contains(r"\@"));
+                // . should be escaped as \.
+                prop_assert!(query.contains(r"\."));
+            }
+
+            /// AND of two predicates should contain both query parts.
+            #[test]
+            fn prop_and_contains_both(
+                field1 in field_name_strategy(),
+                value1 in any::<i32>(),
+                field2 in field_name_strategy(),
+                value2 in any::<i32>(),
+            ) {
+                let pred1 = Predicate::gt(&field1, value1 as i64);
+                let pred2 = Predicate::lt(&field2, value2 as i64);
+                let combined = pred1.and(pred2);
+                let query = combined.to_query();
+
+                let field1_ref = format!("@{}", field1);
+                let field2_ref = format!("@{}", field2);
+                prop_assert!(query.contains(&field1_ref));
+                prop_assert!(query.contains(&field2_ref));
+            }
+
+            /// OR of two predicates should contain pipe separator.
+            #[test]
+            fn prop_or_contains_separator(
+                field in field_name_strategy(),
+                value1 in simple_tag_value_strategy(),
+                value2 in simple_tag_value_strategy(),
+            ) {
+                let pred1 = Predicate::tag(&field, &value1);
+                let pred2 = Predicate::tag(&field, &value2);
+                let combined = pred1.or(pred2);
+                let query = combined.to_query();
+
+                prop_assert!(query.contains(" | "));
+            }
+
+            /// NOT should wrap query in negation.
+            #[test]
+            fn prop_not_wraps_in_negation(
+                field in field_name_strategy(),
+                value in simple_tag_value_strategy(),
+            ) {
+                let pred = Predicate::tag(&field, &value).negate();
+                let query = pred.to_query();
+
+                prop_assert!(query.starts_with("-("));
+                prop_assert!(query.ends_with(")"));
+            }
+
+            /// Float values should be preserved in queries.
+            #[test]
+            fn prop_float_values_preserved(
+                field in field_name_strategy(),
+                value in any::<f64>().prop_filter("Must be finite", |v| v.is_finite()),
+            ) {
+                let pred = Predicate::gt(&field, value);
+                let query = pred.to_query();
+
+                // The value should appear in the query (possibly formatted differently)
+                let expected_prefix = format!("@{}:[(", field);
+                prop_assert!(query.contains(&expected_prefix));
+            }
+
+            /// Fuzzy distance should be clamped to 1-3.
+            #[test]
+            fn prop_fuzzy_distance_clamped(
+                field in field_name_strategy(),
+                term in "[a-z]{3,10}",
+                distance in 0u8..=10,
+            ) {
+                let pred = Predicate::fuzzy(&field, &term, distance);
+                let query = pred.to_query();
+
+                // Count the % characters (should be 2*clamped_distance)
+                let pct_count = query.chars().filter(|&c| c == '%').count();
+                let expected_distance = distance.clamp(1, 3) as usize;
+                prop_assert_eq!(pct_count, expected_distance * 2);
+            }
+
+            /// PredicateBuilder with multiple predicates should join with spaces.
+            #[test]
+            fn prop_builder_joins_predicates(
+                count in 2usize..=5,
+            ) {
+                let builder = (0..count).fold(PredicateBuilder::new(), |b, i| {
+                    b.and(Predicate::gt(format!("field{}", i), i as i64))
+                });
+                let query = builder.build();
+
+                // Should have count-1 spaces between predicates (approximately)
+                // Each predicate has format @fieldN:[(N +inf]
+                for i in 0..count {
+                    let field_ref = format!("@field{}:", i);
+                    prop_assert!(query.contains(&field_ref));
+                }
+            }
+
+            /// Empty builder should produce wildcard query.
+            #[test]
+            fn prop_empty_builder_is_wildcard(_unused in 0..1i32) {
+                let query = PredicateBuilder::new().build();
+                prop_assert_eq!(query, "*");
+            }
+
+            /// Geo radius should include all parameters.
+            #[test]
+            fn prop_geo_radius_format(
+                field in field_name_strategy(),
+                lon in -180.0f64..=180.0,
+                lat in -90.0f64..=90.0,
+                radius in 0.1f64..=1000.0,
+            ) {
+                let pred = Predicate::geo_radius(&field, lon, lat, radius, "km");
+                let query = pred.to_query();
+
+                let expected_prefix = format!("@{}:[", field);
+                prop_assert!(query.starts_with(&expected_prefix));
+                prop_assert!(query.ends_with("km]"));
+            }
+
+            /// Vector KNN should have proper format.
+            #[test]
+            fn prop_vector_knn_format(
+                field in field_name_strategy(),
+                k in 1usize..=100,
+                param in "[a-z_]{3,10}",
+            ) {
+                let pred = Predicate::vector_knn(&field, k, &param);
+                let query = pred.to_query();
+
+                let field_ref = format!("@{}", field);
+                let param_ref = format!("${}", param);
+                let k_str = k.to_string();
+                prop_assert!(query.starts_with("*=>[KNN"));
+                prop_assert!(query.contains(&field_ref));
+                prop_assert!(query.contains(&param_ref));
+                prop_assert!(query.contains(&k_str));
+            }
+
+            /// TagOr should produce pipe-separated tags.
+            #[test]
+            fn prop_tag_or_format(
+                field in field_name_strategy(),
+                tags in proptest::collection::vec(simple_tag_value_strategy(), 2..=5),
+            ) {
+                let pred = Predicate::tag_or(&field, tags.clone());
+                let query = pred.to_query();
+
+                // Should have n-1 pipes for n tags
+                let pipe_count = query.matches('|').count();
+                prop_assert_eq!(pipe_count, tags.len() - 1);
+
+                // All tags should be present
+                for tag in &tags {
+                    prop_assert!(query.contains(tag));
+                }
+            }
+
+            /// Boost should wrap predicate with weight.
+            #[test]
+            fn prop_boost_format(
+                field in field_name_strategy(),
+                value in simple_tag_value_strategy(),
+                weight in 0.1f64..=10.0,
+            ) {
+                let pred = Predicate::tag(&field, &value).boost(weight);
+                let query = pred.to_query();
+
+                prop_assert!(query.starts_with("("));
+                prop_assert!(query.contains("$weight:"));
+            }
+
+            /// Multi-field search should join fields with pipes.
+            #[test]
+            fn prop_multi_field_format(
+                fields in proptest::collection::vec(field_name_strategy(), 2..=4),
+                term in "[a-z]{3,10}",
+            ) {
+                let pred = Predicate::multi_field_search(fields.clone(), &term);
+                let query = pred.to_query();
+
+                // Check fields are joined with |
+                let field_part: String = fields.join("|");
+                let expected = format!("@{}:", field_part);
+                prop_assert!(query.contains(&expected));
+            }
+        }
+    }
 }

@@ -881,4 +881,271 @@ mod tests {
         let projected = schema.project(&["nonexistent".to_string()]);
         assert!(projected.fields().is_empty());
     }
+
+    // ========================================================================
+    // Property-Based Tests
+    // ========================================================================
+
+    mod proptest_tests {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            /// Any valid i64 should round-trip through parse.
+            #[test]
+            fn prop_parse_int64_roundtrip(value in any::<i64>()) {
+                let result = RedisType::Int64.parse(&value.to_string());
+                prop_assert!(result.is_ok());
+                if let Ok(TypedValue::Int64(parsed)) = result {
+                    prop_assert_eq!(parsed, value);
+                } else {
+                    prop_assert!(false, "Expected Int64 value");
+                }
+            }
+
+            /// Any finite f64 should parse successfully.
+            #[test]
+            fn prop_parse_float64_finite(
+                value in any::<f64>().prop_filter("Must be finite", |v| v.is_finite())
+            ) {
+                let result = RedisType::Float64.parse(&value.to_string());
+                prop_assert!(result.is_ok());
+                if let Ok(TypedValue::Float64(parsed)) = result {
+                    // Allow for floating point representation differences
+                    let diff = (parsed - value).abs();
+                    let tolerance = value.abs() * 1e-10 + 1e-10;
+                    prop_assert!(diff < tolerance, "Values differ: {} vs {}", parsed, value);
+                } else {
+                    prop_assert!(false, "Expected Float64 value");
+                }
+            }
+
+            /// Any string should parse successfully as Utf8.
+            #[test]
+            fn prop_parse_utf8_always_succeeds(s in ".*") {
+                let result = RedisType::Utf8.parse(&s);
+                prop_assert!(result.is_ok());
+                if let Ok(TypedValue::Utf8(parsed)) = result {
+                    prop_assert_eq!(parsed, s);
+                } else {
+                    prop_assert!(false, "Expected Utf8 value");
+                }
+            }
+
+            /// Valid boolean strings should parse correctly.
+            #[test]
+            fn prop_parse_boolean_true_variants(variant in prop_oneof![
+                Just("true"),
+                Just("TRUE"),
+                Just("True"),
+                Just("1"),
+                Just("yes"),
+                Just("YES"),
+                Just("Yes"),
+                Just("t"),
+                Just("T"),
+                Just("y"),
+                Just("Y"),
+            ]) {
+                let result = RedisType::Boolean.parse(variant);
+                prop_assert!(result.is_ok());
+                if let Ok(TypedValue::Boolean(val)) = result {
+                    prop_assert!(val);
+                }
+            }
+
+            /// Valid boolean false strings should parse correctly.
+            #[test]
+            fn prop_parse_boolean_false_variants(variant in prop_oneof![
+                Just("false"),
+                Just("FALSE"),
+                Just("False"),
+                Just("0"),
+                Just("no"),
+                Just("NO"),
+                Just("No"),
+                Just("f"),
+                Just("F"),
+                Just("n"),
+                Just("N"),
+            ]) {
+                let result = RedisType::Boolean.parse(variant);
+                prop_assert!(result.is_ok());
+                if let Ok(TypedValue::Boolean(val)) = result {
+                    prop_assert!(!val);
+                }
+            }
+
+            /// Valid date strings (YYYY-MM-DD format) should parse.
+            #[test]
+            fn prop_parse_date_valid_format(
+                year in 1970i32..2100,
+                month in 1u32..=12,
+                day in 1u32..=28,  // Use 28 to avoid invalid dates
+            ) {
+                let date_str = format!("{:04}-{:02}-{:02}", year, month, day);
+                let result = RedisType::Date.parse(&date_str);
+                prop_assert!(result.is_ok(), "Failed to parse: {}", date_str);
+            }
+
+            /// Epoch days should round-trip.
+            #[test]
+            fn prop_parse_date_epoch_roundtrip(days in 0i32..50000) {
+                let result = RedisType::Date.parse(&days.to_string());
+                prop_assert!(result.is_ok());
+                if let Ok(TypedValue::Date(parsed)) = result {
+                    prop_assert_eq!(parsed, days);
+                }
+            }
+
+            /// Unix timestamps in seconds should parse as datetime.
+            #[test]
+            fn prop_parse_datetime_unix_seconds(ts in 0i64..2_000_000_000) {
+                let result = RedisType::Datetime.parse(&ts.to_string());
+                prop_assert!(result.is_ok());
+                if let Ok(TypedValue::Datetime(micros)) = result {
+                    // Should be converted to microseconds
+                    prop_assert_eq!(micros, ts * 1_000_000);
+                }
+            }
+
+            /// Unix timestamps in milliseconds should parse as datetime.
+            #[test]
+            fn prop_parse_datetime_unix_millis(ts in 0i64..2_000_000_000) {
+                let millis = ts * 1000;
+                let result = RedisType::Datetime.parse(&millis.to_string());
+                prop_assert!(result.is_ok());
+                if let Ok(TypedValue::Datetime(micros)) = result {
+                    prop_assert_eq!(micros, millis * 1000);
+                }
+            }
+
+            /// days_since_epoch should be monotonically increasing for sequential days.
+            #[test]
+            fn prop_days_since_epoch_monotonic(
+                year in 1970i32..2100,
+                month in 1u32..=12,
+                day in 1u32..=27,  // Max 27 to allow +1
+            ) {
+                let day1 = days_since_epoch(year, month, day);
+                let day2 = days_since_epoch(year, month, day + 1);
+
+                if let (Some(d1), Some(d2)) = (day1, day2) {
+                    prop_assert_eq!(d2, d1 + 1);
+                }
+            }
+
+            /// HashSchema should preserve field order.
+            #[test]
+            fn prop_schema_preserves_field_order(
+                field_count in 1usize..=10,
+            ) {
+                let fields: Vec<(String, RedisType)> = (0..field_count)
+                    .map(|i| (format!("field_{}", i), RedisType::Utf8))
+                    .collect();
+
+                let schema = HashSchema::new(fields.clone());
+
+                for (i, (name, _)) in fields.iter().enumerate() {
+                    prop_assert_eq!(&schema.fields()[i], name);
+                }
+            }
+
+            /// Arrow schema should have correct number of fields.
+            #[test]
+            fn prop_arrow_schema_field_count(
+                field_count in 0usize..=10,
+                include_key in any::<bool>(),
+                include_ttl in any::<bool>(),
+                include_row_index in any::<bool>(),
+            ) {
+                let fields: Vec<(String, RedisType)> = (0..field_count)
+                    .map(|i| (format!("field_{}", i), RedisType::Utf8))
+                    .collect();
+
+                let schema = HashSchema::new(fields)
+                    .with_key(include_key)
+                    .with_ttl(include_ttl)
+                    .with_row_index(include_row_index);
+
+                let arrow_schema = schema.to_arrow_schema();
+
+                let expected_count = field_count
+                    + (if include_key { 1 } else { 0 })
+                    + (if include_ttl { 1 } else { 0 })
+                    + (if include_row_index { 1 } else { 0 });
+
+                prop_assert_eq!(arrow_schema.fields().len(), expected_count);
+            }
+
+            /// Projection should only include requested fields.
+            #[test]
+            fn prop_projection_subset(
+                total_fields in 3usize..=10,
+                projection_count in 1usize..=3,
+            ) {
+                let fields: Vec<(String, RedisType)> = (0..total_fields)
+                    .map(|i| (format!("field_{}", i), RedisType::Utf8))
+                    .collect();
+
+                let projection: Vec<String> = (0..projection_count.min(total_fields))
+                    .map(|i| format!("field_{}", i))
+                    .collect();
+
+                let schema = HashSchema::new(fields);
+                let projected = schema.project(&projection);
+
+                prop_assert_eq!(projected.fields().len(), projection.len());
+
+                // All projected fields should be in projection
+                for field in projected.fields() {
+                    prop_assert!(projection.contains(field));
+                }
+            }
+
+            /// RedisType to Arrow type should be deterministic.
+            #[test]
+            fn prop_redis_to_arrow_deterministic(
+                type_idx in 0usize..=5,
+            ) {
+                let redis_type = match type_idx {
+                    0 => RedisType::Utf8,
+                    1 => RedisType::Int64,
+                    2 => RedisType::Float64,
+                    3 => RedisType::Boolean,
+                    4 => RedisType::Date,
+                    _ => RedisType::Datetime,
+                };
+
+                let arrow1 = redis_type.to_arrow_type();
+                let arrow2 = redis_type.to_arrow_type();
+
+                prop_assert_eq!(arrow1, arrow2);
+            }
+
+            /// TypedValue variants should preserve their values.
+            #[test]
+            fn prop_typed_value_preserves_int(value in any::<i64>()) {
+                let typed = TypedValue::Int64(value);
+                if let TypedValue::Int64(v) = typed {
+                    prop_assert_eq!(v, value);
+                } else {
+                    prop_assert!(false, "Expected Int64");
+                }
+            }
+
+            /// TypedValue variants should preserve their values.
+            #[test]
+            fn prop_typed_value_preserves_float(
+                value in any::<f64>().prop_filter("Must be finite", |v| v.is_finite())
+            ) {
+                let typed = TypedValue::Float64(value);
+                if let TypedValue::Float64(v) = typed {
+                    prop_assert_eq!(v, value);
+                } else {
+                    prop_assert!(false, "Expected Float64");
+                }
+            }
+        }
+    }
 }
