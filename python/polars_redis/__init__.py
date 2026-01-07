@@ -39,6 +39,17 @@ from polars_redis._decorator import (
     cache,
     cache_lazy,
 )
+from polars_redis._geo import (
+    GeoAddResult,
+    geo_add,
+    geo_add_from_dataframe,
+    geo_dist,
+    geo_dist_matrix,
+    geo_hash,
+    geo_pos,
+    geo_radius,
+    geo_radius_by_member,
+)
 from polars_redis._index import (
     Field,
     GeoField,
@@ -263,6 +274,16 @@ __all__ = [
     "ExecutionStrategy",
     "QueryPlan",
     "DetectedIndex",
+    # Geospatial
+    "geo_add",
+    "geo_add_from_dataframe",
+    "geo_radius",
+    "geo_radius_by_member",
+    "geo_dist",
+    "geo_pos",
+    "geo_dist_matrix",
+    "geo_hash",
+    "GeoAddResult",
     # Version
     "__version__",
 ]
