@@ -8,7 +8,7 @@
 //! Prerequisites:
 //!     - Redis running on localhost:6379 with RedisJSON module
 
-use polars_redis::write::{WriteMode, write_json};
+use polars_redis::io::write::{WriteMode, write_json};
 use std::env;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

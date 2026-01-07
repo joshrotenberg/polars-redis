@@ -9,7 +9,7 @@
 //!     - Redis running on localhost:6379
 //!     - Sample data loaded (run setup_sample_data.py first)
 
-use polars_redis::infer::{infer_hash_schema, infer_json_schema};
+use polars_redis::io::infer::{infer_hash_schema, infer_json_schema};
 use std::env;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

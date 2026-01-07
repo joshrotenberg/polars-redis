@@ -266,7 +266,7 @@ print(summary)
 The Rust library provides equivalent functionality:
 
 ```rust
-use polars_redis::pubsub::{collect_pubsub, PubSubConfig};
+use polars_redis::client::pubsub::{collect_pubsub, PubSubConfig};
 
 // Configure collection
 let config = PubSubConfig {
