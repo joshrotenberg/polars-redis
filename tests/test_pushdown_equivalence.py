@@ -39,6 +39,8 @@ pytestmark = pytest.mark.integration
 @pytest.fixture
 def indexed_test_data(redis_url):
     """Setup comprehensive test data with RediSearch index."""
+    import time
+
     import redis
 
     client = redis.from_url(redis_url)
@@ -80,6 +82,17 @@ def indexed_test_data(redis_url):
     except Exception:
         pass
     idx.create(redis_url)
+
+    # Wait for index to finish indexing all documents
+    # RediSearch indexes asynchronously, so we need to poll until done
+    for _ in range(50):  # Max 5 seconds
+        info = client.execute_command("FT.INFO", "pushdown_test_idx")
+        # Convert list to dict for easier access
+        info_dict = dict(zip(info[::2], info[1::2]))
+        indexing = info_dict.get(b"indexing", info_dict.get("indexing", 0))
+        if indexing == 0 or indexing == b"0":
+            break
+        time.sleep(0.1)
 
     yield {
         "df": df,
@@ -709,6 +722,8 @@ class TestWithProjection:
 @pytest.fixture
 def edge_case_data(redis_url):
     """Setup test data with edge cases."""
+    import time
+
     import redis
 
     client = redis.from_url(redis_url)
@@ -750,6 +765,15 @@ def edge_case_data(redis_url):
     except Exception:
         pass
     idx.create(redis_url)
+
+    # Wait for index to finish indexing all documents
+    for _ in range(50):  # Max 5 seconds
+        info = client.execute_command("FT.INFO", "edge_case_idx")
+        info_dict = dict(zip(info[::2], info[1::2]))
+        indexing = info_dict.get(b"indexing", info_dict.get("indexing", 0))
+        if indexing == 0 or indexing == b"0":
+            break
+        time.sleep(0.1)
 
     yield {
         "schema": {"name": pl.Utf8, "value": pl.Int64, "tag": pl.Utf8},
