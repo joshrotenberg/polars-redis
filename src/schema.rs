@@ -1010,13 +1010,16 @@ mod tests {
             }
 
             /// Unix timestamps in milliseconds should parse as datetime.
+            /// Note: Values must be >= 10_000_000_000 to be detected as milliseconds
+            /// by the heuristic in parse_datetime.
             #[test]
-            fn prop_parse_datetime_unix_millis(ts in 0i64..2_000_000_000) {
-                let millis = ts * 1000;
-                let result = RedisType::Datetime.parse(&millis.to_string());
+            fn prop_parse_datetime_unix_millis(ts in 10_000_000_000i64..2_000_000_000_000i64) {
+                // ts is already in the millisecond range (>= 10^10, < 10^13)
+                let result = RedisType::Datetime.parse(&ts.to_string());
                 prop_assert!(result.is_ok());
                 if let Ok(TypedValue::Datetime(micros)) = result {
-                    prop_assert_eq!(micros, millis * 1000);
+                    // Should be converted from millis to micros
+                    prop_assert_eq!(micros, ts * 1000);
                 }
             }
 
