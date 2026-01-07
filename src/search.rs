@@ -405,7 +405,7 @@ fn parse_search_response(value: redis::Value) -> Result<SearchResult> {
                     _ => {
                         i += 1;
                         continue;
-                    }
+                    },
                 };
                 i += 1;
 
@@ -426,7 +426,7 @@ fn parse_search_response(value: redis::Value) -> Result<SearchResult> {
             }
 
             Ok(SearchResult { total, documents })
-        }
+        },
         _ => Ok(SearchResult {
             total: 0,
             documents: Vec::new(),
@@ -446,7 +446,7 @@ fn parse_field_array(arr: &[redis::Value]) -> HashMap<String, Option<String>> {
             _ => {
                 i += 2;
                 continue;
-            }
+            },
         };
 
         let field_value = match &arr[i + 1] {
@@ -847,7 +847,7 @@ fn parse_aggregate_response(value: redis::Value) -> Result<AggregateResult> {
             }
 
             Ok(AggregateResult { rows })
-        }
+        },
         _ => Ok(AggregateResult { rows: Vec::new() }),
     }
 }
@@ -864,7 +864,7 @@ fn parse_aggregate_row(arr: &[redis::Value]) -> HashMap<String, String> {
             _ => {
                 i += 2;
                 continue;
-            }
+            },
         };
 
         let field_value = match &arr[i + 1] {

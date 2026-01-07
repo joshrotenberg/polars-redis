@@ -691,7 +691,7 @@ fn json_value_type(value: &serde_json::Value) -> &'static str {
             } else {
                 "number"
             }
-        }
+        },
         serde_json::Value::String(_) => "string",
         serde_json::Value::Array(_) => "array",
         serde_json::Value::Object(_) => "object",

@@ -572,7 +572,7 @@ async fn cache_info_async(url: &str, key: &str) -> Result<Option<CacheInfo>> {
                 chunk_size: d.len(),
                 ttl: if ttl < 0 { None } else { Some(ttl) },
             }))
-        }
+        },
         None => Ok(None),
     }
 }
@@ -611,7 +611,7 @@ fn serialize_batch(batch: &RecordBatch, config: &CacheConfig) -> Result<Vec<u8>>
         CacheFormat::Ipc => serialize_ipc(batch, config.ipc_compression),
         CacheFormat::Parquet => {
             serialize_parquet(batch, config.parquet_compression, config.compression_level)
-        }
+        },
     }
 }
 
@@ -667,7 +667,7 @@ fn serialize_parquet(
                 .map(|l| parquet::basic::ZstdLevel::try_new(l).unwrap_or_default())
                 .unwrap_or_default();
             ParquetCompression::ZSTD(zstd_level)
-        }
+        },
     };
 
     let props = WriterProperties::builder()

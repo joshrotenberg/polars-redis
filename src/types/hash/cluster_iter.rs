@@ -272,7 +272,7 @@ impl ClusterHashBatchIterator {
                     Ok(Err(e)) => return Err(e),
                     Err(e) => {
                         return Err(Error::Runtime(format!("Task join error: {}", e)));
-                    }
+                    },
                 }
             }
 

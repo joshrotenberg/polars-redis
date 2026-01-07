@@ -239,7 +239,7 @@ fn normalize_json_response(parsed: serde_json::Value) -> Option<serde_json::Valu
                 // Regular object, return as-is
                 Some(serde_json::Value::Object(map))
             }
-        }
+        },
 
         // Other types, return as-is
         other => Some(other),
@@ -369,14 +369,14 @@ fn build_int64_json_column(
                     } else {
                         builder.append_null();
                     }
-                }
+                },
                 Some(serde_json::Value::Null) | None => builder.append_null(),
                 Some(v) => {
                     return Err(Error::TypeConversion(format!(
                         "Cannot convert {:?} to i64 for field '{}'",
                         v, field_name
                     )));
-                }
+                },
             },
             None => builder.append_null(),
         }
@@ -400,14 +400,14 @@ fn build_float64_json_column(
                     } else {
                         builder.append_null();
                     }
-                }
+                },
                 Some(serde_json::Value::Null) | None => builder.append_null(),
                 Some(v) => {
                     return Err(Error::TypeConversion(format!(
                         "Cannot convert {:?} to f64 for field '{}'",
                         v, field_name
                     )));
-                }
+                },
             },
             None => builder.append_null(),
         }
@@ -432,7 +432,7 @@ fn build_boolean_json_column(
                         "Cannot convert {:?} to bool for field '{}'",
                         v, field_name
                     )));
-                }
+                },
             },
             None => builder.append_null(),
         }

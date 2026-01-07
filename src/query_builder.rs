@@ -461,7 +461,7 @@ impl Predicate {
             Predicate::And(mut preds) => {
                 preds.push(other);
                 Predicate::And(preds)
-            }
+            },
             _ => Predicate::And(vec![self, other]),
         }
     }
@@ -472,7 +472,7 @@ impl Predicate {
             Predicate::Or(mut preds) => {
                 preds.push(other);
                 Predicate::Or(preds)
-            }
+            },
             _ => Predicate::Or(vec![self, other]),
         }
     }
@@ -509,7 +509,7 @@ impl Predicate {
                     .collect();
                 let wkt = format!("POLYGON(({}))", coords.join(", "));
                 params.push(("poly".to_string(), wkt));
-            }
+            },
             Predicate::VectorKnn {
                 vector_param,
                 pre_filter,
@@ -521,19 +521,19 @@ impl Predicate {
                 if let Some(filter) = pre_filter {
                     filter.collect_params(params);
                 }
-            }
+            },
             Predicate::VectorRange { vector_param, .. } => {
                 params.push((vector_param.clone(), String::new()));
-            }
+            },
             Predicate::And(preds) | Predicate::Or(preds) => {
                 for p in preds {
                     p.collect_params(params);
                 }
-            }
+            },
             Predicate::Not(inner) | Predicate::Optional(inner) | Predicate::Boost(inner, _) => {
                 inner.collect_params(params);
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 
@@ -547,29 +547,29 @@ impl Predicate {
                 } else {
                     format!("@{}:{{{}}}", field, escape_tag_value(&value.to_string()))
                 }
-            }
+            },
             Predicate::Ne(field, value) => {
                 if value.is_numeric() {
                     format!("-@{}:[{} {}]", field, value, value)
                 } else {
                     format!("-@{}:{{{}}}", field, escape_tag_value(&value.to_string()))
                 }
-            }
+            },
             Predicate::Gt(field, value) => {
                 format!("@{}:[({} +inf]", field, value)
-            }
+            },
             Predicate::Gte(field, value) => {
                 format!("@{}:[{} +inf]", field, value)
-            }
+            },
             Predicate::Lt(field, value) => {
                 format!("@{}:[-inf ({}]", field, value)
-            }
+            },
             Predicate::Lte(field, value) => {
                 format!("@{}:[-inf {}]", field, value)
-            }
+            },
             Predicate::Between(field, min, max) => {
                 format!("@{}:[{} {}]", field, min, max)
-            }
+            },
 
             // Logical
             Predicate::And(preds) => {
@@ -589,7 +589,7 @@ impl Predicate {
                         .collect::<Vec<_>>()
                         .join(" ")
                 }
-            }
+            },
             Predicate::Or(preds) => {
                 if preds.is_empty() {
                     "*".to_string()
@@ -607,37 +607,37 @@ impl Predicate {
                         .collect::<Vec<_>>()
                         .join(" | ")
                 }
-            }
+            },
             Predicate::Not(inner) => {
                 format!("-({})", inner.to_query())
-            }
+            },
 
             // Text search
             Predicate::TextSearch(field, term) => {
                 format!("@{}:{}", field, escape_text_value(term))
-            }
+            },
             Predicate::Prefix(field, prefix) => {
                 format!("@{}:{}*", field, escape_text_value(prefix))
-            }
+            },
             Predicate::Suffix(field, suffix) => {
                 format!("@{}:*{}", field, escape_text_value(suffix))
-            }
+            },
             Predicate::Infix(field, substring) => {
                 format!("@{}:*{}*", field, escape_text_value(substring))
-            }
+            },
             Predicate::Wildcard(field, pattern) => {
                 format!("@{}:{}", field, pattern)
-            }
+            },
             Predicate::WildcardExact(field, pattern) => {
                 format!("@{}:\"w'{}\"", field, pattern)
-            }
+            },
             Predicate::Fuzzy(field, term, distance) => {
                 let pct = "%".repeat(*distance as usize);
                 format!("@{}:{}{}{}", field, pct, escape_text_value(term), pct)
-            }
+            },
             Predicate::Phrase(field, words) => {
                 format!("@{}:({})", field, words.join(" "))
-            }
+            },
             Predicate::PhraseWithOptions {
                 field,
                 words,
@@ -657,29 +657,29 @@ impl Predicate {
                 } else {
                     format!("@{}:({}) => {{ {}; }}", field, phrase, attrs.join("; "))
                 }
-            }
+            },
             Predicate::Optional(inner) => {
                 format!("~{}", inner.to_query())
-            }
+            },
 
             // Tags
             Predicate::Tag(field, tag) => {
                 format!("@{}:{{{}}}", field, escape_tag_value(tag))
-            }
+            },
             Predicate::TagOr(field, tags) => {
                 let escaped: Vec<String> = tags.iter().map(|t| escape_tag_value(t)).collect();
                 format!("@{}:{{{}}}", field, escaped.join("|"))
-            }
+            },
 
             // Multi-field search
             Predicate::MultiFieldSearch(fields, term) => {
                 format!("@{}:{}", fields.join("|"), escape_text_value(term))
-            }
+            },
 
             // Geo
             Predicate::GeoRadius(field, lon, lat, radius, unit) => {
                 format!("@{}:[{} {} {} {}]", field, lon, lat, radius, unit)
-            }
+            },
             Predicate::GeoPolygon { field, points } => {
                 // Format: @field:[WITHIN $poly] with PARAMS containing WKT polygon
                 // For query string, we output the WITHIN syntax
@@ -691,20 +691,20 @@ impl Predicate {
                     .collect();
                 // Note: The actual WKT polygon is passed via PARAMS 2 poly "POLYGON((...))""
                 format!("@{}:[WITHIN $poly]", field)
-            }
+            },
 
             // Null checks
             Predicate::IsMissing(field) => {
                 format!("ismissing(@{})", field)
-            }
+            },
             Predicate::IsNotMissing(field) => {
                 format!("-ismissing(@{})", field)
-            }
+            },
 
             // Boost
             Predicate::Boost(inner, weight) => {
                 format!("({}) => {{ $weight: {}; }}", inner.to_query(), weight)
-            }
+            },
 
             // Vector search
             Predicate::VectorKnn {
@@ -718,14 +718,14 @@ impl Predicate {
                     .map(|p| p.to_query())
                     .unwrap_or_else(|| "*".to_string());
                 format!("{}=>[KNN {} @{} ${}]", filter, k, field, vector_param)
-            }
+            },
             Predicate::VectorRange {
                 field,
                 radius,
                 vector_param,
             } => {
                 format!("@{}:[VECTOR_RANGE {} ${}]", field, radius, vector_param)
-            }
+            },
 
             // Raw
             Predicate::Raw(query) => query.clone(),
@@ -742,7 +742,7 @@ fn escape_tag_value(s: &str) -> String {
             | '#' | '$' | '%' | '^' | '&' | '*' | '(' | ')' | '-' | '+' | '=' | '~' | ' ' => {
                 result.push('\\');
                 result.push(c);
-            }
+            },
             _ => result.push(c),
         }
     }
@@ -757,7 +757,7 @@ fn escape_text_value(s: &str) -> String {
             '@' | '{' | '}' | '[' | ']' | '(' | ')' | '|' | '-' | '~' => {
                 result.push('\\');
                 result.push(c);
-            }
+            },
             _ => result.push(c),
         }
     }

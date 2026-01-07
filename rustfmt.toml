@@ -1,0 +1,14 @@
+# Formatting configuration aligned with Polars conventions
+# See: https://docs.pola.rs/development/contributing/
+#
+# Note: group_imports and imports_granularity require nightly rustfmt.
+# Polars uses nightly for these features. We keep them commented for
+# documentation but use stable-compatible settings.
+
+# Stable rustfmt settings
+match_block_trailing_comma = true
+use_field_init_shorthand = true
+
+# Nightly-only settings (uncomment if using nightly rustfmt)
+# group_imports = "StdExternalCrate"
+# imports_granularity = "Module"

@@ -81,10 +81,10 @@ fn test_parallel_batch_reads_same_pattern() {
                     } else {
                         eprintln!("Thread {} got {} rows instead of 100", thread_id, count);
                     }
-                }
+                },
                 Err(e) => {
                     eprintln!("Thread {} failed: {}", thread_id, e);
-                }
+                },
             }
         });
 
@@ -593,10 +593,10 @@ fn test_high_concurrency_stress() {
                         while let Ok(Some(_)) = iterator.next_batch() {
                             read_ops.fetch_add(1, Ordering::SeqCst);
                         }
-                    }
+                    },
                     Err(_) => {
                         errors.fetch_add(1, Ordering::SeqCst);
-                    }
+                    },
                 }
             }
         });

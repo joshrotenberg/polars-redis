@@ -59,16 +59,16 @@ impl From<Error> for pyo3::PyErr {
         match err {
             Error::Connection(_) | Error::InvalidUrl(_) => {
                 pyo3::exceptions::PyConnectionError::new_err(err.to_string())
-            }
+            },
             Error::SchemaMismatch(_) | Error::TypeConversion(_) => {
                 pyo3::exceptions::PyValueError::new_err(err.to_string())
-            }
+            },
             Error::Io(_) => pyo3::exceptions::PyIOError::new_err(err.to_string()),
             Error::Runtime(_) => pyo3::exceptions::PyRuntimeError::new_err(err.to_string()),
             Error::KeyNotFound(_) => pyo3::exceptions::PyKeyError::new_err(err.to_string()),
             Error::JsonModuleNotAvailable => {
                 pyo3::exceptions::PyRuntimeError::new_err(err.to_string())
-            }
+            },
             Error::InvalidInput(_) => pyo3::exceptions::PyValueError::new_err(err.to_string()),
             Error::KeyExists(_) => pyo3::exceptions::PyValueError::new_err(err.to_string()),
             Error::Channel(_) => pyo3::exceptions::PyRuntimeError::new_err(err.to_string()),

@@ -177,13 +177,13 @@ impl<F: ParallelFetch> ParallelFetcher<F> {
                             match fetcher.fetch(conn.clone(), keys).await {
                                 Ok(data) => {
                                     let _ = result_tx.send(FetchResult { data, sequence }).await;
-                                }
+                                },
                                 Err(_e) => {
                                     // Error in fetch, continue processing
                                     // TODO: Consider adding error channel for reporting
-                                }
+                                },
                             }
-                        }
+                        },
                         None => break, // Channel closed, exit worker
                     }
                 }

@@ -63,7 +63,7 @@ impl RedisType {
                     .ok_or_else(|| {
                         Error::TypeConversion(format!("Failed to parse '{}' as datetime", value))
                     })
-            }
+            },
         }
     }
 }

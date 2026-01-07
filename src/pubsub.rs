@@ -244,17 +244,17 @@ async fn collect_pubsub_async(url: &str, config: &PubSubConfig) -> Result<Record
                     payload,
                     received_at,
                 });
-            }
+            },
             Ok(None) => {
                 // Stream ended
                 break;
-            }
+            },
             Err(_) => {
                 // Timeout - check if we should continue
                 if deadline.is_some() {
                     break;
                 }
-            }
+            },
         }
     }
 

@@ -161,7 +161,7 @@ fn parse_cluster_slots_for_masters(value: &Value) -> Result<Vec<String>> {
             return Err(Error::Runtime(
                 "Unexpected CLUSTER SLOTS response format".to_string(),
             ));
-        }
+        },
     };
 
     for slot_range in slots {

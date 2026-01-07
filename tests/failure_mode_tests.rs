@@ -45,7 +45,7 @@ fn test_connection_error_message_quality() {
                 "Error message should be informative: {}",
                 err_msg
             );
-        }
+        },
     }
 }
 
@@ -67,7 +67,7 @@ fn test_invalid_url_error_message() {
                 "Error message should mention URL issue: {}",
                 err_msg
             );
-        }
+        },
     }
 }
 
@@ -345,7 +345,7 @@ fn test_key_type_changed_during_scan() {
     let mut error_count = 0;
     loop {
         match iterator.next_batch() {
-            Ok(Some(_)) => {}
+            Ok(Some(_)) => {},
             Ok(None) => break,
             Err(_) => {
                 error_count += 1;
@@ -353,7 +353,7 @@ fn test_key_type_changed_during_scan() {
                 if error_count > 5 {
                     break;
                 }
-            }
+            },
         }
     }
 
@@ -669,10 +669,10 @@ fn test_concurrent_failure_handling() {
                 match HashBatchIterator::new(&url, schema, config, None) {
                     Ok(_) => {
                         success_count.fetch_add(1, Ordering::SeqCst);
-                    }
+                    },
                     Err(_) => {
                         error_count.fetch_add(1, Ordering::SeqCst);
-                    }
+                    },
                 }
             })
         })
@@ -736,7 +736,7 @@ fn test_error_isolation_between_threads() {
                     Err(e) => {
                         results.lock().unwrap().push((i, Err(e.to_string())));
                         return;
-                    }
+                    },
                 };
 
                 let mut row_count = 0;
@@ -747,7 +747,7 @@ fn test_error_isolation_between_threads() {
                         Err(e) => {
                             results.lock().unwrap().push((i, Err(e.to_string())));
                             return;
-                        }
+                        },
                     }
                 }
 
@@ -770,9 +770,9 @@ fn test_error_isolation_between_threads() {
             Ok(count) if *thread_id != 0 => {
                 assert_eq!(*count, 10, "Thread {} should read all rows", thread_id);
                 success_threads += 1;
-            }
-            Ok(_) => {}  // Thread 0 might succeed with nulls
-            Err(_) => {} // Thread 0 might error
+            },
+            Ok(_) => {},  // Thread 0 might succeed with nulls
+            Err(_) => {}, // Thread 0 might error
         }
     }
 

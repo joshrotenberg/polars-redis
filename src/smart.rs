@@ -181,7 +181,7 @@ async fn get_index_info(
             _ => {
                 i += 2;
                 continue;
-            }
+            },
         };
         info_map.insert(key, info[i + 1].clone());
         i += 2;
@@ -199,13 +199,13 @@ async fn get_index_info(
                     _ => {
                         j += 2;
                         continue;
-                    }
+                    },
                 };
                 def_map.insert(k, arr[j + 1].clone());
                 j += 2;
             }
             def_map
-        }
+        },
         _ => return Ok(None),
     };
 
@@ -221,7 +221,7 @@ async fn get_index_info(
             .collect(),
         Some(redis::Value::BulkString(bytes)) => {
             vec![String::from_utf8_lossy(bytes).to_string()]
-        }
+        },
         _ => Vec::new(),
     };
 
@@ -243,12 +243,12 @@ async fn get_index_info(
                         let k = match &attr_arr[j] {
                             redis::Value::BulkString(bytes) => {
                                 String::from_utf8_lossy(bytes).to_string()
-                            }
+                            },
                             redis::Value::SimpleString(s) => s.clone(),
                             _ => {
                                 j += 2;
                                 continue;
-                            }
+                            },
                         };
                         if k == "identifier" {
                             if let redis::Value::BulkString(bytes) = &attr_arr[j + 1] {
@@ -263,7 +263,7 @@ async fn get_index_info(
                 }
             }
             fields
-        }
+        },
         _ => Vec::new(),
     };
 
