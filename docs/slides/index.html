@@ -3,7 +3,9 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>polars-redis - A Polars IO Plugin for Redis</title>
+        <title>
+            polars-redis - Redis + Polars = Analytics Without the Data Warehouse
+        </title>
         <link
             rel="stylesheet"
             href="https://cdn.jsdelivr.net/npm/reveal.js@4/dist/reset.css"
@@ -89,6 +91,18 @@
             .hljs {
                 background: #1e1e1e;
             }
+            .reveal .highlight-box {
+                background: #2d2d2d;
+                padding: 0.8em;
+                border-radius: 8px;
+                border-left: 4px solid #98c379;
+            }
+            .reveal .problem-box {
+                background: #2d2d2d;
+                padding: 0.8em;
+                border-radius: 8px;
+                border-left: 4px solid #dc382d;
+            }
         </style>
     </head>
     <body>
@@ -102,16 +116,116 @@
                             >redis</span
                         >
                     </h1>
-                    <h3>A Polars IO Plugin for Redis</h3>
-                    <p>Scan, query, and write Redis data as DataFrames</p>
+                    <h3>
+                        Query Redis like a database.<br />Transform with
+                        Polars.<br />Write back without ETL.
+                    </h3>
                     <p class="small" style="margin-top: 2em">
                         github.com/joshrotenberg/polars-redis
                     </p>
                 </section>
 
+                <!-- The Pitch -->
+                <section>
+                    <h2>What if Redis was your data layer?</h2>
+                    <div class="columns">
+                        <div class="column">
+                            <div class="problem-box">
+                                <h3 class="redis-red">Traditional Stack</h3>
+                                <ul class="small">
+                                    <li>Redis for caching</li>
+                                    <li>PostgreSQL for queries</li>
+                                    <li>S3/Parquet for analytics</li>
+                                    <li>ETL jobs to sync them</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="column">
+                            <div class="highlight-box">
+                                <h3 class="green">With polars-redis</h3>
+                                <ul class="small">
+                                    <li>Redis for storage</li>
+                                    <li>Polars for compute</li>
+                                    <li>That's it.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <p style="margin-top: 1em">
+                        For 10K-1M documents, you might not need the warehouse.
+                    </p>
+                </section>
+
+                <!-- Hero Example -->
+                <section>
+                    <h2>The Hero Example</h2>
+                    <pre><code class="language-python">import polars as pl
+import polars_redis as redis
+
+url = "redis://localhost:6379"
+
+# Redis is just another data source
+users = redis.scan_hashes(url, "user:*", {"name": pl.Utf8, "age": pl.Int64})
+orders = pl.read_parquet("s3://bucket/orders.parquet")
+
+# Full Polars transformation power
+result = (
+    users.join(orders, on="user_id")
+    .group_by("region")
+    .agg(pl.col("amount").sum().alias("revenue"))
+    .sort("revenue", descending=True)
+)
+
+# Write back to Redis
+redis.write_hashes(result.collect(), url, key_prefix="region_stats:")</code></pre>
+                    <p class="small">
+                        <span class="green"
+                            >Redis becomes a first-class connector</span
+                        >
+                        alongside Parquet, CSV, and databases.
+                    </p>
+                </section>
+
+                <!-- What You Get -->
+                <section>
+                    <h2>What You Get</h2>
+                    <div class="columns">
+                        <div class="column">
+                            <h3 class="polars-blue">DataFrame I/O</h3>
+                            <ul>
+                                <li>
+                                    Scan hashes, JSON, strings, sets, lists,
+                                    sorted sets, streams, time series
+                                </li>
+                                <li>Write DataFrames back</li>
+                                <li>Schema inference</li>
+                                <li>Projection pushdown</li>
+                            </ul>
+                        </div>
+                        <div class="column">
+                            <h3 class="redis-red">RediSearch Integration</h3>
+                            <ul>
+                                <li>Server-side filtering</li>
+                                <li>Server-side aggregation</li>
+                                <li>Polars-like query builder</li>
+                                <li>Smart scan (auto-detects indexes)</li>
+                            </ul>
+                        </div>
+                        <div class="column">
+                            <h3 class="green">Beyond DataFrames</h3>
+                            <ul>
+                                <li>DataFrame caching</li>
+                                <li>Pub/Sub collection</li>
+                                <li>Geospatial operations</li>
+                                <li>Pipelines & transactions</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
                 <!-- The Problem -->
                 <section>
-                    <h2>The Problem</h2>
+                    <h2>The Old Way</h2>
                     <pre><code class="language-python"># Typical pattern: Fetch everything, process in app
 keys = redis.scan_iter("user:*")                      # Iterate all keys
 users = []
@@ -122,178 +236,159 @@ for key in keys:
 df = pd.DataFrame(users)                              # Manual conversion
 df["age"] = df["age"].astype(int)                     # Manual type coercion
 df["score"] = df["score"].astype(float)
-active = df[df["status"] == "active"]                 # Filter in Python
-result = active.groupby("department")["score"].mean() # Aggregate in Python</code></pre>
-                    <ul>
-                        <li>
-                            <span class="redis-red"
-                                >N+1 queries for N keys</span
-                            >
-                        </li>
-                        <li>
-                            <span class="redis-red"
-                                >Manual type conversion</span
-                            >
-                        </li>
-                        <li>
-                            <span class="redis-red"
-                                >All data transferred, then filtered
-                                client-side</span
-                            >
-                        </li>
-                        <li>
-                            <span class="redis-red"
-                                >No native DataFrame integration</span
-                            >
-                        </li>
-                    </ul>
+active = df[df["status"] == "active"]                 # Filter in Python</code></pre>
+                    <div class="problem-box" style="margin-top: 0.5em">
+                        <ul>
+                            <li>
+                                <span class="redis-red">N+1 queries</span> for N
+                                keys
+                            </li>
+                            <li>
+                                <span class="redis-red"
+                                    >Manual type conversion</span
+                                >
+                            </li>
+                            <li>
+                                <span class="redis-red"
+                                    >All data transferred</span
+                                >, then filtered client-side
+                            </li>
+                        </ul>
+                    </div>
                 </section>
 
-                <!-- The Solution -->
+                <!-- The New Way -->
                 <section>
-                    <h2>The Solution</h2>
+                    <h2>The New Way</h2>
                     <div class="columns">
                         <div class="column">
-                            <h3 class="green">Scan Redis to DataFrame</h3>
-                            <pre><code class="language-python">import polars_redis as pr
-
-df = pr.scan_hashes(
-    "redis://localhost:6379",
-    "user:*",
+                            <h3 class="green">Scan</h3>
+                            <pre><code class="language-python">df = redis.scan_hashes(
+    url, "user:*",
     schema={
         "name": pl.Utf8,
         "age": pl.Int64,
-        "score": pl.Float64
+        "status": pl.Utf8
     }
+).filter(
+    pl.col("status") == "active"
 ).collect()</code></pre>
                         </div>
                         <div class="column">
-                            <h3 class="green">Filter in Redis</h3>
+                            <h3 class="green">Or Search (with index)</h3>
                             <pre><code class="language-python">from polars_redis import col
 
-df = pr.search_hashes(
-    "redis://localhost:6379",
-    index="users_idx",
-    query=col("age") > 25,
+df = redis.search_hashes(
+    url, index="users_idx",
+    query=col("status") == "active",
     schema={
         "name": pl.Utf8,
-        "score": pl.Float64
+        "age": pl.Int64
     }
-)</code></pre>
+).collect()
+# Only matching docs transferred!</code></pre>
                         </div>
                     </div>
-                    <ul style="margin-top: 0.5em">
-                        <li>
-                            <span class="green">One call</span> - batched async
-                            operations
-                        </li>
-                        <li>
-                            <span class="green">Proper types</span> - automatic
-                            or explicit schema
-                        </li>
-                        <li>
-                            <span class="green">Predicate pushdown</span> -
-                            filter server-side with RediSearch
-                        </li>
-                        <li>
-                            <span class="green">Native Polars</span> -
-                            LazyFrame, Arrow, zero-copy
-                        </li>
-                    </ul>
+                    <div class="highlight-box" style="margin-top: 0.5em">
+                        <ul>
+                            <li>
+                                <span class="green"
+                                    >Batched async operations</span
+                                >
+                                - one call, not N+1
+                            </li>
+                            <li>
+                                <span class="green">Automatic types</span> -
+                                schema or inference
+                            </li>
+                            <li>
+                                <span class="green">Predicate pushdown</span> -
+                                filter in Redis with RediSearch
+                            </li>
+                        </ul>
+                    </div>
                 </section>
 
-                <!-- Polars Primer -->
+                <!-- Query Builder -->
                 <section>
-                    <h2>What is <span class="polars-blue">Polars</span>?</h2>
-                    <p>
-                        <a href="https://pola.rs/" style="color: #4b8bbe"
-                            >pola.rs</a
-                        >
-                        - A lightning-fast DataFrame library for Python and Rust
-                    </p>
-                    <div class="columns">
-                        <div class="column">
-                            <h3 class="polars-blue">Key Features</h3>
-                            <ul>
-                                <li>
-                                    <span class="green">Blazingly fast</span> -
-                                    Written in Rust, multi-threaded
-                                </li>
-                                <li>
-                                    <span class="green">Lazy evaluation</span> -
-                                    Query optimization before execution
-                                </li>
-                                <li>
-                                    <span class="green">Memory efficient</span>
-                                    - Apache Arrow columnar format
-                                </li>
-                                <li>
-                                    <span class="green">Expressive API</span> -
-                                    Chain operations fluently
-                                </li>
-                            </ul>
-                        </div>
-                        <div class="column">
-                            <h3 class="orange">Quick Example</h3>
-                            <pre><code class="language-python">import polars as pl
+                    <h2>Query Builder: Polars-like Syntax</h2>
+                    <pre><code class="language-python">from polars_redis import col
 
-# Read, transform, write
-df = pl.read_csv("data.csv")
-result = (
-    df.filter(pl.col("age") > 25)
-      .group_by("department")
-      .agg(pl.col("salary").mean())
-      .sort("salary", descending=True)
+# Build queries with familiar syntax
+query = (col("age") > 30) & (col("status") == "active")
+# Generates: @age:[(30 +inf] @status:{active}
+
+# Complex queries are readable
+query = (
+    col("price").is_between(100, 500) &
+    col("category").has_any_tag(["electronics", "computers"]) &
+    ~(col("status") == "discontinued")
 )
-result.write_parquet("output.parquet")</code></pre>
-                        </div>
-                    </div>
-                    <p class="small" style="margin-top: 0.5em">
-                        <span class="green">Learn more:</span>
-                        <a href="https://docs.pola.rs/" style="color: #98c379"
-                            >docs.pola.rs</a
-                        >
-                        - Polars User Guide
+
+# Text search
+query = col("title").contains("python") & col("author").starts_with("jo")
+
+# Geo search
+query = col("location").within_radius(-122.4, 37.7, 10, "km")</code></pre>
+                    <p class="small">
+                        No need to learn RediSearch query syntax - use what you
+                        know from Polars.
                     </p>
                 </section>
 
-                <!-- What is polars-redis? -->
+                <!-- Server-Side Aggregation -->
                 <section>
-                    <h2>What is polars-redis?</h2>
-                    <div class="columns">
-                        <div class="column">
-                            <h3 class="polars-blue">Polars IO Plugin</h3>
-                            <ul>
-                                <li>Native Polars integration</li>
-                                <li>LazyFrame support</li>
-                                <li>Zero-copy Arrow conversion</li>
-                                <li>Rust core + Python bindings</li>
-                            </ul>
-                        </div>
-                        <div class="column">
-                            <h3 class="redis-red">Redis Data Access</h3>
-                            <ul>
-                                <li>
-                                    Scan Hashes, JSON, Strings, Sets, Lists,
-                                    ZSets
-                                </li>
-                                <li>Write DataFrames back</li>
-                                <li>RediSearch query builder</li>
-                                <li>Redis Cluster support</li>
-                            </ul>
-                        </div>
-                        <div class="column">
-                            <h3 class="green">New in 0.1.6</h3>
-                            <ul>
-                                <li>
-                                    DataFrame caching with <code>@cache</code>
-                                </li>
-                                <li>Pub/Sub streaming</li>
-                                <li>Redis Streams consumer</li>
-                                <li>Auto-chunking for large DFs</li>
-                            </ul>
-                        </div>
-                    </div>
+                    <h2>Server-Side Aggregation</h2>
+                    <pre><code class="language-python"># Aggregate in Redis, not Python
+df = redis.aggregate_hashes(
+    url,
+    index="users_idx",
+    query="@status:{active}",
+    group_by=["@department"],
+    reduce=[
+        ("COUNT", [], "headcount"),
+        ("AVG", ["@salary"], "avg_salary"),
+        ("SUM", ["@salary"], "total_payroll"),
+    ],
+    sort_by=[("@avg_salary", False)],
+    limit=10,
+)</code></pre>
+                    <pre><code class="language-text">| department  | headcount | avg_salary | total_payroll |
+|-------------|-----------|------------|---------------|
+| engineering | 45        | 125000.0   | 5625000.0     |
+| product     | 20        | 115000.0   | 2300000.0     |
+| marketing   | 15        | 95000.0    | 1425000.0     |</code></pre>
+                    <p class="small">
+                        <span class="green"
+                            >Only aggregated results transferred</span
+                        >
+                        - not raw data.
+                    </p>
+                </section>
+
+                <!-- Smart Scan -->
+                <section>
+                    <h2>Smart Scan: Automatic Optimization</h2>
+                    <pre><code class="language-python">from polars_redis import smart_scan, explain_scan
+
+# Auto-detect index and use FT.SEARCH if available
+df = smart_scan(
+    url, "user:*",
+    schema={"name": pl.Utf8, "age": pl.Int64}
+).filter(pl.col("age") > 30).collect()
+
+# Check what it will do before running
+plan = explain_scan(url, "user:*", schema={"name": pl.Utf8})
+print(plan.explain())</code></pre>
+                    <pre><code class="language-text">Strategy: SEARCH
+Index: users_idx
+  Prefixes: user:
+  Type: HASH
+Server Query: *</code></pre>
+                    <p class="small">
+                        If an index exists, <code>smart_scan</code> uses it.
+                        Otherwise, falls back to SCAN. Same API either way.
+                    </p>
                 </section>
 
                 <!-- DataFrame Caching -->
@@ -302,509 +397,256 @@ result.write_parquet("output.parquet")</code></pre>
                     <div class="columns">
                         <div class="column">
                             <h3 class="green">@cache Decorator</h3>
-                            <pre><code class="language-python">@pr.cache(url=url, ttl=3600)
+                            <pre><code class="language-python">@redis.cache(url=url, ttl=3600)
 def expensive_query(start, end):
     return (
-        pl.scan_parquet("big.parquet")
-        .filter(...)
+        pl.scan_parquet("huge.parquet")
+        .filter(pl.col("date").is_between(start, end))
+        .group_by("category")
+        .agg(pl.sum("revenue"))
         .collect()
     )
 
 # First call: compute + cache
 result = expensive_query("2024-01", "2024-12")
 
-# Second call: instant cache hit
+# Second call: instant
 result = expensive_query("2024-01", "2024-12")</code></pre>
                         </div>
                         <div class="column">
-                            <h3 class="orange">Direct Caching</h3>
+                            <h3 class="orange">Direct API</h3>
                             <pre><code class="language-python"># Cache with compression
-pr.cache_dataframe(
+redis.cache_dataframe(
     df, url, "result",
     compression="zstd",
     ttl=3600
 )
 
-# Retrieve later
-df = pr.get_cached_dataframe(
-    url, "result"
+# Retrieve
+df = redis.get_cached_dataframe(url, "result")</code></pre>
+                            <div
+                                class="highlight-box"
+                                style="margin-top: 0.5em"
+                            >
+                                <ul class="small">
+                                    <li>Auto-chunking (no 512MB limit)</li>
+                                    <li>Arrow IPC or Parquet format</li>
+                                    <li>lz4, zstd, gzip compression</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Client Operations -->
+                <section>
+                    <h2>Redis Operations While You're Here</h2>
+                    <div class="columns">
+                        <div class="column">
+                            <h3 class="redis-red">Geospatial</h3>
+                            <pre><code class="language-python"># Add locations
+redis.geo_add(url, "stores", [
+    ("hq", -122.4, 37.7),
+    ("warehouse", -118.2, 34.0),
+])
+
+# Find nearby
+nearby = redis.geo_radius(
+    url, "stores",
+    longitude=-122.4,
+    latitude=37.8,
+    radius=50, unit="km"
 )</code></pre>
-                            <ul class="small" style="margin-top: 0.5em">
-                                <li>Auto-chunking (no 512MB limit)</li>
-                                <li>Arrow IPC or Parquet format</li>
-                                <li>lz4, zstd, gzip compression</li>
-                            </ul>
+                        </div>
+                        <div class="column">
+                            <h3 class="redis-red">Key Management</h3>
+                            <pre><code class="language-python"># Bulk TTL
+redis.set_ttl(url, keys, 3600)
+
+# Bulk delete by pattern
+redis.delete_keys_pattern(url, "temp:*")
+
+# Key info
+info = redis.key_info(url, "user:*")
+for k in info:
+    print(f"{k['key']}: {k['ttl']}s")</code></pre>
+                        </div>
+                    </div>
+                    <div class="columns" style="margin-top: 0.5em">
+                        <div class="column">
+                            <h3 class="redis-red">Pipelines</h3>
+                            <pre><code class="language-python">pipe = redis.Pipeline(url)
+pipe.set("a", "1")
+pipe.incr("counter")
+pipe.hset("user:1", "name", "Alice")
+results = pipe.execute()  # One round-trip</code></pre>
+                        </div>
+                        <div class="column">
+                            <h3 class="redis-red">Transactions</h3>
+                            <pre><code class="language-python">tx = redis.Transaction(url)
+tx.decrby("balance:alice", 100)
+tx.incrby("balance:bob", 100)
+results = tx.execute()  # Atomic</code></pre>
                         </div>
                     </div>
                 </section>
 
                 <!-- Real-time Streaming -->
                 <section>
-                    <h2>Real-time Streaming</h2>
+                    <h2>Real-time Data</h2>
                     <div class="columns">
                         <div class="column">
-                            <h3 class="redis-red">Pub/Sub</h3>
-                            <pre><code class="language-python"># Collect messages into DataFrame
-df = pr.collect_pubsub(
-    url, channels=["events"],
+                            <h3 class="redis-red">Pub/Sub to DataFrame</h3>
+                            <pre><code class="language-python"># Collect messages
+df = redis.collect_pubsub(
+    url,
+    channels=["events", "alerts"],
+    timeout_seconds=10,
     max_messages=1000,
-    timeout=5.0,
-    schema={"type": pl.Utf8}
 )
 
-# Async batch iterator
-async for batch in pr.subscribe_batches(
-    url, channels=["events"]
-):
-    process(batch)</code></pre>
+# Result: DataFrame with channel, message, timestamp
+print(df)
+# | channel | message    | timestamp           |
+# |---------|------------|---------------------|
+# | events  | {"type":   | 2024-01-01 12:00:00 |</code></pre>
                         </div>
                         <div class="column">
                             <h3 class="redis-red">Streams</h3>
                             <pre><code class="language-python"># Consumer group support
-df = pr.read_stream(
+df = redis.read_stream(
     url, "mystream",
     group="workers",
     consumer="worker-1",
-    schema={"user": pl.Utf8}
+    schema={"user": pl.Utf8, "action": pl.Utf8}
 )
 
-# Continuous consumption
-for batch in pr.iter_stream(
-    url, "mystream",
-    block_ms=5000
-):
+# Continuous iteration
+for batch in redis.iter_stream(url, "events"):
     process(batch)</code></pre>
                         </div>
                     </div>
                 </section>
 
-                <!-- Scanning Hashes -->
+                <!-- Supported Types -->
                 <section>
-                    <h2>Scanning Hashes</h2>
-                    <div class="columns">
-                        <div class="column">
-                            <h3 class="polars-blue">Explicit Schema</h3>
-                            <pre><code class="language-python">df = pr.scan_hashes(
-    "redis://localhost:6379",
-    "product:*",
-    schema={
-        "name": pl.Utf8,
-        "price": pl.Float64,
-        "quantity": pl.Int64
-    }
-).collect()</code></pre>
-                        </div>
-                        <div class="column">
-                            <h3 class="orange">Schema Inference</h3>
-                            <pre><code class="language-python">df = pr.scan_hashes(
-    "redis://localhost:6379",
-    "product:*",
-    infer_schema=True,
-    infer_schema_length=100
-).collect()</code></pre>
-                        </div>
-                    </div>
-                    <h3 class="green" style="margin-top: 0.5em">
-                        Include Redis Key
-                    </h3>
-                    <pre><code class="language-python">df = pr.scan_hashes(url, "product:*", schema=schema, with_key=True).collect()
-# Result includes "_key" column: "product:1", "product:2", ...</code></pre>
-                </section>
-
-                <!-- Schema Inference -->
-                <section>
-                    <h2>Schema Inference</h2>
-                    <pre><code class="language-python"># Let polars-redis figure out the types
-df = pr.scan_hashes(
-    "redis://localhost:6379",
-    "event:*",
-    infer_schema=True,
-    infer_schema_length=50  # Sample size
-).collect()</code></pre>
-                    <div class="columns">
-                        <div class="column">
-                            <h3 class="orange">Detected Types</h3>
-                            <pre><code class="language-text">Int64    "42", "-100", "0"
-Float64  "3.14", "-0.5", "1e10"
-Bool     "true", "false", "1", "0"
-Utf8     everything else</code></pre>
-                        </div>
-                        <div class="column">
-                            <h3 class="green">Explicit Schema</h3>
-                            <pre><code class="language-python">schema = {
-    "id": "int64",
-    "name": "utf8",
-    "score": "float64",
-    "active": "bool"
-}</code></pre>
-                        </div>
-                    </div>
-                    <p class="small" style="margin-top: 0.5em">
-                        <span class="orange">Tip:</span> Use explicit schema in
-                        production for consistency
-                    </p>
-                </section>
-
-                <!-- Writing Data -->
-                <section>
-                    <h2>Writing Data</h2>
-                    <div class="columns">
-                        <div class="column">
-                            <pre><code class="language-python"># Create a DataFrame
-df = pl.DataFrame({
-    "id": [1, 2, 3],
-    "name": ["alice", "bob", "charlie"],
-    "score": [95.5, 87.3, 92.1]
-})
-
-# Write as Redis hashes
-pr.write_hashes(
-    "redis://localhost:6379",
-    df,
-    key_column="id",
-    key_prefix="user:"
-)</code></pre>
-                        </div>
-                        <div class="column">
-                            <pre><code class="language-bash"># Creates keys:
-# user:1, user:2, user:3
-
-redis-cli HGETALL user:1
-# "name"  -> "alice"
-# "score" -> "95.5"</code></pre>
-                            <p class="small" style="margin-top: 1em">
-                                <span class="green">Write modes:</span> fail,
-                                replace, append<br />
-                                <span class="green">TTL support:</span>
-                                <code>ttl=3600</code>
-                            </p>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- RediSearch: FT.SEARCH -->
-                <section>
-                    <h2>RediSearch: Server-Side Filtering</h2>
-                    <div class="columns">
-                        <div class="column">
-                            <pre><code class="language-python"># Filter in Redis, not Python
-df = pr.search_hashes(
-    "redis://localhost:6379",
-    index="users_idx",
-    query=col("age") > 25,
-    schema={"name": pl.Utf8}
-)
-# Only matching docs transferred!</code></pre>
-                        </div>
-                        <div class="column">
-                            <h3 class="green">Query Syntax</h3>
-                            <ul class="small">
-                                <li>
-                                    <code>@age:[25 50]</code> - numeric range
-                                </li>
-                                <li><code>@dept:{eng}</code> - tag filter</li>
-                                <li><code>@name:alice</code> - full-text</li>
-                                <li>
-                                    <code>-@status:{inactive}</code> - negation
-                                </li>
-                            </ul>
-                        </div>
-                    </div>
-                    <pre><code class="language-bash"># One-time index setup
-FT.CREATE users_idx ON HASH PREFIX 1 user: SCHEMA \
-    name TEXT age NUMERIC department TAG</code></pre>
-                </section>
-
-                <!-- Query Builder: Polars-like Syntax -->
-                <section>
-                    <h2>Query Builder: Polars-like Syntax</h2>
-                    <pre><code class="language-python">from polars_redis import col, search_hashes
-
-# Build queries with familiar Polars-like syntax
-# Instead of learning RediSearch query language:
-query = (col("age") > 30) & (col("status") == "active")
-
-# Use directly in search_hashes
-df = search_hashes(
-    "redis://localhost:6379",
-    index="users_idx",
-    query=query,  # Automatically converts to "@age:[(30 +inf] @status:{active}"
-    schema={"name": pl.Utf8, "age": pl.Int64, "status": pl.Utf8}
-)
-
-# Complex queries are easy to build
-query = (
-    (col("age").is_between(25, 50)) &
-    (col("department").has_any_tag(["engineering", "product"])) &
-    ~(col("status") == "inactive")  # NOT
-)</code></pre>
-                    <p class="small">
-                        <span class="green">Result:</span> Automatic translation
-                        to RediSearch syntax with predicate pushdown
-                    </p>
-                </section>
-
-                <!-- Query Builder: Full API -->
-                <section>
-                    <h2>Query Builder: Full API</h2>
-                    <div class="columns">
-                        <div class="column">
-                            <h3 class="polars-blue">Comparisons</h3>
-                            <pre><code class="language-python"># Numeric comparisons
-col("age") > 30      # @age:[(30 +inf]
-col("age") >= 30     # @age:[30 +inf]
-col("age") < 30      # @age:[-inf (30]
-col("price").is_between(10, 100)
-
-# Equality
-col("status") == "active"
-col("status") != "deleted"
-
-# Membership
-col("role").is_in(["admin", "user"])</code></pre>
-                        </div>
-                        <div class="column">
-                            <h3 class="redis-red">Text & Tags</h3>
-                            <pre><code class="language-python"># Text search
-col("title").contains("python")
-col("name").starts_with("jo")
-col("name").ends_with("son")
-col("name").fuzzy("john", 1)
-col("title").phrase("hello", "world")
-
-# Tags (exact match)
-col("category").has_tag("science")
-col("tags").has_any_tag(["a", "b"])
-
-# Geo
-col("loc").within_radius(
-    -122.4, 37.7, 10, "km"
-)</code></pre>
-                        </div>
-                    </div>
-                    <pre><code class="language-python"># Logical operators: & (AND), | (OR), ~ (NOT)
-query = (
-    (col("age") > 30) &
-    (col("dept").is_in(["eng", "prod"])) &
-    ~(col("status") == "deleted")
-)</code></pre>
-                </section>
-
-                <!-- RediSearch: FT.AGGREGATE -->
-                <section>
-                    <h2>RediSearch: Server-Side Aggregation</h2>
-                    <div class="columns">
-                        <div class="column">
-                            <pre><code class="language-python"># Aggregate in Redis
-df = pr.aggregate_hashes(
-    url, index="users_idx",
-    query="*",
-    group_by=["department"],
-    reduce=[
-        ("COUNT", [], "count"),
-        ("AVG", ["@salary"], "avg")
-    ],
-    sort_by=[("avg", False)]
-)</code></pre>
-                        </div>
-                        <div class="column">
-                            <pre><code class="language-text"># Result
-| department  | count | avg      |
-|-------------|-------|----------|
-| engineering | 45    | 125000.0 |
-| product     | 20    | 115000.0 |
-| marketing   | 15    | 95000.0  |</code></pre>
-                        </div>
-                    </div>
-                    <p class="small">
-                        <span class="green">Reducers:</span> COUNT, SUM, AVG,
-                        MIN, MAX, QUANTILE, TOLIST, FIRST_VALUE
-                    </p>
-                </section>
-
-                <!-- FT.AGGREGATE Advanced -->
-                <section>
-                    <h2>FT.AGGREGATE: Advanced</h2>
-                    <div class="columns">
-                        <div class="column">
-                            <h3 class="orange">Computed Fields</h3>
-                            <pre><code class="language-python">df = pr.aggregate_hashes(
-    url, index="sales_idx",
-    group_by=["category"],
-    reduce=[
-        ("COUNT", [], "orders"),
-        ("SUM", ["@amount"], "rev")
-    ],
-    apply=[("@rev/@orders", "avg")]
-)</code></pre>
-                        </div>
-                        <div class="column">
-                            <h3 class="green">Global Aggregation</h3>
-                            <pre><code class="language-python"># No group_by = single row
-df = pr.aggregate_hashes(
-    url, index="users_idx",
-    query="@status:{active}",
-    reduce=[
-        ("COUNT", [], "total"),
-        ("AVG", ["@age"], "avg_age")
-    ]
-)</code></pre>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- JSON Support -->
-                <section>
-                    <h2>RedisJSON Support</h2>
-                    <pre><code class="language-python"># Scan JSON documents
-df = pr.scan_json(
-    "redis://localhost:6379",
-    "event:*",
-    schema={
-        "$.timestamp": "utf8",
-        "$.user.id": "int64",
-        "$.user.name": "utf8",
-        "$.data.value": "float64",
-        "$.tags": "utf8"  # Arrays become JSON strings
-    },
-    json_path="$"
-).collect()
-
-# Write DataFrame as JSON documents
-pr.write_json(
-    "redis://localhost:6379",
-    df,
-    key_column="id",
-    key_prefix="event:"
-)</code></pre>
-                    <p class="small">
-                        <span class="orange">Note:</span> RediSearch also
-                        indexes JSON documents with <code>ON JSON</code>
-                    </p>
+                    <h2>Supported Redis Types</h2>
+                    <table style="font-size: 0.7em; width: 100%">
+                        <tr>
+                            <th>Redis Type</th>
+                            <th>Scan</th>
+                            <th>Write</th>
+                            <th>Notes</th>
+                        </tr>
+                        <tr>
+                            <td>Hash</td>
+                            <td class="green">Yes</td>
+                            <td class="green">Yes</td>
+                            <td>Field-level projection pushdown</td>
+                        </tr>
+                        <tr>
+                            <td>JSON</td>
+                            <td class="green">Yes</td>
+                            <td class="green">Yes</td>
+                            <td>JSONPath extraction</td>
+                        </tr>
+                        <tr>
+                            <td>String</td>
+                            <td class="green">Yes</td>
+                            <td class="green">Yes</td>
+                            <td>Key-value pairs</td>
+                        </tr>
+                        <tr>
+                            <td>Set</td>
+                            <td class="green">Yes</td>
+                            <td class="green">Yes</td>
+                            <td>One row per member</td>
+                        </tr>
+                        <tr>
+                            <td>List</td>
+                            <td class="green">Yes</td>
+                            <td class="green">Yes</td>
+                            <td>Ordered elements</td>
+                        </tr>
+                        <tr>
+                            <td>Sorted Set</td>
+                            <td class="green">Yes</td>
+                            <td class="green">Yes</td>
+                            <td>Members with scores</td>
+                        </tr>
+                        <tr>
+                            <td>Stream</td>
+                            <td class="green">Yes</td>
+                            <td class="orange">No</td>
+                            <td>Consumer groups, timestamped entries</td>
+                        </tr>
+                        <tr>
+                            <td>TimeSeries</td>
+                            <td class="green">Yes</td>
+                            <td class="orange">No</td>
+                            <td>Server-side aggregation</td>
+                        </tr>
+                    </table>
                 </section>
 
                 <!-- Performance -->
                 <section>
-                    <h2>Performance Features</h2>
+                    <h2>Performance</h2>
                     <div class="columns">
                         <div class="column">
-                            <h3 class="polars-blue">Batched Operations</h3>
-                            <pre><code class="language-python"># Configure batch size
-df = pr.scan_hashes(
-    "redis://localhost:6379",
-    "user:*",
-    schema={"name": "utf8"},
-    batch_size=1000,   # Keys per batch
-    scan_count=100     # SCAN COUNT hint
-).collect()</code></pre>
-                            <ul class="small">
-                                <li>Pipelined HGETALL calls</li>
-                                <li>Async execution</li>
-                                <li>Memory-efficient streaming</li>
-                            </ul>
-                        </div>
-                        <div class="column">
-                            <h3 class="redis-red">Predicate Pushdown</h3>
-                            <pre><code class="language-python"># With SCAN: transfer all, filter client
-df = pr.scan_hashes(url, "user:*", schema)
-df = df.filter(pl.col("age") > 25)
-
-# With RediSearch: filter in Redis
-df = pr.search_hashes(
-    url, index="users_idx",
-    query="@age:[25 +inf]",
-    schema=schema
-)</code></pre>
-                            <ul class="small">
-                                <li>Only matching docs transferred</li>
-                                <li>Index-accelerated queries</li>
-                                <li>Server-side aggregation</li>
-                            </ul>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Redis Cluster Support -->
-                <section>
-                    <h2>Redis Cluster Support</h2>
-                    <pre><code class="language-python"># Connect to Redis Cluster (keys distributed across nodes)
-from polars_redis import ClusterHashBatchIterator
-
-# Provide any cluster node URLs - auto-discovers all nodes
-nodes = ["redis://node1:7000", "redis://node2:7001", "redis://node3:7002"]
-
-iterator = ClusterHashBatchIterator(
-    nodes,
-    schema=HashSchema(...),
-    config=BatchConfig(pattern="user:*", batch_size=1000)
-)
-
-# Automatically scans ALL cluster nodes
-# Keys are distributed by slot, iterator handles routing</code></pre>
-                    <div class="columns">
-                        <div class="column">
-                            <h3 class="polars-blue">How It Works</h3>
-                            <ul class="small">
+                            <h3 class="polars-blue">Why It's Fast</h3>
+                            <ul>
                                 <li>
-                                    Discovers master nodes via CLUSTER SLOTS
+                                    <span class="green">Rust core</span> -
+                                    async, zero-copy Arrow
                                 </li>
-                                <li>SCAN each node separately</li>
-                                <li>Fetch routes to correct nodes</li>
-                                <li>No key duplication (slot-based)</li>
+                                <li>
+                                    <span class="green"
+                                        >Batched operations</span
+                                    >
+                                    - pipelined Redis calls
+                                </li>
+                                <li>
+                                    <span class="green"
+                                        >Predicate pushdown</span
+                                    >
+                                    - filter in Redis
+                                </li>
+                                <li>
+                                    <span class="green"
+                                        >Projection pushdown</span
+                                    >
+                                    - fetch only needed fields
+                                </li>
+                                <li>
+                                    <span class="green">Parallel fetching</span>
+                                    - configurable workers
+                                </li>
                             </ul>
                         </div>
                         <div class="column">
-                            <h3 class="redis-red">Cluster Features</h3>
-                            <ul class="small">
-                                <li>Horizontal scaling</li>
-                                <li>High availability</li>
-                                <li>Automatic failover</li>
-                                <li>Same API as single-node</li>
-                            </ul>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Use Case: Ephemeral Data Workbench -->
-                <section>
-                    <h2>Use Case: Ephemeral Data Workbench</h2>
-                    <pre><code class="language-python"># Redis as a fast, queryable staging area
-# 1. Load data from any source
-df = pl.read_csv("sales_data.csv")
-pr.write_hashes("redis://localhost", df, key_column="id", key_prefix="sale:")
-
-# 2. Create index for fast queries
-# FT.CREATE sales_idx ON HASH PREFIX 1 sale: SCHEMA ...
-
-# 3. Query and analyze interactively
-results = pr.aggregate_hashes(
-    "redis://localhost",
-    index="sales_idx",
-    query="@region:{west}",
-    group_by=["product"],
-    reduce=[("SUM", ["@amount"], "total")]
+                            <h3 class="orange">Tuning</h3>
+                            <pre><code class="language-python"># Batch size
+lf = redis.scan_hashes(
+    url, "user:*", schema,
+    batch_size=5000,
+    count_hint=1000,
 )
 
-# 4. TTL for automatic cleanup (set in Redis)
-# EXPIRE sale:* 3600</code></pre>
-                    <ul>
-                        <li>
-                            <span class="green">Fast loading:</span> Write
-                            DataFrames directly to Redis
-                        </li>
-                        <li>
-                            <span class="green">Interactive queries:</span>
-                            RediSearch for instant filtering
-                        </li>
-                        <li>
-                            <span class="green">Auto-cleanup:</span> TTL-based
-                            expiration
-                        </li>
-                        <li>
-                            <span class="green">Ideal for:</span> ETL staging,
-                            data exploration, session analytics
-                        </li>
-                    </ul>
+# Parallel workers
+lf = redis.scan_hashes(
+    url, "user:*", schema,
+    parallel=4,
+)</code></pre>
+                        </div>
+                    </div>
+                    <div class="highlight-box" style="margin-top: 0.5em">
+                        <p class="small">
+                            <span class="green">With RediSearch:</span>
+                            Server-side filtering can reduce data transfer by
+                            90%+ for selective queries.
+                        </p>
+                    </div>
                 </section>
 
                 <!-- Architecture -->
@@ -855,7 +697,7 @@ results = pr.aggregate_hashes(
                                 <strong>Redis</strong>
                             </div>
                             <p class="small">
-                                SCAN + HGETALL<br />FT.SEARCH<br />Pub/Sub,
+                                SCAN + HGETALL<br />FT.SEARCH / FT.AGGREGATE<br />Pub/Sub,
                                 Streams
                             </p>
                         </div>
@@ -869,137 +711,80 @@ results = pr.aggregate_hashes(
                         "
                     >
                         <p class="small" style="margin: 0">
-                            <span class="green">scan_hashes()</span> SCAN keys
-                            -> batch HGETALL -> parse -> Arrow -> Polars
+                            <span class="green">io/</span> DataFrame I/O (scan,
+                            write, cache, search)
                         </p>
                         <p class="small" style="margin: 0">
-                            <span class="green">search_hashes()</span> FT.SEARCH
-                            -> parse -> Arrow -> Polars
-                        </p>
-                        <p class="small" style="margin: 0">
-                            <span class="green">write_hashes()</span> Polars ->
-                            rows -> batch HSET pipeline
+                            <span class="green">client/</span> Redis operations
+                            (geo, keys, pipeline, pubsub)
                         </p>
                     </div>
                 </section>
 
-                <!-- Rust API -->
+                <!-- Use Cases -->
                 <section>
-                    <h2>Rust API</h2>
+                    <h2>Use Cases</h2>
                     <div class="columns">
                         <div class="column">
-                            <pre><code class="language-rust">use polars_redis::{
-    scan_hashes, HashSchema, RedisType
-};
+                            <h3 class="green">Data Enrichment</h3>
+                            <pre><code class="language-python"># Join Redis sessions with warehouse data
+sessions = redis.scan_hashes(url, "session:*", schema)
+customers = pl.read_parquet("customers.parquet")
 
-let schema = HashSchema::new()
-    .with_field("name", RedisType::Utf8)
-    .with_field("age", RedisType::Int64);
+engaged = (
+    sessions.join(customers, on="user_id")
+    .filter(pl.col("page_views") > 10)
+)
 
-let df = scan_hashes(
-    "redis://localhost:6379",
-    "user:*",
-    schema,
-    BatchConfig::default()
-).await?;</code></pre>
+redis.write_hashes(engaged.collect(), url, key_prefix="engaged:")</code></pre>
                         </div>
                         <div class="column">
-                            <h3 class="orange">Features</h3>
-                            <ul>
-                                <li>Full async/await with tokio</li>
-                                <li>Zero-copy Arrow conversion</li>
-                                <li>Same API as Python</li>
-                                <li>Cluster support</li>
-                            </ul>
-                            <pre><code class="language-toml">[dependencies]
-polars-redis = "0.1"</code></pre>
+                            <h3 class="green">ETL Staging</h3>
+                            <pre><code class="language-python"># Redis as fast staging area
+df = extract_from_source()
+redis.write_hashes(df, url, key_prefix="stage:", ttl=7200)
+
+# Transform with RediSearch
+result = redis.aggregate_hashes(url, "stage_idx", ...)
+
+# Load to warehouse
+load_to_warehouse(result)</code></pre>
                         </div>
                     </div>
                 </section>
 
                 <!-- Installation -->
                 <section>
-                    <h2>Installation</h2>
+                    <h2>Get Started</h2>
                     <div class="columns">
                         <div class="column">
-                            <h3 class="polars-blue">Python</h3>
-                            <pre><code class="language-bash"># From PyPI
-pip install polars-redis
-
-# With RediSearch support
-pip install polars-redis[search]
-
-# From source
-git clone https://github.com/joshrotenberg/polars-redis
-cd polars-redis
-pip install maturin
-maturin develop --features search</code></pre>
+                            <h3 class="polars-blue">Install</h3>
+                            <pre><code class="language-bash">pip install polars-redis</code></pre>
+                            <h3 class="redis-red" style="margin-top: 1em">
+                                Redis Stack
+                            </h3>
+                            <pre><code class="language-bash">docker run -d -p 6379:6379 \
+  redis/redis-stack:latest</code></pre>
                         </div>
                         <div class="column">
-                            <h3 class="redis-red">Rust</h3>
-                            <pre><code class="language-toml"># Cargo.toml
-[dependencies]
-polars-redis = "0.1"
+                            <h3 class="green">Try It</h3>
+                            <pre><code class="language-python">import polars as pl
+import polars_redis as redis
 
-# With RediSearch support
-polars-redis = {
-    version = "0.1",
-    features = ["search"]
-}</code></pre>
+url = "redis://localhost:6379"
+
+# Write
+df = pl.DataFrame({"id": [1,2], "name": ["a","b"]})
+redis.write_hashes(df, url, key_column="id", key_prefix="test:")
+
+# Read
+result = redis.scan_hashes(
+    url, "test:*",
+    schema={"name": pl.Utf8}
+).collect()
+print(result)</code></pre>
                         </div>
                     </div>
-                </section>
-
-                <!-- Requirements -->
-                <section>
-                    <h2>Requirements</h2>
-                    <div class="columns">
-                        <div class="column">
-                            <h3 class="orange">Runtime</h3>
-                            <ul>
-                                <li>Python 3.10+ or Rust 2024</li>
-                                <li>Polars 1.0+</li>
-                                <li>Redis 6.0+ (basic operations)</li>
-                                <li>Redis Stack (RediSearch/RedisJSON)</li>
-                            </ul>
-                        </div>
-                        <div class="column">
-                            <h3 class="green">Quick Start</h3>
-                            <pre><code class="language-bash"># Redis Stack with Docker
-docker run -d \
-  --name redis-stack \
-  -p 6379:6379 \
-  redis/redis-stack:latest
-
-# Verify RediSearch
-redis-cli MODULE LIST
-# 1) "name" "search"
-# 2) "name" "ReJSON"</code></pre>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- API Summary -->
-                <section>
-                    <h2>API Summary</h2>
-                    <pre><code class="language-python"># Scanning
-pr.scan_hashes(url, pattern, schema, ...)      # Scan hash keys to LazyFrame
-pr.scan_json(url, pattern, schema, ...)        # Scan JSON keys to LazyFrame
-pr.scan_strings(url, pattern, ...)             # Scan string keys to LazyFrame
-
-# RediSearch with Query Builder
-from polars_redis import col, search_hashes
-query = (col("age") > 30) & (col("status") == "active")
-pr.search_hashes(url, index, query, schema)    # Predicate pushdown!
-pr.aggregate_hashes(url, index, query, ...)    # Server-side aggregation
-
-# Writing
-pr.write_hashes(df, url, key_column, ...)      # DataFrame to hashes
-pr.write_json(df, url, key_column, ...)        # DataFrame to JSON
-
-# Redis Cluster
-ClusterHashBatchIterator(nodes, schema, config)  # Scan across cluster nodes
-ClusterStringBatchIterator(nodes, schema, config)</code></pre>
                 </section>
 
                 <!-- Resources -->
@@ -1007,63 +792,75 @@ ClusterStringBatchIterator(nodes, schema, config)</code></pre>
                     <h2>Resources</h2>
                     <div class="columns">
                         <div class="column">
-                            <h3 class="polars-blue">Documentation</h3>
+                            <h3 class="polars-blue">Links</h3>
                             <ul>
-                                <li>Quick Start & Installation</li>
-                                <li>User Guide (Scanning, Writing)</li>
-                                <li>Schema Inference</li>
-                                <li>Configuration Options</li>
-                                <li>Python & Rust API Reference</li>
-                                <li>Examples</li>
-                            </ul>
-                            <p class="small" style="margin-top: 1em">
-                                <span class="green"
-                                    >joshrotenberg.github.io/polars-redis</span
-                                >
-                            </p>
-                        </div>
-                        <div class="column">
-                            <h3 class="redis-red">Links</h3>
-                            <ul>
+                                <li>
+                                    Docs:
+                                    <a
+                                        href="https://joshrotenberg.github.io/polars-redis"
+                                        style="color: #4b8bbe"
+                                        >joshrotenberg.github.io/polars-redis</a
+                                    >
+                                </li>
                                 <li>
                                     GitHub:
-                                    github.com/joshrotenberg/polars-redis
+                                    <a
+                                        href="https://github.com/joshrotenberg/polars-redis"
+                                        style="color: #4b8bbe"
+                                        >github.com/joshrotenberg/polars-redis</a
+                                    >
                                 </li>
-                                <li>PyPI: pypi.org/project/polars-redis</li>
                                 <li>
-                                    crates.io: crates.io/crates/polars-redis
+                                    PyPI:
+                                    <a
+                                        href="https://pypi.org/project/polars-redis"
+                                        style="color: #4b8bbe"
+                                        >pypi.org/project/polars-redis</a
+                                    >
                                 </li>
-                                <li>Polars: pola.rs</li>
-                                <li>Redis Stack: redis.io/docs/stack</li>
+                                <li>
+                                    crates.io:
+                                    <a
+                                        href="https://crates.io/crates/polars-redis"
+                                        style="color: #4b8bbe"
+                                        >crates.io/crates/polars-redis</a
+                                    >
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="column">
+                            <h3 class="green">Requirements</h3>
+                            <ul>
+                                <li>Python 3.9+</li>
+                                <li>Redis 7.0+</li>
+                                <li>Redis Stack for RediSearch/JSON</li>
+                            </ul>
+                            <h3 class="orange" style="margin-top: 1em">
+                                Also Available
+                            </h3>
+                            <ul>
+                                <li>Rust crate</li>
+                                <li>Redis Cluster support</li>
                             </ul>
                         </div>
                     </div>
                 </section>
 
-                <!-- Get Started -->
+                <!-- Closing -->
                 <section class="center">
-                    <h2>Get Started</h2>
-                    <pre><code class="language-bash"># Install
-pip install polars-redis
-
-# Start Redis Stack
-docker run -d -p 6379:6379 redis/redis-stack:latest
-
-# Try it
-python -c "
-import polars_redis as pr
-# Write some data
-import polars as pl
-df = pl.DataFrame({'id': [1,2,3], 'name': ['a','b','c']})
-pr.write_hashes('redis://localhost', df, key_column='id', key_prefix='test:')
-
-# Read it back
-result = pr.scan_hashes('redis://localhost', 'test:*',
-    schema={'name': 'utf8'}, with_key=True).collect()
-print(result)
-"</code></pre>
-                    <p style="margin-top: 1em"></p>
-                    <h3>github.com/joshrotenberg/polars-redis</h3>
+                    <h1>
+                        <span class="polars-blue">polars</span>-<span
+                            class="redis-red"
+                            >redis</span
+                        >
+                    </h1>
+                    <h3>
+                        Redis + Polars = Analytics Without the Data Warehouse
+                    </h3>
+                    <pre><code class="language-bash">pip install polars-redis</code></pre>
+                    <p style="margin-top: 2em">
+                        github.com/joshrotenberg/polars-redis
+                    </p>
                 </section>
             </div>
         </div>

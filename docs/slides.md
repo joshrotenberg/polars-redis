@@ -12,17 +12,17 @@ An interactive slide deck covering polars-redis features and usage.
 
 ## Topics Covered
 
-- What is Polars? (quick primer)
-- What is polars-redis?
-- Scanning Redis Hashes and JSON
-- Writing DataFrames to Redis
-- Schema inference
-- RediSearch integration (FT.SEARCH, FT.AGGREGATE)
-- Performance features
-- Configuration options
-- Use case: Ephemeral Data Workbench
-- Architecture overview
-- Installation
+- The "Redis as your data layer" pitch
+- Hero example: Redis as a first-class data source
+- Scanning and writing DataFrames
+- RediSearch query builder (Polars-like syntax)
+- Server-side aggregation
+- Smart scan (automatic index detection)
+- DataFrame caching with `@cache` decorator
+- Client operations (geo, keys, pipelines, transactions)
+- Real-time data (Pub/Sub, Streams)
+- Performance and architecture
+- Use cases: data enrichment, ETL staging
 
 ## Keyboard Navigation
 
