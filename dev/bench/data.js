@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1767820142695,
+  "lastUpdate": 1767821883992,
   "repoUrl": "https://github.com/joshrotenberg/polars-redis",
   "entries": {
     "Rust Benchmarks": [
@@ -3035,6 +3035,138 @@ window.BENCHMARK_DATA = {
             "name": "projection/25_of_50_fields",
             "value": 1117,
             "range": "± 7",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "joshrotenberg@gmail.com",
+            "name": "Josh Rotenberg",
+            "username": "joshrotenberg"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8e53787877d27567fdd19f523e195cfa30740415",
+          "message": "fix: improve error messages with actionable suggestions (#167)\n\n* fix: improve error messages with actionable suggestions\n\n- Add detailed multi-line error messages with examples and fix suggestions\n- Add new error variants: SearchModuleNotAvailable, IndexNotFound,\n  TypeConflict, UnsupportedPushdown, Timeout\n- Add helper functions for formatting connection, type, and timeout errors\n- Add helper methods on Error type for creating contextual errors\n- Add detection helpers: is_search_module_missing, is_index_not_found,\n  is_json_module_missing\n- Update Python error conversion for new variants\n\nCloses #138\n\n* style: fix formatting in cluster_reliability_tests.rs",
+          "timestamp": "2026-01-07T13:28:09-08:00",
+          "tree_id": "e77d24cf57fd4c5afc9c8f56a392aa98d34d3130",
+          "url": "https://github.com/joshrotenberg/polars-redis/commit/8e53787877d27567fdd19f523e195cfa30740415"
+        },
+        "date": 1767821883125,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "schema_creation/small_3_fields",
+            "value": 319,
+            "range": "± 2",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/medium_10_fields",
+            "value": 1081,
+            "range": "± 3",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/large_50_fields",
+            "value": 6917,
+            "range": "± 29",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/default",
+            "value": 26,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/with_options",
+            "value": 27,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/100",
+            "value": 253,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/100",
+            "value": 1191,
+            "range": "± 8",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/100",
+            "value": 76,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/1000",
+            "value": 3361,
+            "range": "± 99",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/1000",
+            "value": 12498,
+            "range": "± 61",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/1000",
+            "value": 713,
+            "range": "± 3",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/10000",
+            "value": 37439,
+            "range": "± 150",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/10000",
+            "value": 128911,
+            "range": "± 2698",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/10000",
+            "value": 7341,
+            "range": "± 40",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "arrow_schema/to_arrow_schema",
+            "value": 758,
+            "range": "± 6",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/no_filter",
+            "value": 21,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/5_of_50_fields",
+            "value": 940,
+            "range": "± 3",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/25_of_50_fields",
+            "value": 1173,
+            "range": "± 5",
             "unit": "ns/iter"
           }
         ]
