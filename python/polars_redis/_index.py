@@ -589,7 +589,7 @@ class Index:
         try:
             client.execute_command("FT.DROPINDEX", *args)
         except redis.ResponseError as e:
-            if "Unknown index name" not in str(e):
+            if "unknown index name" not in str(e).lower():
                 raise
 
     def exists(self, url: str) -> bool:
