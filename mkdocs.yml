@@ -75,6 +75,8 @@ nav:
       - Index Management: guide/index-management.md
       - Queries & Aggregation: guide/redisearch.md
       - Advanced Queries: examples/advanced-queries.md
+  - Client Operations:
+      - Overview: guide/client-operations.md
   - Operations:
       - Configuration: guide/configuration.md
       - Performance: guide/performance.md
