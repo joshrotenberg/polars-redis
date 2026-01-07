@@ -1,6 +1,6 @@
 # Rust Examples
 
-Example code is in [`examples/rust/`](https://github.com/joshrotenberg/polars-redis/tree/master/examples/rust).
+Example code is in [`examples/rust/`](https://github.com/joshrotenberg/polars-redis/tree/main/examples/rust).
 
 Run examples with:
 

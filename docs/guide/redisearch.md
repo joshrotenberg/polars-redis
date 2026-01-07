@@ -7,7 +7,7 @@ polars-redis integrates with RediSearch to enable server-side filtering (predica
 RediSearch requires:
 
 - Redis Stack or Redis with RediSearch module
-- An existing index on your data
+- An existing index on your data (or use polars-redis to create one)
 
 ```bash
 # Start Redis Stack
@@ -20,17 +20,43 @@ redis-cli MODULE LIST
 
 ## Creating an Index
 
-Before using `search_hashes()` or `aggregate_hashes()`, create an index:
+Before using `search_hashes()` or `aggregate_hashes()`, you need an index. polars-redis provides typed helpers for creating indexes:
 
-```bash
-# Create index on hash keys with prefix "user:"
-FT.CREATE users_idx ON HASH PREFIX 1 user: SCHEMA \
-    name TEXT SORTABLE \
-    age NUMERIC SORTABLE \
-    department TAG \
-    salary NUMERIC \
-    status TAG
+```python
+from polars_redis import Index, TextField, NumericField, TagField
+
+idx = Index(
+    name="users_idx",
+    prefix="user:",
+    schema=[
+        TextField("name", sortable=True),
+        NumericField("age", sortable=True),
+        TagField("department"),
+        NumericField("salary"),
+        TagField("status"),
+    ]
+)
+
+# Create the index
+idx.create("redis://localhost:6379")
+
+# Or ensure it exists (idempotent)
+idx.ensure_exists("redis://localhost:6379")
 ```
+
+You can also pass the `Index` object directly to `search_hashes()` for auto-creation:
+
+```python
+df = search_hashes(
+    "redis://localhost:6379",
+    index=idx,  # Auto-creates if not exists
+    query=col("age") > 30,
+    schema={"name": pl.Utf8, "age": pl.Int64},
+).collect()
+```
+
+!!! tip "Index Management"
+    See [Index Management](index-management.md) for complete documentation on field types, schema inference, validation, and migration.
 
 ## Searching with search_hashes()
 
@@ -343,6 +369,9 @@ print(query.to_redis())
 # @type:{eBikes} @price:[-inf (1000]
 ```
 
+!!! tip "More Examples"
+    See [Advanced Query Examples](../examples/advanced-queries.md) for real-world use cases including vector search, geo filtering, fuzzy matching, and dynamic query building.
+
 ## Aggregation with aggregate_hashes()
 
 `aggregate_hashes()` uses FT.AGGREGATE for server-side grouping and aggregation:
@@ -473,6 +502,353 @@ salary_stats = redis.aggregate_hashes(
 print(salary_stats)
 ```
 
+## Advanced Search Options
+
+For fine-grained control over search behavior, use `SearchOptions`:
+
+```python
+from polars_redis.options import SearchOptions, HighlightOptions, SummarizeOptions
+
+# Create options with advanced settings
+opts = SearchOptions(
+    index="articles_idx",
+    query="python programming",
+    verbatim=True,           # Disable stemming
+    language="english",       # Stemming language
+    scorer="BM25",           # Scoring algorithm
+    dialect=4,               # RediSearch dialect
+).with_highlight(
+    open_tag="<mark>",
+    close_tag="</mark>",
+).with_summarize(
+    len=50,
+    separator="...",
+)
+
+df = redis.search_hashes(
+    "redis://localhost:6379",
+    options=opts,
+    schema={"title": pl.Utf8, "body": pl.Utf8},
+).collect()
+```
+
+### Query Modifiers
+
+| Option | Description |
+|--------|-------------|
+| `verbatim` | Disable stemming for exact term matching |
+| `no_stopwords` | Include stop words in the query |
+| `language` | Language for stemming (e.g., "english", "spanish") |
+| `scorer` | Scoring function: "BM25", "TFIDF", "DISMAX" |
+| `expander` | Query expander: "SYNONYM" |
+| `slop` | Default slop for phrase queries |
+| `in_order` | Require phrase terms in order |
+| `dialect` | RediSearch dialect version (1-4) |
+
+### Filtering Options
+
+| Option | Description |
+|--------|-------------|
+| `in_keys` | Limit search to specific document keys |
+| `in_fields` | Limit search to specific fields |
+| `timeout_ms` | Query timeout in milliseconds |
+
+### Result Enrichment
+
+#### Highlighting
+
+Wrap matching terms in custom tags:
+
+```python
+opts = SearchOptions(
+    index="articles_idx",
+    query="python",
+).with_highlight(
+    fields=["title", "body"],
+    open_tag="<em>",
+    close_tag="</em>",
+)
+```
+
+#### Summarization
+
+Generate text snippets with matched terms:
+
+```python
+opts = SearchOptions(
+    index="articles_idx",
+    query="machine learning",
+).with_summarize(
+    fields=["body"],
+    frags=3,      # Number of fragments
+    len=30,       # Fragment length in words
+    separator="...",
+)
+```
+
+### Relevance Scores
+
+Include relevance scores in results:
+
+```python
+opts = SearchOptions(
+    index="articles_idx",
+    query="python",
+).with_score(True, "_relevance")
+
+df = redis.search_hashes(
+    "redis://localhost:6379",
+    options=opts,
+    schema={"title": pl.Utf8},
+).collect()
+
+# Results include _relevance column with scores
+```
+
+## Enhanced Client-Side Operations
+
+Some operations can't be pushed to RediSearch but execute efficiently in Polars after fetching results. These enable powerful filtering beyond RediSearch's capabilities.
+
+### Regex Matching
+
+```python
+# Match email patterns (runs in Polars)
+query = col("email").matches_regex(r".*@gmail\.com$")
+
+# Combine with server-side filter
+query = (col("status") == "active") & col("email").matches_regex(r".*@company\.com")
+```
+
+### Case-Insensitive Matching
+
+```python
+# Case-insensitive contains
+query = col("name").icontains("john")
+
+# Case-insensitive equality
+query = col("department").iequals("ENGINEERING")
+```
+
+### Multiple Substring Matching
+
+```python
+# Match any of multiple substrings
+query = col("description").contains_any(["python", "rust", "go"])
+```
+
+### String Similarity
+
+Match strings using Levenshtein distance:
+
+```python
+# Find names similar to "john" (80% similarity threshold)
+query = col("name").similar_to("john", threshold=0.8)
+```
+
+### Date/Time Operations
+
+Parse and filter by date fields:
+
+```python
+# Date comparisons
+query = col("created_at").as_date() > "2024-01-01"
+query = col("updated_at").as_datetime() >= "2024-06-15T12:00:00"
+
+# Date part extraction
+query = col("birth_date").as_date().year() == 1990
+query = col("created_at").as_date().month().is_in([1, 2, 3])  # Q1
+query = col("event_time").as_datetime().hour() >= 9
+
+# Available date parts: year(), month(), day(), weekday(), hour(), minute()
+```
+
+### Array/JSON Operations
+
+For JSON documents:
+
+```python
+# Check if array contains value
+query = col("tags").array_contains("python")
+
+# Filter by array length
+query = col("items").array_len() > 5
+
+# Extract nested JSON value
+query = col("metadata").json_path("$.user.role") == "admin"
+```
+
+## Hybrid Query Execution
+
+When queries combine server-side and client-side operations, polars-redis automatically splits execution:
+
+```python
+# This query has both server-pushable and client-side parts
+query = (col("age") > 30) & col("email").matches_regex(r".*@gmail\.com")
+
+# Check what runs where
+print(query.is_client_side)  # True
+
+# Extract server portion
+server_filter = query.get_server_filter()
+print(server_filter.to_redis())  # @age:[(30 +inf]
+
+# Extract client portion
+client_filter = query.get_client_filter()
+print(client_filter._op)  # "regex"
+
+# View execution plan
+print(query.explain())
+# RediSearch: @age:[(30 +inf]
+# Polars filter: pl.col("email").str.contains(r".*@gmail\.com")
+```
+
+### Execution Strategy
+
+1. **Pure server-side**: All predicates pushed to RediSearch
+2. **Pure client-side**: Fetch all, filter in Polars
+3. **Hybrid**: Push what we can, filter rest in Polars
+
+The query builder automatically optimizes for minimum data transfer.
+
+## Smart Scan: Automatic Index Detection
+
+The `smart_scan()` function provides a higher-level API that automatically detects whether a RediSearch index exists for your key pattern and optimizes query execution accordingly. This enables "RediSearch without learning RediSearch" - you get the performance benefits of FT.SEARCH when indexes are available, with automatic fallback to SCAN when they're not.
+
+### Basic Usage
+
+```python
+from polars_redis import smart_scan
+
+# Auto-detect index and use FT.SEARCH if available
+df = smart_scan(
+    "redis://localhost:6379",
+    "user:*",
+    schema={"name": pl.Utf8, "age": pl.Int64, "status": pl.Utf8},
+).filter(pl.col("age") > 30).collect()
+```
+
+If an index exists with prefix "user:", `smart_scan` uses FT.SEARCH automatically. Otherwise, it falls back to SCAN - same API, optimal execution.
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `url` | str | required | Redis connection URL |
+| `pattern` | str | `"*"` | Key pattern to match |
+| `schema` | dict | required | Field names to Polars dtypes |
+| `index` | str or Index | `None` | Force use of specific index |
+| `include_key` | bool | `True` | Include Redis key as column |
+| `key_column_name` | str | `"_key"` | Name of key column |
+| `include_ttl` | bool | `False` | Include TTL as column |
+| `ttl_column_name` | str | `"_ttl"` | Name of TTL column |
+| `batch_size` | int | `1000` | Documents per batch |
+| `auto_detect_index` | bool | `True` | Auto-detect matching indexes |
+
+### Execution Strategies
+
+`smart_scan` chooses from three strategies:
+
+| Strategy | When Used | Description |
+|----------|-----------|-------------|
+| **SEARCH** | Index found for pattern | Uses FT.SEARCH for server-side filtering |
+| **SCAN** | No matching index | Falls back to Redis SCAN |
+| **HYBRID** | Partial predicate pushdown | FT.SEARCH + client-side filtering |
+
+### Query Explanation
+
+Use `explain_scan()` to see exactly how a query will execute before running it:
+
+```python
+from polars_redis import explain_scan
+
+plan = explain_scan(
+    "redis://localhost:6379",
+    "user:*",
+    schema={"name": pl.Utf8, "age": pl.Int64},
+)
+
+print(plan.explain())
+# Strategy: SEARCH
+# Index: users_idx
+#   Prefixes: user:
+#   Type: HASH
+# Server Query: *
+```
+
+The `QueryPlan` object provides:
+
+- `strategy`: ExecutionStrategy enum (SEARCH, SCAN, or HYBRID)
+- `index`: DetectedIndex with name, prefixes, type, and fields
+- `server_query`: RediSearch query that will run server-side
+- `client_filters`: Filters that will run in Polars
+- `warnings`: Any optimization warnings
+
+### Index Discovery
+
+Explore available indexes:
+
+```python
+from polars_redis import list_indexes, find_index_for_pattern
+
+# List all RediSearch indexes
+indexes = list_indexes("redis://localhost:6379")
+for idx in indexes:
+    print(f"{idx.name}: prefixes={idx.prefixes}, fields={idx.fields}")
+
+# Find index for specific pattern
+idx = find_index_for_pattern("redis://localhost:6379", "user:*")
+if idx:
+    print(f"Found index: {idx.name}")
+else:
+    print("No index covers this pattern")
+```
+
+### Explicit Index Control
+
+Override auto-detection when needed:
+
+```python
+# Use a specific index by name
+df = smart_scan(
+    url,
+    "user:*",
+    schema={"name": pl.Utf8},
+    index="users_idx",
+    auto_detect_index=False,
+)
+
+# Use an Index object (auto-creates if needed)
+from polars_redis import Index, TextField, NumericField
+
+idx = Index(
+    name="users_idx",
+    prefix="user:",
+    schema=[TextField("name"), NumericField("age")],
+)
+
+df = smart_scan(
+    url,
+    "user:*",
+    schema={"name": pl.Utf8, "age": pl.Int64},
+    index=idx,
+).collect()
+```
+
+### Graceful Degradation
+
+When RediSearch is unavailable (no module loaded), `smart_scan` falls back to SCAN without errors:
+
+```python
+# Works whether RediSearch is available or not
+df = smart_scan(
+    url,
+    "user:*",
+    schema={"name": pl.Utf8, "age": pl.Int64},
+).collect()
+```
+
+This makes `smart_scan` the recommended default for new code - you get automatic optimization when indexes exist, with zero changes needed when they don't.
+
 ## Performance Comparison
 
 | Method | Data Transfer | Use Case |
@@ -480,6 +856,7 @@ print(salary_stats)
 | `scan_hashes()` | All matching keys | No index, small datasets |
 | `scan_hashes()` + filter | All keys, filter client-side | No index available |
 | `search_hashes()` | Only matching docs | Indexed data, selective queries |
+| `smart_scan()` | Optimized automatically | Best default - auto-selects strategy |
 | `aggregate_hashes()` | Only aggregated results | Analytics, reporting |
 
-For large datasets with selective queries, RediSearch can reduce data transfer by 90%+ compared to scanning.
+For large datasets with selective queries, RediSearch can reduce data transfer by 90%+ compared to scanning. With `smart_scan`, you get this optimization automatically when indexes are available.

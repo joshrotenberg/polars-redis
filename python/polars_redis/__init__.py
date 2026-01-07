@@ -26,6 +26,32 @@ Example:
 
 from __future__ import annotations
 
+from polars_redis._cache import (
+    cache_dataframe,
+    cache_exists,
+    cache_info,
+    cache_ttl,
+    delete_cached,
+    get_cached_dataframe,
+    scan_cached,
+)
+from polars_redis._decorator import (
+    cache,
+    cache_lazy,
+)
+from polars_redis._index import (
+    Field,
+    GeoField,
+    GeoShapeField,
+    Index,
+    IndexDiff,
+    IndexInfo,
+    NumericField,
+    TagField,
+    TextField,
+    VectorField,
+)
+
 # Re-export from submodules
 from polars_redis._infer import (
     SchemaConfidence,
@@ -43,6 +69,11 @@ from polars_redis._internal import (
     PyStringBatchIterator,
     RedisScanner,
     scan_keys,
+)
+from polars_redis._pubsub import (
+    collect_pubsub,
+    iter_batches,
+    subscribe_batches,
 )
 from polars_redis._read import (
     read_hashes,
@@ -69,6 +100,22 @@ from polars_redis._search import (
     aggregate_json,
     search_hashes,
     search_json,
+)
+from polars_redis._smart import (
+    DetectedIndex,
+    ExecutionStrategy,
+    QueryPlan,
+    explain_scan,
+    find_index_for_pattern,
+    list_indexes,
+    smart_scan,
+)
+from polars_redis._streams import (
+    ack_entries,
+    iter_stream,
+    read_stream,
+    scan_stream,
+    stream_batches,
 )
 from polars_redis._write import (
     WriteResult,
@@ -146,6 +193,17 @@ __all__ = [
     "infer_json_schema_with_overwrite",
     "infer_hash_schema_with_confidence",
     "SchemaConfidence",
+    # Index management (RediSearch)
+    "Index",
+    "IndexInfo",
+    "IndexDiff",
+    "Field",
+    "TextField",
+    "NumericField",
+    "TagField",
+    "GeoField",
+    "GeoShapeField",
+    "VectorField",
     # Option classes
     "ScanOptions",
     "HashScanOptions",
@@ -161,10 +219,39 @@ __all__ = [
     "col",
     "cols",
     "raw",
+    # DataFrame caching
+    "cache_dataframe",
+    "get_cached_dataframe",
+    "scan_cached",
+    "delete_cached",
+    "cache_exists",
+    "cache_ttl",
+    "cache_info",
+    # Caching decorators
+    "cache",
+    "cache_lazy",
+    # Pub/Sub streaming
+    "collect_pubsub",
+    "subscribe_batches",
+    "iter_batches",
+    # Stream consumption (single stream with consumer groups)
+    "read_stream",
+    "scan_stream",
+    "iter_stream",
+    "stream_batches",
+    "ack_entries",
     # Environment defaults
     "get_default_batch_size",
     "get_default_count_hint",
     "get_default_timeout_ms",
+    # Smart scan (auto-detection)
+    "smart_scan",
+    "explain_scan",
+    "list_indexes",
+    "find_index_for_pattern",
+    "ExecutionStrategy",
+    "QueryPlan",
+    "DetectedIndex",
     # Version
     "__version__",
 ]

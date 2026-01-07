@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.6](https://github.com/joshrotenberg/polars-redis/compare/polars-redis-v0.1.5...polars-redis-v0.1.6) (2026-01-06)
+
+
+### Features
+
+* add DataFrame caching decorator ([#119](https://github.com/joshrotenberg/polars-redis/issues/119)) ([#125](https://github.com/joshrotenberg/polars-redis/issues/125)) ([8a54423](https://github.com/joshrotenberg/polars-redis/commit/8a5442320acf0a54e6a5bfb89a66139b2180656e))
+* add DataFrame caching with Arrow IPC and Parquet support ([#123](https://github.com/joshrotenberg/polars-redis/issues/123)) ([ad6cf7c](https://github.com/joshrotenberg/polars-redis/commit/ad6cf7c461d3598164ddd448de3ee7cd7942c42e))
+* add Pub/Sub DataFrame streaming ([#121](https://github.com/joshrotenberg/polars-redis/issues/121)) ([#126](https://github.com/joshrotenberg/polars-redis/issues/126)) ([09f0cf2](https://github.com/joshrotenberg/polars-redis/commit/09f0cf27b8f6eafa590c9e2261ce745ea7e394e1))
+* add Redis Streams streaming source ([#120](https://github.com/joshrotenberg/polars-redis/issues/120)) ([#127](https://github.com/joshrotenberg/polars-redis/issues/127)) ([e06a725](https://github.com/joshrotenberg/polars-redis/commit/e06a725a4a65426bf9a4bcf94396e74f11773bd2))
+
 ## [0.1.5](https://github.com/joshrotenberg/polars-redis/compare/polars-redis-v0.1.4...polars-redis-v0.1.5) (2026-01-06)
 
 

@@ -740,6 +740,485 @@ MultiFieldExpr.starts_with(prefix: str) -> Expr # Prefix match across fields
 
 ---
 
+## DataFrame Caching
+
+### cache_dataframe
+
+```python
+def cache_dataframe(
+    df: pl.DataFrame,
+    url: str,
+    key: str,
+    *,
+    format: Literal["ipc", "parquet"] = "ipc",
+    compression: str | None = None,
+    compression_level: int | None = None,
+    ttl: int | None = None,
+) -> int
+```
+
+Cache a DataFrame in Redis using Arrow IPC or Parquet format.
+
+**Parameters:**
+
+- `df`: DataFrame to cache
+- `url`: Redis connection URL
+- `key`: Redis key for storage
+- `format`: Serialization format (`"ipc"` or `"parquet"`)
+- `compression`: Compression codec (IPC: lz4, zstd; Parquet: snappy, gzip, lz4, zstd)
+- `compression_level`: Compression level (codec-specific)
+- `ttl`: TTL in seconds (optional)
+
+**Returns:** Number of bytes written
+
+---
+
+### get_cached_dataframe
+
+```python
+def get_cached_dataframe(
+    url: str,
+    key: str,
+    *,
+    format: Literal["ipc", "parquet"] = "ipc",
+    columns: list[str] | None = None,
+    n_rows: int | None = None,
+) -> pl.DataFrame | None
+```
+
+Retrieve a cached DataFrame from Redis.
+
+**Parameters:**
+
+- `url`: Redis connection URL
+- `key`: Redis key to retrieve
+- `format`: Serialization format (must match cache_dataframe)
+- `columns`: Columns to read (Parquet only)
+- `n_rows`: Maximum rows to read (Parquet only)
+
+**Returns:** DataFrame or None if key doesn't exist
+
+---
+
+### scan_cached
+
+```python
+def scan_cached(
+    url: str,
+    key: str,
+    *,
+    format: Literal["ipc", "parquet"] = "ipc",
+) -> pl.LazyFrame | None
+```
+
+Retrieve cached data as a LazyFrame.
+
+**Returns:** LazyFrame or None if key doesn't exist
+
+---
+
+### delete_cached
+
+```python
+def delete_cached(url: str, key: str) -> bool
+```
+
+Delete a cached DataFrame from Redis.
+
+**Returns:** True if deleted, False if key didn't exist
+
+---
+
+### cache_exists
+
+```python
+def cache_exists(url: str, key: str) -> bool
+```
+
+Check if a cached DataFrame exists in Redis.
+
+---
+
+### cache_ttl
+
+```python
+def cache_ttl(url: str, key: str) -> int | None
+```
+
+Get the remaining TTL of a cached DataFrame.
+
+**Returns:** TTL in seconds, or None if no TTL or key doesn't exist
+
+---
+
+## Index Management
+
+### Index
+
+```python
+class Index:
+    def __init__(
+        self,
+        name: str,
+        prefix: str | list[str] = "",
+        schema: list[Field] = [],
+        on: Literal["HASH", "JSON"] = "HASH",
+        stopwords: list[str] | None = None,
+        language: str | None = None,
+        language_field: str | None = None,
+        score: float | None = None,
+        score_field: str | None = None,
+        payload_field: str | None = None,
+        maxtextfields: bool = False,
+        nooffsets: bool = False,
+        nohl: bool = False,
+        nofields: bool = False,
+        nofreqs: bool = False,
+        skipinitialscan: bool = False,
+    )
+```
+
+RediSearch index definition.
+
+**Parameters:**
+
+- `name`: Index name
+- `prefix`: Key prefix(es) to index
+- `schema`: List of field definitions
+- `on`: Data type (`"HASH"` or `"JSON"`)
+- `stopwords`: Custom stopwords list (empty list disables)
+- `language`: Default language for stemming
+- `language_field`: Field containing per-document language
+- `score`: Default document score
+- `score_field`: Field containing per-document score
+- `payload_field`: Field to use as document payload
+- `maxtextfields`: Optimize for many TEXT fields
+- `nooffsets`: Don't store term offsets (saves memory)
+- `nohl`: Don't store data for highlighting
+- `nofields`: Don't store field names
+- `nofreqs`: Don't store term frequencies
+- `skipinitialscan`: Don't scan existing keys when creating
+
+**Methods:**
+
+```python
+Index.create(url: str, *, if_not_exists: bool = False) -> None
+Index.drop(url: str, *, delete_docs: bool = False) -> None
+Index.exists(url: str) -> bool
+Index.ensure_exists(url: str, *, recreate: bool = False) -> Index
+Index.info(url: str) -> IndexInfo | None
+Index.diff(url: str) -> IndexDiff
+Index.migrate(url: str, *, drop_existing: bool = False) -> bool
+Index.validate_schema(schema: dict) -> list[str]
+
+# Class methods
+Index.from_frame(df, name, prefix, *, text_fields=None, sortable=None, on="HASH") -> Index
+Index.from_schema(schema, name, prefix, *, text_fields=None, sortable=None, on="HASH") -> Index
+Index.from_redis(url: str, name: str) -> Index | None
+```
+
+---
+
+### Field Types
+
+#### TextField
+
+```python
+class TextField(Field):
+    def __init__(
+        self,
+        name: str,
+        sortable: bool = False,
+        nostem: bool = False,
+        weight: float = 1.0,
+        phonetic: str | None = None,
+        noindex: bool = False,
+        withsuffixtrie: bool = False,
+    )
+```
+
+Full-text search field with stemming and scoring.
+
+---
+
+#### NumericField
+
+```python
+class NumericField(Field):
+    def __init__(
+        self,
+        name: str,
+        sortable: bool = False,
+        noindex: bool = False,
+    )
+```
+
+Numeric field for range queries.
+
+---
+
+#### TagField
+
+```python
+class TagField(Field):
+    def __init__(
+        self,
+        name: str,
+        separator: str = ",",
+        casesensitive: bool = False,
+        sortable: bool = False,
+        noindex: bool = False,
+        withsuffixtrie: bool = False,
+    )
+```
+
+Exact-match field for categories and tags.
+
+---
+
+#### GeoField
+
+```python
+class GeoField(Field):
+    def __init__(
+        self,
+        name: str,
+        noindex: bool = False,
+    )
+```
+
+Geographic field for radius queries.
+
+---
+
+#### VectorField
+
+```python
+class VectorField(Field):
+    def __init__(
+        self,
+        name: str,
+        algorithm: Literal["FLAT", "HNSW"] = "HNSW",
+        dim: int = 384,
+        distance_metric: Literal["COSINE", "L2", "IP"] = "COSINE",
+        initial_cap: int | None = None,
+        m: int | None = None,
+        ef_construction: int | None = None,
+        ef_runtime: int | None = None,
+        block_size: int | None = None,
+    )
+```
+
+Vector field for similarity search.
+
+---
+
+#### GeoShapeField
+
+```python
+class GeoShapeField(Field):
+    def __init__(
+        self,
+        name: str,
+        coord_system: Literal["SPHERICAL", "FLAT"] = "SPHERICAL",
+    )
+```
+
+Polygon/geometry field for complex geo queries.
+
+---
+
+### IndexInfo
+
+```python
+class IndexInfo:
+    name: str
+    num_docs: int
+    max_doc_id: int
+    num_terms: int
+    num_records: int
+    inverted_sz_mb: float
+    total_inverted_index_blocks: int
+    offset_vectors_sz_mb: float
+    doc_table_size_mb: float
+    sortable_values_size_mb: float
+    key_table_size_mb: float
+    records_per_doc_avg: float
+    bytes_per_record_avg: float
+    offsets_per_term_avg: float
+    offset_bits_per_record_avg: float
+    hash_indexing_failures: int
+    indexing: bool
+    percent_indexed: float
+    fields: list[dict]
+    prefixes: list[str]
+    on_type: str
+```
+
+Information about an existing RediSearch index.
+
+---
+
+### IndexDiff
+
+```python
+class IndexDiff:
+    added: list[Field]              # Fields to be added
+    removed: list[str]              # Fields to be removed
+    changed: dict[str, tuple]       # Fields with type changes
+    unchanged: list[str]            # Unchanged fields
+
+    @property
+    def has_changes(self) -> bool
+```
+
+Differences between desired and existing index schemas.
+
+---
+
+## Smart Scan (Auto-detection)
+
+### smart_scan
+
+```python
+def smart_scan(
+    url: str,
+    pattern: str = "*",
+    schema: dict | None = None,
+    *,
+    index: str | Index | None = None,
+    include_key: bool = True,
+    key_column_name: str = "_key",
+    include_ttl: bool = False,
+    ttl_column_name: str = "_ttl",
+    batch_size: int = 1000,
+    auto_detect_index: bool = True,
+) -> pl.LazyFrame
+```
+
+Smart scan that automatically detects and uses RediSearch indexes when available.
+
+**Parameters:**
+
+- `url`: Redis connection URL
+- `pattern`: Key pattern to match (e.g., `"user:*"`)
+- `schema`: Dictionary mapping field names to Polars dtypes (required)
+- `index`: Force use of specific index (name or Index object)
+- `include_key`: Include Redis key as a column
+- `key_column_name`: Name of the key column
+- `include_ttl`: Include TTL as a column
+- `ttl_column_name`: Name of the TTL column
+- `batch_size`: Documents per batch
+- `auto_detect_index`: Auto-detect matching indexes (default: True)
+
+**Returns:** `pl.LazyFrame`
+
+---
+
+### explain_scan
+
+```python
+def explain_scan(
+    url: str,
+    pattern: str = "*",
+    schema: dict | None = None,
+    filter_expr: pl.Expr | None = None,
+) -> QueryPlan
+```
+
+Explain how a scan would be executed without running it.
+
+**Parameters:**
+
+- `url`: Redis connection URL
+- `pattern`: Key pattern to match
+- `schema`: Schema dictionary
+- `filter_expr`: Optional Polars filter expression
+
+**Returns:** `QueryPlan` object
+
+---
+
+### find_index_for_pattern
+
+```python
+def find_index_for_pattern(url: str, pattern: str) -> DetectedIndex | None
+```
+
+Find a RediSearch index that covers the given key pattern.
+
+**Parameters:**
+
+- `url`: Redis connection URL
+- `pattern`: Key pattern (e.g., `"user:*"`)
+
+**Returns:** `DetectedIndex` if found, `None` otherwise
+
+---
+
+### list_indexes
+
+```python
+def list_indexes(url: str) -> list[DetectedIndex]
+```
+
+List all RediSearch indexes.
+
+**Parameters:**
+
+- `url`: Redis connection URL
+
+**Returns:** List of `DetectedIndex` objects
+
+---
+
+### ExecutionStrategy
+
+```python
+class ExecutionStrategy(Enum):
+    SEARCH = "search"   # Use FT.SEARCH with index
+    SCAN = "scan"       # Use SCAN without index
+    HYBRID = "hybrid"   # Use FT.SEARCH + client-side filtering
+```
+
+Enum representing query execution strategies.
+
+---
+
+### DetectedIndex
+
+```python
+@dataclass
+class DetectedIndex:
+    name: str           # Index name
+    prefixes: list[str] # Key prefixes covered
+    on_type: str        # "HASH" or "JSON"
+    fields: list[str]   # Indexed field names
+```
+
+Information about an auto-detected index.
+
+---
+
+### QueryPlan
+
+```python
+@dataclass
+class QueryPlan:
+    strategy: ExecutionStrategy
+    index: DetectedIndex | None = None
+    server_query: str | None = None
+    client_filters: list[str] = []
+    warnings: list[str] = []
+
+    def explain(self) -> str:
+        """Return human-readable explanation of the query plan."""
+```
+
+Execution plan for a query.
+
+---
+
 ## Schema Inference
 
 ### infer_hash_schema
