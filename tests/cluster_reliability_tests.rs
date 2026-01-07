@@ -240,7 +240,7 @@ fn test_slot_migration_during_scan() {
             eprintln!("Failed to create iterator: {}", e);
             cleanup_cluster_keys(&format!("{}*", prefix));
             return;
-        }
+        },
     };
 
     // Collect all keys, even if slots migrate
@@ -317,7 +317,7 @@ fn test_slot_migration_moved_handling() {
             eprintln!("Failed to create iterator: {}", e);
             cleanup_cluster_keys(&format!("{}*", prefix));
             return;
-        }
+        },
     };
 
     let mut total_rows = 0;
@@ -372,14 +372,14 @@ fn test_node_temporary_unavailability() {
             }
             // Should retrieve data from available nodes
             assert!(total_rows > 0 || total_rows == 30);
-        }
+        },
         Err(e) => {
             // Connection errors are acceptable in failure scenarios
             eprintln!(
                 "Iterator creation failed (expected in failure scenario): {}",
                 e
             );
-        }
+        },
     }
 
     cleanup_cluster_keys(&format!("{}*", prefix));
@@ -419,7 +419,7 @@ fn test_node_recovery_during_scan() {
             eprintln!("Failed to create iterator: {}", e);
             cleanup_cluster_keys(&format!("{}*", prefix));
             return;
-        }
+        },
     };
 
     let mut total_rows = 0;
@@ -430,13 +430,13 @@ fn test_node_recovery_during_scan() {
             Ok(Some(batch)) => {
                 total_rows += batch.num_rows();
                 batch_count += 1;
-            }
+            },
             Ok(None) => break,
             Err(e) => {
                 // Log error but continue - recovery should be automatic
                 eprintln!("Batch {} error (may recover): {}", batch_count, e);
                 break;
-            }
+            },
         }
     }
 
@@ -489,7 +489,7 @@ fn test_moved_redirection_handling() {
             eprintln!("Failed to create iterator: {}", e);
             cleanup_cluster_keys(&format!("{}*", prefix));
             return;
-        }
+        },
     };
 
     let mut total_rows = 0;
@@ -541,7 +541,7 @@ fn test_redirections_under_load() {
             eprintln!("Failed to create iterator: {}", e);
             cleanup_cluster_keys(&format!("{}*", prefix));
             return;
-        }
+        },
     };
 
     let mut total_rows = 0;
@@ -593,7 +593,7 @@ fn test_topology_refresh_during_scan() {
             eprintln!("Failed to create iterator: {}", e);
             cleanup_cluster_keys(&format!("{}*", prefix));
             return;
-        }
+        },
     };
 
     let mut total_rows = 0;
@@ -650,7 +650,7 @@ fn test_new_node_discovery() {
             eprintln!("Failed to create iterator: {}", e);
             cleanup_cluster_keys(&format!("{}*", prefix));
             return;
-        }
+        },
     };
 
     let mut total_rows = 0;
@@ -704,11 +704,11 @@ fn test_partial_slot_availability() {
                 total_rows += batch.num_rows();
             }
             assert_eq!(total_rows, 75);
-        }
+        },
         Err(e) => {
             // If cluster is in a degraded state, connection may fail
             eprintln!("Connection failed (cluster may be degraded): {}", e);
-        }
+        },
     }
 
     cleanup_cluster_keys(&format!("{}*", prefix));
@@ -754,7 +754,7 @@ fn test_cluster_recovery_verification() {
             eprintln!("Failed to create iterator: {}", e);
             cleanup_cluster_keys(&format!("{}*", prefix));
             return;
-        }
+        },
     };
 
     let mut total_rows = 0;
@@ -831,7 +831,7 @@ fn test_concurrent_cluster_scans() {
                 Err(e) => {
                     eprintln!("Thread {} failed to create iterator: {}", i, e);
                     return;
-                }
+                },
             };
 
             let mut count = 0;
@@ -901,7 +901,7 @@ fn test_interrupted_scan_cleanup() {
                     eprintln!("Failed to create iterator: {}", e);
                     cleanup_cluster_keys(&format!("{}*", prefix));
                     return;
-                }
+                },
             };
 
         // Read only 2 batches then drop the iterator
@@ -920,7 +920,7 @@ fn test_interrupted_scan_cleanup() {
             eprintln!("Failed to create new iterator: {}", e);
             cleanup_cluster_keys(&format!("{}*", prefix));
             return;
-        }
+        },
     };
 
     let mut total_rows = 0;
@@ -973,7 +973,7 @@ fn test_data_consistency_no_duplicates() {
             eprintln!("Failed to create iterator: {}", e);
             cleanup_cluster_keys(&format!("{}*", prefix));
             return;
-        }
+        },
     };
 
     let mut all_keys = HashSet::new();
@@ -1039,7 +1039,7 @@ fn test_data_integrity_multiple_scans() {
                 Err(e) => {
                     eprintln!("Iteration {} failed to create iterator: {}", iteration, e);
                     continue;
-                }
+                },
             };
 
         let mut current_keys = HashSet::new();

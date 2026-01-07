@@ -125,6 +125,7 @@ pub mod index;
 mod infer;
 pub mod options;
 pub mod parallel;
+pub mod pipeline;
 pub mod pubsub;
 #[cfg(feature = "search")]
 pub mod query_builder;
@@ -156,6 +157,7 @@ pub use options::{
     get_default_batch_size, get_default_count_hint, get_default_timeout_ms,
 };
 pub use parallel::{FetchResult, KeyBatch, ParallelConfig, ParallelFetch};
+pub use pipeline::{CommandResult, Pipeline, PipelineResult, Transaction};
 #[cfg(feature = "search")]
 pub use query_builder::{Predicate, PredicateBuilder, Value};
 pub use schema::{HashSchema, RedisType};
@@ -258,6 +260,10 @@ fn polars_redis_internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_cache_delete, m)?)?;
     m.add_function(wrap_pyfunction!(py_cache_exists, m)?)?;
     m.add_function(wrap_pyfunction!(py_cache_ttl, m)?)?;
+    m.add_class::<PyPipeline>()?;
+    m.add_class::<PyTransaction>()?;
+    m.add_class::<PyCommandResult>()?;
+    m.add_class::<PyPipelineResult>()?;
     #[cfg(feature = "cluster")]
     m.add_class::<PyClusterHashBatchIterator>()?;
     #[cfg(feature = "cluster")]
@@ -478,6 +484,695 @@ impl PyHashBatchIterator {
     /// Get the number of rows yielded so far.
     fn rows_yielded(&self) -> usize {
         self.inner.rows_yielded()
+    }
+}
+
+// ============================================================================
+// Pipeline and Transaction Python bindings
+// ============================================================================
+
+#[cfg(feature = "python")]
+/// Python wrapper for Pipeline.
+///
+/// Pipelines batch multiple Redis commands and execute them in a single round-trip.
+#[pyclass]
+pub struct PyPipeline {
+    inner: pipeline::Pipeline,
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl PyPipeline {
+    /// Create a new pipeline.
+    #[new]
+    fn new(url: String) -> PyResult<Self> {
+        let inner = pipeline::Pipeline::new(&url)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyConnectionError, _>(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    /// Get the number of queued commands.
+    fn __len__(&self) -> usize {
+        self.inner.len()
+    }
+
+    /// Check if the pipeline is empty.
+    fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// Clear all queued commands.
+    fn clear(&mut self) {
+        self.inner.clear();
+    }
+
+    // String commands
+    /// Queue a SET command.
+    fn set(&mut self, key: &str, value: &str) -> PyResult<()> {
+        self.inner.set(key, value);
+        Ok(())
+    }
+
+    /// Queue a SET command with expiration.
+    fn set_ex(&mut self, key: &str, value: &str, seconds: i64) -> PyResult<()> {
+        self.inner.set_ex(key, value, seconds);
+        Ok(())
+    }
+
+    /// Queue a GET command.
+    fn get(&mut self, key: &str) -> PyResult<()> {
+        self.inner.get(key);
+        Ok(())
+    }
+
+    /// Queue an MGET command.
+    fn mget(&mut self, keys: Vec<String>) -> PyResult<()> {
+        let keys_refs: Vec<&str> = keys.iter().map(|s| s.as_str()).collect();
+        self.inner.mget(&keys_refs);
+        Ok(())
+    }
+
+    /// Queue an INCR command.
+    fn incr(&mut self, key: &str) -> PyResult<()> {
+        self.inner.incr(key);
+        Ok(())
+    }
+
+    /// Queue an INCRBY command.
+    fn incrby(&mut self, key: &str, increment: i64) -> PyResult<()> {
+        self.inner.incrby(key, increment);
+        Ok(())
+    }
+
+    /// Queue a DECR command.
+    fn decr(&mut self, key: &str) -> PyResult<()> {
+        self.inner.decr(key);
+        Ok(())
+    }
+
+    // Hash commands
+    /// Queue an HSET command.
+    fn hset(&mut self, key: &str, field: &str, value: &str) -> PyResult<()> {
+        self.inner.hset(key, field, value);
+        Ok(())
+    }
+
+    /// Queue an HMSET command for multiple fields.
+    fn hmset(&mut self, key: &str, fields: HashMap<String, String>) -> PyResult<()> {
+        let pairs: Vec<(&str, &str)> = fields
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        self.inner.hmset(key, &pairs);
+        Ok(())
+    }
+
+    /// Queue an HGET command.
+    fn hget(&mut self, key: &str, field: &str) -> PyResult<()> {
+        self.inner.hget(key, field);
+        Ok(())
+    }
+
+    /// Queue an HGETALL command.
+    fn hgetall(&mut self, key: &str) -> PyResult<()> {
+        self.inner.hgetall(key);
+        Ok(())
+    }
+
+    /// Queue an HDEL command.
+    fn hdel(&mut self, key: &str, fields: Vec<String>) -> PyResult<()> {
+        let fields_refs: Vec<&str> = fields.iter().map(|s| s.as_str()).collect();
+        self.inner.hdel(key, &fields_refs);
+        Ok(())
+    }
+
+    /// Queue an HINCRBY command.
+    fn hincrby(&mut self, key: &str, field: &str, increment: i64) -> PyResult<()> {
+        self.inner.hincrby(key, field, increment);
+        Ok(())
+    }
+
+    // List commands
+    /// Queue an LPUSH command.
+    fn lpush(&mut self, key: &str, values: Vec<String>) -> PyResult<()> {
+        let values_refs: Vec<&str> = values.iter().map(|s| s.as_str()).collect();
+        self.inner.lpush(key, &values_refs);
+        Ok(())
+    }
+
+    /// Queue an RPUSH command.
+    fn rpush(&mut self, key: &str, values: Vec<String>) -> PyResult<()> {
+        let values_refs: Vec<&str> = values.iter().map(|s| s.as_str()).collect();
+        self.inner.rpush(key, &values_refs);
+        Ok(())
+    }
+
+    /// Queue an LRANGE command.
+    fn lrange(&mut self, key: &str, start: i64, stop: i64) -> PyResult<()> {
+        self.inner.lrange(key, start, stop);
+        Ok(())
+    }
+
+    /// Queue an LLEN command.
+    fn llen(&mut self, key: &str) -> PyResult<()> {
+        self.inner.llen(key);
+        Ok(())
+    }
+
+    // Set commands
+    /// Queue an SADD command.
+    fn sadd(&mut self, key: &str, members: Vec<String>) -> PyResult<()> {
+        let members_refs: Vec<&str> = members.iter().map(|s| s.as_str()).collect();
+        self.inner.sadd(key, &members_refs);
+        Ok(())
+    }
+
+    /// Queue an SMEMBERS command.
+    fn smembers(&mut self, key: &str) -> PyResult<()> {
+        self.inner.smembers(key);
+        Ok(())
+    }
+
+    /// Queue an SISMEMBER command.
+    fn sismember(&mut self, key: &str, member: &str) -> PyResult<()> {
+        self.inner.sismember(key, member);
+        Ok(())
+    }
+
+    /// Queue an SCARD command.
+    fn scard(&mut self, key: &str) -> PyResult<()> {
+        self.inner.scard(key);
+        Ok(())
+    }
+
+    // Sorted set commands
+    /// Queue a ZADD command.
+    fn zadd(&mut self, key: &str, members: Vec<(f64, String)>) -> PyResult<()> {
+        let members_refs: Vec<(f64, &str)> =
+            members.iter().map(|(s, m)| (*s, m.as_str())).collect();
+        self.inner.zadd(key, &members_refs);
+        Ok(())
+    }
+
+    /// Queue a ZRANGE command.
+    fn zrange(&mut self, key: &str, start: i64, stop: i64) -> PyResult<()> {
+        self.inner.zrange(key, start, stop);
+        Ok(())
+    }
+
+    /// Queue a ZSCORE command.
+    fn zscore(&mut self, key: &str, member: &str) -> PyResult<()> {
+        self.inner.zscore(key, member);
+        Ok(())
+    }
+
+    /// Queue a ZCARD command.
+    fn zcard(&mut self, key: &str) -> PyResult<()> {
+        self.inner.zcard(key);
+        Ok(())
+    }
+
+    // Key commands
+    /// Queue a DEL command.
+    fn delete(&mut self, keys: Vec<String>) -> PyResult<()> {
+        let keys_refs: Vec<&str> = keys.iter().map(|s| s.as_str()).collect();
+        self.inner.del(&keys_refs);
+        Ok(())
+    }
+
+    /// Queue an EXISTS command.
+    fn exists(&mut self, keys: Vec<String>) -> PyResult<()> {
+        let keys_refs: Vec<&str> = keys.iter().map(|s| s.as_str()).collect();
+        self.inner.exists(&keys_refs);
+        Ok(())
+    }
+
+    /// Queue an EXPIRE command.
+    fn expire(&mut self, key: &str, seconds: i64) -> PyResult<()> {
+        self.inner.expire(key, seconds);
+        Ok(())
+    }
+
+    /// Queue a TTL command.
+    fn ttl(&mut self, key: &str) -> PyResult<()> {
+        self.inner.ttl(key);
+        Ok(())
+    }
+
+    /// Queue a RENAME command.
+    fn rename(&mut self, key: &str, new_key: &str) -> PyResult<()> {
+        self.inner.rename(key, new_key);
+        Ok(())
+    }
+
+    /// Queue a TYPE command.
+    fn key_type(&mut self, key: &str) -> PyResult<()> {
+        self.inner.key_type(key);
+        Ok(())
+    }
+
+    /// Queue a raw command with arguments.
+    fn raw(&mut self, command: &str, args: Vec<String>) -> PyResult<()> {
+        let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        self.inner.raw(command, &args_refs);
+        Ok(())
+    }
+
+    /// Execute all queued commands and return results.
+    fn execute(&mut self) -> PyResult<PyPipelineResult> {
+        let result = self
+            .inner
+            .execute()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        Ok(PyPipelineResult {
+            results: result
+                .results
+                .into_iter()
+                .map(PyCommandResult::from)
+                .collect(),
+            succeeded: result.succeeded,
+            failed: result.failed,
+        })
+    }
+}
+
+#[cfg(feature = "python")]
+/// Result of a single command in a pipeline.
+#[pyclass]
+pub struct PyCommandResult {
+    #[pyo3(get)]
+    result_type: String,
+    /// The value as a simple type (string, int, or None).
+    value_str: Option<String>,
+    value_int: Option<i64>,
+    value_arr: Option<Vec<PyCommandResult>>,
+}
+
+#[cfg(feature = "python")]
+impl From<pipeline::CommandResult> for PyCommandResult {
+    fn from(result: pipeline::CommandResult) -> Self {
+        match result {
+            pipeline::CommandResult::Ok => PyCommandResult {
+                result_type: "ok".to_string(),
+                value_str: None,
+                value_int: None,
+                value_arr: None,
+            },
+            pipeline::CommandResult::String(s) => PyCommandResult {
+                result_type: "string".to_string(),
+                value_str: Some(s),
+                value_int: None,
+                value_arr: None,
+            },
+            pipeline::CommandResult::Int(i) => PyCommandResult {
+                result_type: "int".to_string(),
+                value_str: None,
+                value_int: Some(i),
+                value_arr: None,
+            },
+            pipeline::CommandResult::Bulk(s) => PyCommandResult {
+                result_type: "bulk".to_string(),
+                value_str: Some(s),
+                value_int: None,
+                value_arr: None,
+            },
+            pipeline::CommandResult::Array(arr) => {
+                let py_arr: Vec<PyCommandResult> = arr.into_iter().map(|v| v.into()).collect();
+                PyCommandResult {
+                    result_type: "array".to_string(),
+                    value_str: None,
+                    value_int: None,
+                    value_arr: Some(py_arr),
+                }
+            },
+            pipeline::CommandResult::Nil => PyCommandResult {
+                result_type: "nil".to_string(),
+                value_str: None,
+                value_int: None,
+                value_arr: None,
+            },
+            pipeline::CommandResult::Error(e) => PyCommandResult {
+                result_type: "error".to_string(),
+                value_str: Some(e),
+                value_int: None,
+                value_arr: None,
+            },
+        }
+    }
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl PyCommandResult {
+    /// Check if the result is an error.
+    fn is_error(&self) -> bool {
+        self.result_type == "error"
+    }
+
+    /// Check if the result is OK.
+    fn is_ok(&self) -> bool {
+        self.result_type == "ok"
+    }
+
+    /// Check if the result is nil.
+    fn is_nil(&self) -> bool {
+        self.result_type == "nil"
+    }
+
+    /// Get the value. Returns the appropriate Python type based on result_type.
+    #[getter]
+    fn value(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        if let Some(ref s) = self.value_str {
+            Ok(s.clone().into_pyobject(py)?.into_any().unbind())
+        } else if let Some(i) = self.value_int {
+            Ok(i.into_pyobject(py)?.into_any().unbind())
+        } else if let Some(ref arr) = self.value_arr {
+            // Convert array to Python list
+            let list = pyo3::types::PyList::empty(py);
+            for item in arr {
+                let py_item = Py::new(
+                    py,
+                    PyCommandResult {
+                        result_type: item.result_type.clone(),
+                        value_str: item.value_str.clone(),
+                        value_int: item.value_int,
+                        value_arr: None, // Simplified - nested arrays not deeply copied
+                    },
+                )?;
+                list.append(py_item)?;
+            }
+            Ok(list.into_any().unbind())
+        } else {
+            Ok(py.None())
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        if self.value_str.is_some() || self.value_int.is_some() || self.value_arr.is_some() {
+            format!("CommandResult({}, ...)", self.result_type)
+        } else {
+            format!("CommandResult({})", self.result_type)
+        }
+    }
+}
+
+#[cfg(feature = "python")]
+/// Result of executing a pipeline.
+#[pyclass]
+pub struct PyPipelineResult {
+    results: Vec<PyCommandResult>,
+    #[pyo3(get)]
+    succeeded: usize,
+    #[pyo3(get)]
+    failed: usize,
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl PyPipelineResult {
+    /// Check if all commands succeeded.
+    fn all_succeeded(&self) -> bool {
+        self.failed == 0
+    }
+
+    /// Get the results as a list.
+    #[getter]
+    fn results(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let list = pyo3::types::PyList::empty(py);
+        for item in &self.results {
+            let py_item = Py::new(
+                py,
+                PyCommandResult {
+                    result_type: item.result_type.clone(),
+                    value_str: item.value_str.clone(),
+                    value_int: item.value_int,
+                    value_arr: None,
+                },
+            )?;
+            list.append(py_item)?;
+        }
+        Ok(list.into_any().unbind())
+    }
+
+    /// Get the result at a specific index.
+    fn get(&self, py: Python<'_>, index: usize) -> PyResult<Option<Py<PyCommandResult>>> {
+        if let Some(item) = self.results.get(index) {
+            let py_item = Py::new(
+                py,
+                PyCommandResult {
+                    result_type: item.result_type.clone(),
+                    value_str: item.value_str.clone(),
+                    value_int: item.value_int,
+                    value_arr: None,
+                },
+            )?;
+            Ok(Some(py_item))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn __len__(&self) -> usize {
+        self.results.len()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "PipelineResult(commands={}, succeeded={}, failed={})",
+            self.results.len(),
+            self.succeeded,
+            self.failed
+        )
+    }
+}
+
+#[cfg(feature = "python")]
+/// Python wrapper for Transaction.
+///
+/// Transactions execute Redis commands atomically using MULTI/EXEC.
+#[pyclass]
+pub struct PyTransaction {
+    inner: pipeline::Transaction,
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl PyTransaction {
+    /// Create a new transaction.
+    #[new]
+    fn new(url: String) -> PyResult<Self> {
+        let inner = pipeline::Transaction::new(&url)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyConnectionError, _>(e.to_string()))?;
+        Ok(Self { inner })
+    }
+
+    /// Get the number of queued commands.
+    fn __len__(&self) -> usize {
+        self.inner.len()
+    }
+
+    /// Check if the transaction is empty.
+    fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// Discard the transaction (clear all queued commands).
+    fn discard(&mut self) {
+        self.inner.discard();
+    }
+
+    // Forward all command methods (same as Pipeline)
+    fn set(&mut self, key: &str, value: &str) -> PyResult<()> {
+        self.inner.set(key, value);
+        Ok(())
+    }
+
+    fn set_ex(&mut self, key: &str, value: &str, seconds: i64) -> PyResult<()> {
+        self.inner.set_ex(key, value, seconds);
+        Ok(())
+    }
+
+    fn get(&mut self, key: &str) -> PyResult<()> {
+        self.inner.get(key);
+        Ok(())
+    }
+
+    fn mget(&mut self, keys: Vec<String>) -> PyResult<()> {
+        let keys_refs: Vec<&str> = keys.iter().map(|s| s.as_str()).collect();
+        self.inner.mget(&keys_refs);
+        Ok(())
+    }
+
+    fn incr(&mut self, key: &str) -> PyResult<()> {
+        self.inner.incr(key);
+        Ok(())
+    }
+
+    fn incrby(&mut self, key: &str, increment: i64) -> PyResult<()> {
+        self.inner.incrby(key, increment);
+        Ok(())
+    }
+
+    fn decr(&mut self, key: &str) -> PyResult<()> {
+        self.inner.decr(key);
+        Ok(())
+    }
+
+    fn hset(&mut self, key: &str, field: &str, value: &str) -> PyResult<()> {
+        self.inner.hset(key, field, value);
+        Ok(())
+    }
+
+    fn hmset(&mut self, key: &str, fields: HashMap<String, String>) -> PyResult<()> {
+        let pairs: Vec<(&str, &str)> = fields
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        self.inner.hmset(key, &pairs);
+        Ok(())
+    }
+
+    fn hget(&mut self, key: &str, field: &str) -> PyResult<()> {
+        self.inner.hget(key, field);
+        Ok(())
+    }
+
+    fn hgetall(&mut self, key: &str) -> PyResult<()> {
+        self.inner.hgetall(key);
+        Ok(())
+    }
+
+    fn hdel(&mut self, key: &str, fields: Vec<String>) -> PyResult<()> {
+        let fields_refs: Vec<&str> = fields.iter().map(|s| s.as_str()).collect();
+        self.inner.hdel(key, &fields_refs);
+        Ok(())
+    }
+
+    fn hincrby(&mut self, key: &str, field: &str, increment: i64) -> PyResult<()> {
+        self.inner.hincrby(key, field, increment);
+        Ok(())
+    }
+
+    fn lpush(&mut self, key: &str, values: Vec<String>) -> PyResult<()> {
+        let values_refs: Vec<&str> = values.iter().map(|s| s.as_str()).collect();
+        self.inner.lpush(key, &values_refs);
+        Ok(())
+    }
+
+    fn rpush(&mut self, key: &str, values: Vec<String>) -> PyResult<()> {
+        let values_refs: Vec<&str> = values.iter().map(|s| s.as_str()).collect();
+        self.inner.rpush(key, &values_refs);
+        Ok(())
+    }
+
+    fn lrange(&mut self, key: &str, start: i64, stop: i64) -> PyResult<()> {
+        self.inner.lrange(key, start, stop);
+        Ok(())
+    }
+
+    fn llen(&mut self, key: &str) -> PyResult<()> {
+        self.inner.llen(key);
+        Ok(())
+    }
+
+    fn sadd(&mut self, key: &str, members: Vec<String>) -> PyResult<()> {
+        let members_refs: Vec<&str> = members.iter().map(|s| s.as_str()).collect();
+        self.inner.sadd(key, &members_refs);
+        Ok(())
+    }
+
+    fn smembers(&mut self, key: &str) -> PyResult<()> {
+        self.inner.smembers(key);
+        Ok(())
+    }
+
+    fn sismember(&mut self, key: &str, member: &str) -> PyResult<()> {
+        self.inner.sismember(key, member);
+        Ok(())
+    }
+
+    fn scard(&mut self, key: &str) -> PyResult<()> {
+        self.inner.scard(key);
+        Ok(())
+    }
+
+    fn zadd(&mut self, key: &str, members: Vec<(f64, String)>) -> PyResult<()> {
+        let members_refs: Vec<(f64, &str)> =
+            members.iter().map(|(s, m)| (*s, m.as_str())).collect();
+        self.inner.zadd(key, &members_refs);
+        Ok(())
+    }
+
+    fn zrange(&mut self, key: &str, start: i64, stop: i64) -> PyResult<()> {
+        self.inner.zrange(key, start, stop);
+        Ok(())
+    }
+
+    fn zscore(&mut self, key: &str, member: &str) -> PyResult<()> {
+        self.inner.zscore(key, member);
+        Ok(())
+    }
+
+    fn zcard(&mut self, key: &str) -> PyResult<()> {
+        self.inner.zcard(key);
+        Ok(())
+    }
+
+    fn delete(&mut self, keys: Vec<String>) -> PyResult<()> {
+        let keys_refs: Vec<&str> = keys.iter().map(|s| s.as_str()).collect();
+        self.inner.del(&keys_refs);
+        Ok(())
+    }
+
+    fn exists(&mut self, keys: Vec<String>) -> PyResult<()> {
+        let keys_refs: Vec<&str> = keys.iter().map(|s| s.as_str()).collect();
+        self.inner.exists(&keys_refs);
+        Ok(())
+    }
+
+    fn expire(&mut self, key: &str, seconds: i64) -> PyResult<()> {
+        self.inner.expire(key, seconds);
+        Ok(())
+    }
+
+    fn ttl(&mut self, key: &str) -> PyResult<()> {
+        self.inner.ttl(key);
+        Ok(())
+    }
+
+    fn rename(&mut self, key: &str, new_key: &str) -> PyResult<()> {
+        self.inner.rename(key, new_key);
+        Ok(())
+    }
+
+    fn key_type(&mut self, key: &str) -> PyResult<()> {
+        self.inner.key_type(key);
+        Ok(())
+    }
+
+    fn raw(&mut self, command: &str, args: Vec<String>) -> PyResult<()> {
+        let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        self.inner.raw(command, &args_refs);
+        Ok(())
+    }
+
+    /// Execute the transaction atomically.
+    fn execute(&mut self) -> PyResult<PyPipelineResult> {
+        let result = self
+            .inner
+            .execute()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        Ok(PyPipelineResult {
+            results: result
+                .results
+                .into_iter()
+                .map(PyCommandResult::from)
+                .collect(),
+            succeeded: result.succeeded,
+            failed: result.failed,
+        })
     }
 }
 
