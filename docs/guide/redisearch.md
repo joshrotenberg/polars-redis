@@ -7,7 +7,7 @@ polars-redis integrates with RediSearch to enable server-side filtering (predica
 RediSearch requires:
 
 - Redis Stack or Redis with RediSearch module
-- An existing index on your data
+- An existing index on your data (or use polars-redis to create one)
 
 ```bash
 # Start Redis Stack
@@ -20,17 +20,43 @@ redis-cli MODULE LIST
 
 ## Creating an Index
 
-Before using `search_hashes()` or `aggregate_hashes()`, create an index:
+Before using `search_hashes()` or `aggregate_hashes()`, you need an index. polars-redis provides typed helpers for creating indexes:
 
-```bash
-# Create index on hash keys with prefix "user:"
-FT.CREATE users_idx ON HASH PREFIX 1 user: SCHEMA \
-    name TEXT SORTABLE \
-    age NUMERIC SORTABLE \
-    department TAG \
-    salary NUMERIC \
-    status TAG
+```python
+from polars_redis import Index, TextField, NumericField, TagField
+
+idx = Index(
+    name="users_idx",
+    prefix="user:",
+    schema=[
+        TextField("name", sortable=True),
+        NumericField("age", sortable=True),
+        TagField("department"),
+        NumericField("salary"),
+        TagField("status"),
+    ]
+)
+
+# Create the index
+idx.create("redis://localhost:6379")
+
+# Or ensure it exists (idempotent)
+idx.ensure_exists("redis://localhost:6379")
 ```
+
+You can also pass the `Index` object directly to `search_hashes()` for auto-creation:
+
+```python
+df = search_hashes(
+    "redis://localhost:6379",
+    index=idx,  # Auto-creates if not exists
+    query=col("age") > 30,
+    schema={"name": pl.Utf8, "age": pl.Int64},
+).collect()
+```
+
+!!! tip "Index Management"
+    See [Index Management](index-management.md) for complete documentation on field types, schema inference, validation, and migration.
 
 ## Searching with search_hashes()
 

@@ -72,6 +72,7 @@ nav:
       - Pub/Sub: guide/pubsub.md
       - Redis Streams: guide/streams.md
   - RediSearch:
+      - Index Management: guide/index-management.md
       - Queries & Aggregation: guide/redisearch.md
       - Advanced Queries: examples/advanced-queries.md
   - Operations:
