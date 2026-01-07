@@ -59,6 +59,10 @@ harness = false
 name = "redis_benchmarks"
 harness = false
 
+[[bench]]
+name = "cache_stream_benchmarks"
+harness = false
+
 [features]
 default = ["json", "search"]
 python = ["pyo3"]
