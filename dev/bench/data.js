@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1767821883992,
+  "lastUpdate": 1767822510258,
   "repoUrl": "https://github.com/joshrotenberg/polars-redis",
   "entries": {
     "Rust Benchmarks": [
@@ -3167,6 +3167,138 @@ window.BENCHMARK_DATA = {
             "name": "projection/25_of_50_fields",
             "value": 1173,
             "range": "± 5",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "joshrotenberg@gmail.com",
+            "name": "Josh Rotenberg",
+            "username": "joshrotenberg"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7783387e8c69740b62b829798828bc0f603776b3",
+          "message": "feat: add geospatial support for Redis GEO commands (#176)\n\nImplements issue #171 - Geospatial Enhancements\n\nRust API:\n- geo_add: Add locations to a geo set\n- geo_radius: Query locations within radius of a point\n- geo_radius_by_member: Query locations within radius of another member\n- geo_dist: Get distance between two members\n- geo_pos: Get positions of members\n- geo_dist_matrix: Compute pairwise distance matrix\n- geo_hash: Get geohash strings for members\n\nPython API:\n- Full parity with Rust API\n- DataFrame-friendly wrappers (geo_add_from_dataframe, etc.)\n- Results returned as Polars DataFrames\n\nUses GEOSEARCH (Redis 6.2+) instead of deprecated GEORADIUS.",
+          "timestamp": "2026-01-07T13:38:24-08:00",
+          "tree_id": "1d98f76863ced6b5ab9ba8c3f87746bff316cb89",
+          "url": "https://github.com/joshrotenberg/polars-redis/commit/7783387e8c69740b62b829798828bc0f603776b3"
+        },
+        "date": 1767822509338,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "schema_creation/small_3_fields",
+            "value": 282,
+            "range": "± 2",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/medium_10_fields",
+            "value": 1219,
+            "range": "± 7",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/large_50_fields",
+            "value": 7115,
+            "range": "± 20",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/default",
+            "value": 22,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/with_options",
+            "value": 23,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/100",
+            "value": 278,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/100",
+            "value": 1114,
+            "range": "± 7",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/100",
+            "value": 87,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/1000",
+            "value": 3145,
+            "range": "± 41",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/1000",
+            "value": 11563,
+            "range": "± 39",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/1000",
+            "value": 969,
+            "range": "± 2",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/10000",
+            "value": 39991,
+            "range": "± 1038",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/10000",
+            "value": 122126,
+            "range": "± 1189",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/10000",
+            "value": 9521,
+            "range": "± 85",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "arrow_schema/to_arrow_schema",
+            "value": 851,
+            "range": "± 13",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/no_filter",
+            "value": 18,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/5_of_50_fields",
+            "value": 953,
+            "range": "± 10",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/25_of_50_fields",
+            "value": 1021,
+            "range": "± 15",
             "unit": "ns/iter"
           }
         ]
