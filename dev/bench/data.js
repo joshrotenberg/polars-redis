@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1767766263782,
+  "lastUpdate": 1767802575010,
   "repoUrl": "https://github.com/joshrotenberg/polars-redis",
   "entries": {
     "Rust Benchmarks": [
@@ -2375,6 +2375,138 @@ window.BENCHMARK_DATA = {
             "name": "projection/25_of_50_fields",
             "value": 1068,
             "range": "± 12",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "joshrotenberg@gmail.com",
+            "name": "Josh Rotenberg",
+            "username": "joshrotenberg"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "354ba0bbe264cf1f7370e35c0bf9d37b02db40f1",
+          "message": "feat: add smart_scan with automatic index detection (#144)\n\n* feat: add smart_scan with automatic index detection (#133)\n\n- Add smart_scan() that auto-detects RediSearch indexes for key patterns\n- Add explain_scan() to show query execution plan before running\n- Add find_index_for_pattern() and list_indexes() for index discovery\n- Add ExecutionStrategy enum (SEARCH, SCAN, HYBRID)\n- Add QueryPlan with explain() method for transparency\n- Add DetectedIndex dataclass for index metadata\n- Implement graceful degradation when RediSearch unavailable\n- Add Rust parity with smart module\n- Add comprehensive unit tests\n- Update documentation with Smart Scan section\n\n* fix: add warning for no index and avoid predicate pushdown in filter test\n\n* chore: register integration pytest marker",
+          "timestamp": "2026-01-07T08:06:30-08:00",
+          "tree_id": "484f7863655e9bd11b1f510255d3449581e392fe",
+          "url": "https://github.com/joshrotenberg/polars-redis/commit/354ba0bbe264cf1f7370e35c0bf9d37b02db40f1"
+        },
+        "date": 1767802574736,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "schema_creation/small_3_fields",
+            "value": 314,
+            "range": "± 5",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/medium_10_fields",
+            "value": 1079,
+            "range": "± 5",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/large_50_fields",
+            "value": 6880,
+            "range": "± 34",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/default",
+            "value": 26,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/with_options",
+            "value": 27,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/100",
+            "value": 249,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/100",
+            "value": 1208,
+            "range": "± 3",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/100",
+            "value": 76,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/1000",
+            "value": 3149,
+            "range": "± 37",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/1000",
+            "value": 12770,
+            "range": "± 40",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/1000",
+            "value": 714,
+            "range": "± 8",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/10000",
+            "value": 37858,
+            "range": "± 125",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/10000",
+            "value": 134321,
+            "range": "± 1642",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/10000",
+            "value": 7466,
+            "range": "± 172",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "arrow_schema/to_arrow_schema",
+            "value": 758,
+            "range": "± 6",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/no_filter",
+            "value": 21,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/5_of_50_fields",
+            "value": 977,
+            "range": "± 5",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/25_of_50_fields",
+            "value": 1149,
+            "range": "± 5",
             "unit": "ns/iter"
           }
         ]
