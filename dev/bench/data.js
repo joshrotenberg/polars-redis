@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1767816638398,
+  "lastUpdate": 1767818373072,
   "repoUrl": "https://github.com/joshrotenberg/polars-redis",
   "entries": {
     "Rust Benchmarks": [
@@ -2771,6 +2771,138 @@ window.BENCHMARK_DATA = {
             "name": "projection/25_of_50_fields",
             "value": 1113,
             "range": "± 6",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "joshrotenberg@gmail.com",
+            "name": "Josh Rotenberg",
+            "username": "joshrotenberg"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "344506ae24a690ec23a27a29ae8e988aaf8e605b",
+          "message": "chore: align with Polars conventions (#166)\n\n- Add rustfmt.toml with Polars-compatible settings\n  - match_block_trailing_comma = true\n  - use_field_init_shorthand = true\n  - Document nightly-only settings (group_imports, imports_granularity)\n\n- Add Clippy lint configuration\n  - Allow collapsible_if to match Polars workspace settings\n\n- Apply rustfmt changes across codebase\n\nCloses #163\nCloses #165",
+          "timestamp": "2026-01-07T12:29:42-08:00",
+          "tree_id": "b14276aab5162c9ef9dc2567af37dbf9e105d883",
+          "url": "https://github.com/joshrotenberg/polars-redis/commit/344506ae24a690ec23a27a29ae8e988aaf8e605b"
+        },
+        "date": 1767818372196,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "schema_creation/small_3_fields",
+            "value": 316,
+            "range": "± 3",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/medium_10_fields",
+            "value": 1090,
+            "range": "± 2",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/large_50_fields",
+            "value": 7042,
+            "range": "± 162",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/default",
+            "value": 26,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/with_options",
+            "value": 27,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/100",
+            "value": 249,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/100",
+            "value": 1216,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/100",
+            "value": 76,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/1000",
+            "value": 3095,
+            "range": "± 63",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/1000",
+            "value": 12777,
+            "range": "± 20",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/1000",
+            "value": 716,
+            "range": "± 34",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/10000",
+            "value": 38242,
+            "range": "± 161",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/10000",
+            "value": 135182,
+            "range": "± 1428",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/10000",
+            "value": 7991,
+            "range": "± 298",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "arrow_schema/to_arrow_schema",
+            "value": 760,
+            "range": "± 5",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/no_filter",
+            "value": 19,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/5_of_50_fields",
+            "value": 933,
+            "range": "± 2",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/25_of_50_fields",
+            "value": 1161,
+            "range": "± 2",
             "unit": "ns/iter"
           }
         ]
