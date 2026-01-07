@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1767802575010,
+  "lastUpdate": 1767810441759,
   "repoUrl": "https://github.com/joshrotenberg/polars-redis",
   "entries": {
     "Rust Benchmarks": [
@@ -2507,6 +2507,138 @@ window.BENCHMARK_DATA = {
             "name": "projection/25_of_50_fields",
             "value": 1149,
             "range": "± 5",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "joshrotenberg@gmail.com",
+            "name": "Josh Rotenberg",
+            "username": "joshrotenberg"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d1d8b1a15b027fe2bdd261345c03eaceb9dbe307",
+          "message": "test: add pushdown equivalence tests (#136) (#145)\n\n* test: add pushdown equivalence tests (#136)\n\nAdd comprehensive integration tests verifying that predicate pushdown\nto RediSearch produces identical results as client-side filtering.\n\nTest coverage includes:\n- Simple predicates (>, >=, <, <=, ==, !=, between)\n- Compound predicates (AND, OR, nested)\n- Result edge cases (no matches, all match, single match)\n- Numeric edge cases (boundary values, float precision, zero)\n- Text/tag edge cases\n- Projection tests\n- Data edge cases (nulls, unicode, special characters)\n\n* test: add property tests for query_builder and schema modules\n\nAdd comprehensive property-based tests using proptest for:\n\nquery_builder module (20 property tests):\n- Numeric equality, greater-than, less-than predicate formats\n- Between predicates containing both bounds\n- Tag escaping for special characters\n- AND/OR predicate composition\n- NOT wrapping in negation\n- Float value preservation\n- Fuzzy distance clamping (1-3)\n- PredicateBuilder joining behavior\n- Geo radius format validation\n- Vector KNN format validation\n- TagOr pipe separation\n- Boost weight wrapping\n- Multi-field search format\n\nschema module (17 property tests):\n- Int64 and Float64 round-trip parsing\n- Utf8 always succeeds\n- Boolean true/false variant parsing\n- Date format parsing (YYYY-MM-DD and epoch days)\n- DateTime Unix timestamp parsing (seconds and millis)\n- days_since_epoch monotonicity\n- HashSchema field order preservation\n- Arrow schema field count calculation\n- Projection subset behavior\n- RedisType to Arrow type determinism\n- TypedValue preservation\n\n* fix: correct datetime milliseconds property test range\n\nThe property test was using values that fell into the 'seconds' range\nof the parse_datetime heuristic. Values must be >= 10^10 to be detected\nas milliseconds. Updated the test to generate values in the valid\nmillisecond range (10^10 to 2*10^12).\n\n* fix: wait for RediSearch index to finish indexing in tests\n\nThe pushdown equivalence tests were failing because RediSearch indexes\ndocuments asynchronously. After creating an index, we need to wait for\nall documents to be indexed before running queries.\n\nAdded polling loop that checks FT.INFO for 'indexing' status to ensure\nindex is fully built before proceeding with tests.\n\n* fix: wrap OR clauses in parentheses for RediSearch parsing\n\n- Fix Python query builder to wrap OR expressions in parentheses\n- RediSearch requires parentheses around OR clauses for proper parsing\n- Fix test_single_match assertion: both user:0 and user:50 have\n  age=20 and level=0, so 2 matches is correct not 1\n\n* fix: optimize tag OR queries to use RediSearch @field:{tag1|tag2} syntax\n\nRediSearch requires @field:{tag1|tag2} syntax for OR operations on tag\nfields. The general OR syntax (query1 | query2) causes syntax errors.\n\nAdded _try_optimize_tag_or() to detect and optimize OR trees of tag\nequality checks on the same field into the proper RediSearch syntax.\n\nExamples:\n- (col('status') == 'a') | (col('status') == 'b') -> @status:{a|b}\n- Three or more values also work: @status:{a|b|c}\n- Different fields still use parenthesized OR\n- Numeric ORs correctly use range syntax",
+          "timestamp": "2026-01-07T10:17:35-08:00",
+          "tree_id": "37bb681f5df5554650003ce1c7a620f807e91b14",
+          "url": "https://github.com/joshrotenberg/polars-redis/commit/d1d8b1a15b027fe2bdd261345c03eaceb9dbe307"
+        },
+        "date": 1767810441288,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "schema_creation/small_3_fields",
+            "value": 319,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/medium_10_fields",
+            "value": 1084,
+            "range": "± 11",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/large_50_fields",
+            "value": 6916,
+            "range": "± 19",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/default",
+            "value": 27,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/with_options",
+            "value": 27,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/100",
+            "value": 249,
+            "range": "± 15",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/100",
+            "value": 1216,
+            "range": "± 5",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/100",
+            "value": 76,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/1000",
+            "value": 3093,
+            "range": "± 31",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/1000",
+            "value": 12761,
+            "range": "± 42",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/1000",
+            "value": 785,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/10000",
+            "value": 38767,
+            "range": "± 501",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/10000",
+            "value": 134422,
+            "range": "± 279",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/10000",
+            "value": 8061,
+            "range": "± 99",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "arrow_schema/to_arrow_schema",
+            "value": 733,
+            "range": "± 5",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/no_filter",
+            "value": 19,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/5_of_50_fields",
+            "value": 956,
+            "range": "± 2",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/25_of_50_fields",
+            "value": 1085,
+            "range": "± 2",
             "unit": "ns/iter"
           }
         ]
