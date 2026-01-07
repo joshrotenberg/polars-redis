@@ -420,7 +420,24 @@ class IndexInfo:
     @classmethod
     def from_redis_info(cls, info: dict[str, Any]) -> IndexInfo:
         """Create IndexInfo from FT.INFO response."""
-        # FT.INFO returns a flat list that we need to parse
+        # Parse index_definition which may be a list of key-value pairs or a dict
+        index_def = info.get("index_definition", {})
+        if isinstance(index_def, list):
+            # Convert flat list [key1, val1, key2, val2, ...] to dict
+            index_def_dict: dict[str, Any] = {}
+            for i in range(0, len(index_def), 2):
+                if i + 1 < len(index_def):
+                    index_def_dict[index_def[i]] = index_def[i + 1]
+            index_def = index_def_dict
+
+        prefixes = index_def.get("prefixes", [])
+        on_type = index_def.get("key_type", "HASH")
+
+        # Handle bytes_per_record_avg which may be 'nan'
+        bytes_per_record = info.get("bytes_per_record_avg", 0)
+        if bytes_per_record == "nan" or bytes_per_record == "-nan":
+            bytes_per_record = 0.0
+
         return cls(
             name=info.get("index_name", ""),
             num_docs=int(info.get("num_docs", 0)),
@@ -434,15 +451,15 @@ class IndexInfo:
             sortable_values_size_mb=float(info.get("sortable_values_size_mb", 0)),
             key_table_size_mb=float(info.get("key_table_size_mb", 0)),
             records_per_doc_avg=float(info.get("records_per_doc_avg", 0)),
-            bytes_per_record_avg=float(info.get("bytes_per_record_avg", 0)),
+            bytes_per_record_avg=float(bytes_per_record),
             offsets_per_term_avg=float(info.get("offsets_per_term_avg", 0)),
             offset_bits_per_record_avg=float(info.get("offset_bits_per_record_avg", 0)),
             hash_indexing_failures=int(info.get("hash_indexing_failures", 0)),
             indexing=info.get("indexing", "0") == "1",
             percent_indexed=float(info.get("percent_indexed", 1.0)),
             fields=info.get("attributes", []),
-            prefixes=info.get("index_definition", {}).get("prefixes", []),
-            on_type=info.get("index_definition", {}).get("key_type", "HASH"),
+            prefixes=prefixes,
+            on_type=on_type,
         )
 
 
