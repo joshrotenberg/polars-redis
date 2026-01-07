@@ -70,6 +70,22 @@ from polars_redis._internal import (
     RedisScanner,
     scan_keys,
 )
+from polars_redis._keys import (
+    DeleteResult,
+    RenameResult,
+    TtlResult,
+    delete_keys,
+    delete_keys_from_column,
+    delete_keys_pattern,
+    exists_keys,
+    get_ttl,
+    key_info,
+    persist_keys,
+    rename_keys,
+    rename_keys_from_columns,
+    set_ttl,
+    set_ttl_from_column,
+)
 from polars_redis._pubsub import (
     collect_pubsub,
     iter_batches,
@@ -230,6 +246,21 @@ __all__ = [
     # Caching decorators
     "cache",
     "cache_lazy",
+    # Key management
+    "key_info",
+    "set_ttl",
+    "set_ttl_from_column",
+    "delete_keys",
+    "delete_keys_pattern",
+    "delete_keys_from_column",
+    "rename_keys",
+    "rename_keys_from_columns",
+    "persist_keys",
+    "exists_keys",
+    "get_ttl",
+    "TtlResult",
+    "DeleteResult",
+    "RenameResult",
     # Pub/Sub streaming
     "collect_pubsub",
     "subscribe_batches",

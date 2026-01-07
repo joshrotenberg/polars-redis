@@ -123,6 +123,7 @@ mod error;
 #[cfg(feature = "search")]
 pub mod index;
 mod infer;
+pub mod keys;
 pub mod options;
 pub mod parallel;
 pub mod pubsub;
@@ -149,6 +150,10 @@ pub use index::{
 pub use infer::{
     FieldInferenceInfo, InferredSchema, InferredSchemaWithConfidence, infer_hash_schema,
     infer_hash_schema_with_confidence, infer_json_schema,
+};
+pub use keys::{
+    DeleteResult, KeyInfo, RenameResult, TtlResult, delete_keys, delete_keys_pattern, exists_keys,
+    get_ttl, key_info, persist_keys, rename_keys, set_ttl, set_ttl_individual,
 };
 pub use options::{
     HashScanOptions, JsonScanOptions, KeyColumn, ParallelStrategy, RowIndex, RowIndexColumn,
@@ -258,6 +263,15 @@ fn polars_redis_internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_cache_delete, m)?)?;
     m.add_function(wrap_pyfunction!(py_cache_exists, m)?)?;
     m.add_function(wrap_pyfunction!(py_cache_ttl, m)?)?;
+    m.add_function(wrap_pyfunction!(py_key_info, m)?)?;
+    m.add_function(wrap_pyfunction!(py_set_ttl, m)?)?;
+    m.add_function(wrap_pyfunction!(py_set_ttl_individual, m)?)?;
+    m.add_function(wrap_pyfunction!(py_delete_keys, m)?)?;
+    m.add_function(wrap_pyfunction!(py_delete_keys_pattern, m)?)?;
+    m.add_function(wrap_pyfunction!(py_rename_keys, m)?)?;
+    m.add_function(wrap_pyfunction!(py_persist_keys, m)?)?;
+    m.add_function(wrap_pyfunction!(py_exists_keys, m)?)?;
+    m.add_function(wrap_pyfunction!(py_get_ttl, m)?)?;
     #[cfg(feature = "cluster")]
     m.add_class::<PyClusterHashBatchIterator>()?;
     #[cfg(feature = "cluster")]
@@ -668,6 +682,296 @@ fn py_cache_ttl(url: &str, key: &str) -> PyResult<Option<i64>> {
         // TTL returns -2 if key doesn't exist, -1 if no TTL
         if ttl < 0 { Ok(None) } else { Ok(Some(ttl)) }
     })
+}
+
+// ============================================================================
+// Key management Python bindings
+// ============================================================================
+
+#[cfg(feature = "python")]
+/// Get information about keys matching a pattern.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `pattern` - Key pattern to match (e.g., "user:*")
+/// * `include_memory` - Whether to include memory usage (slower)
+///
+/// # Returns
+/// A list of dicts with key info: key, key_type, ttl, memory_usage, encoding.
+#[pyfunction]
+#[pyo3(signature = (url, pattern, include_memory = false))]
+fn py_key_info(
+    url: &str,
+    pattern: &str,
+    include_memory: bool,
+) -> PyResult<Vec<std::collections::HashMap<String, Py<PyAny>>>> {
+    use crate::keys::key_info;
+
+    let info = key_info(url, pattern, Some(include_memory))
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    Python::attach(|py| {
+        info.into_iter()
+            .map(|ki| {
+                let mut dict = std::collections::HashMap::new();
+                dict.insert(
+                    "key".to_string(),
+                    ki.key.into_pyobject(py)?.into_any().unbind(),
+                );
+                dict.insert(
+                    "key_type".to_string(),
+                    ki.key_type.into_pyobject(py)?.into_any().unbind(),
+                );
+                dict.insert(
+                    "ttl".to_string(),
+                    ki.ttl.into_pyobject(py)?.into_any().unbind(),
+                );
+                dict.insert(
+                    "memory_usage".to_string(),
+                    ki.memory_usage.into_pyobject(py)?.into_any().unbind(),
+                );
+                dict.insert(
+                    "encoding".to_string(),
+                    ki.encoding.into_pyobject(py)?.into_any().unbind(),
+                );
+                Ok(dict)
+            })
+            .collect()
+    })
+}
+
+#[cfg(feature = "python")]
+/// Set TTL for multiple keys.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `keys` - List of keys to set TTL for
+/// * `ttl_seconds` - TTL in seconds
+///
+/// # Returns
+/// A dict with succeeded, failed counts and errors list.
+#[pyfunction]
+fn py_set_ttl(
+    url: &str,
+    keys: Vec<String>,
+    ttl_seconds: i64,
+) -> PyResult<std::collections::HashMap<String, Py<PyAny>>> {
+    use crate::keys::set_ttl;
+
+    let result = set_ttl(url, &keys, ttl_seconds)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    Python::attach(|py| {
+        let mut dict = std::collections::HashMap::new();
+        dict.insert(
+            "succeeded".to_string(),
+            result.succeeded.into_pyobject(py)?.into_any().unbind(),
+        );
+        dict.insert(
+            "failed".to_string(),
+            result.failed.into_pyobject(py)?.into_any().unbind(),
+        );
+        dict.insert(
+            "errors".to_string(),
+            result.errors.into_pyobject(py)?.into_any().unbind(),
+        );
+        Ok(dict)
+    })
+}
+
+#[cfg(feature = "python")]
+/// Set TTL for keys with individual TTL values.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `keys_and_ttls` - List of (key, ttl_seconds) tuples
+///
+/// # Returns
+/// A dict with succeeded, failed counts and errors list.
+#[pyfunction]
+fn py_set_ttl_individual(
+    url: &str,
+    keys_and_ttls: Vec<(String, i64)>,
+) -> PyResult<std::collections::HashMap<String, Py<PyAny>>> {
+    use crate::keys::set_ttl_individual;
+
+    let result = set_ttl_individual(url, &keys_and_ttls)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    Python::attach(|py| {
+        let mut dict = std::collections::HashMap::new();
+        dict.insert(
+            "succeeded".to_string(),
+            result.succeeded.into_pyobject(py)?.into_any().unbind(),
+        );
+        dict.insert(
+            "failed".to_string(),
+            result.failed.into_pyobject(py)?.into_any().unbind(),
+        );
+        dict.insert(
+            "errors".to_string(),
+            result.errors.into_pyobject(py)?.into_any().unbind(),
+        );
+        Ok(dict)
+    })
+}
+
+#[cfg(feature = "python")]
+/// Delete multiple keys.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `keys` - List of keys to delete
+///
+/// # Returns
+/// A dict with deleted and not_found counts.
+#[pyfunction]
+fn py_delete_keys(
+    url: &str,
+    keys: Vec<String>,
+) -> PyResult<std::collections::HashMap<String, usize>> {
+    use crate::keys::delete_keys;
+
+    let result = delete_keys(url, &keys)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    let mut dict = std::collections::HashMap::new();
+    dict.insert("deleted".to_string(), result.deleted);
+    dict.insert("not_found".to_string(), result.not_found);
+    Ok(dict)
+}
+
+#[cfg(feature = "python")]
+/// Delete keys matching a pattern.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `pattern` - Key pattern to match (e.g., "temp:*")
+///
+/// # Returns
+/// A dict with deleted and not_found counts.
+#[pyfunction]
+fn py_delete_keys_pattern(
+    url: &str,
+    pattern: &str,
+) -> PyResult<std::collections::HashMap<String, usize>> {
+    use crate::keys::delete_keys_pattern;
+
+    let result = delete_keys_pattern(url, pattern)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    let mut dict = std::collections::HashMap::new();
+    dict.insert("deleted".to_string(), result.deleted);
+    dict.insert("not_found".to_string(), result.not_found);
+    Ok(dict)
+}
+
+#[cfg(feature = "python")]
+/// Rename multiple keys.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `renames` - List of (old_key, new_key) tuples
+///
+/// # Returns
+/// A dict with succeeded, failed counts and errors list.
+#[pyfunction]
+fn py_rename_keys(
+    url: &str,
+    renames: Vec<(String, String)>,
+) -> PyResult<std::collections::HashMap<String, Py<PyAny>>> {
+    use crate::keys::rename_keys;
+
+    let result = rename_keys(url, &renames)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    Python::attach(|py| {
+        let mut dict = std::collections::HashMap::new();
+        dict.insert(
+            "succeeded".to_string(),
+            result.succeeded.into_pyobject(py)?.into_any().unbind(),
+        );
+        dict.insert(
+            "failed".to_string(),
+            result.failed.into_pyobject(py)?.into_any().unbind(),
+        );
+        dict.insert(
+            "errors".to_string(),
+            result.errors.into_pyobject(py)?.into_any().unbind(),
+        );
+        Ok(dict)
+    })
+}
+
+#[cfg(feature = "python")]
+/// Remove TTL from keys (make them persistent).
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `keys` - List of keys to persist
+///
+/// # Returns
+/// A dict with succeeded, failed counts and errors list.
+#[pyfunction]
+fn py_persist_keys(
+    url: &str,
+    keys: Vec<String>,
+) -> PyResult<std::collections::HashMap<String, Py<PyAny>>> {
+    use crate::keys::persist_keys;
+
+    let result = persist_keys(url, &keys)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    Python::attach(|py| {
+        let mut dict = std::collections::HashMap::new();
+        dict.insert(
+            "succeeded".to_string(),
+            result.succeeded.into_pyobject(py)?.into_any().unbind(),
+        );
+        dict.insert(
+            "failed".to_string(),
+            result.failed.into_pyobject(py)?.into_any().unbind(),
+        );
+        dict.insert(
+            "errors".to_string(),
+            result.errors.into_pyobject(py)?.into_any().unbind(),
+        );
+        Ok(dict)
+    })
+}
+
+#[cfg(feature = "python")]
+/// Check if keys exist.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `keys` - List of keys to check
+///
+/// # Returns
+/// A list of (key, exists) tuples.
+#[pyfunction]
+fn py_exists_keys(url: &str, keys: Vec<String>) -> PyResult<Vec<(String, bool)>> {
+    use crate::keys::exists_keys;
+
+    exists_keys(url, &keys)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+#[cfg(feature = "python")]
+/// Get TTL for multiple keys.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `keys` - List of keys to get TTL for
+///
+/// # Returns
+/// A list of (key, ttl) tuples. TTL is -1 if no expiry, -2 if key doesn't exist.
+#[pyfunction]
+fn py_get_ttl(url: &str, keys: Vec<String>) -> PyResult<Vec<(String, i64)>> {
+    use crate::keys::get_ttl;
+
+    get_ttl(url, &keys)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
 // ============================================================================
