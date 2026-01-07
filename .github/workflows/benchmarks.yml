@@ -49,7 +49,13 @@ jobs:
             ${{ runner.os }}-cargo-bench-
 
       - name: Run benchmarks
-        run: cargo bench --bench benchmarks --features search -- --noplot --output-format bencher | tee output.txt
+        run: |
+          # Run CPU-only benchmarks (no Redis required)
+          cargo bench --bench benchmarks --features search -- --noplot --output-format bencher | tee output.txt
+
+          # Note: Redis-dependent benchmarks (redis_benchmarks, cache_stream_benchmarks)
+          # require a running Redis instance and are meant for local development.
+          # They can be enabled in CI by adding a Redis service container.
 
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
