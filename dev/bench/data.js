@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1767822510258,
+  "lastUpdate": 1767823980117,
   "repoUrl": "https://github.com/joshrotenberg/polars-redis",
   "entries": {
     "Rust Benchmarks": [
@@ -3299,6 +3299,138 @@ window.BENCHMARK_DATA = {
             "name": "projection/25_of_50_fields",
             "value": 1021,
             "range": "± 15",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "joshrotenberg@gmail.com",
+            "name": "Josh Rotenberg",
+            "username": "joshrotenberg"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "8e2ea51654e9e5c906970f6115459c420bcfd8ea",
+          "message": "feat: add key management utilities (#175)\n\nAdd DataFrame-friendly key management operations for Redis:\n\n- key_info: scan and get info about keys (type, TTL, memory, encoding)\n- set_ttl/set_ttl_from_column: set TTL for multiple keys\n- delete_keys/delete_keys_pattern/delete_keys_from_column: bulk delete\n- rename_keys/rename_keys_from_columns: bulk rename\n- persist_keys: remove TTL from keys\n- exists_keys: check if keys exist\n- get_ttl: get TTL for multiple keys\n\nFeatures:\n- Rust implementation with async/pipeline support for performance\n- Python bindings with Polars DataFrame integration\n- Result types (TtlResult, DeleteResult, RenameResult) with error details\n- Uses SCAN for safe pattern-based operations (avoids KEYS)\n- Integration tests for all operations\n\nCloses #169",
+          "timestamp": "2026-01-07T14:02:52-08:00",
+          "tree_id": "3572480a5cdf20126eb0b50dd896b6a233936760",
+          "url": "https://github.com/joshrotenberg/polars-redis/commit/8e2ea51654e9e5c906970f6115459c420bcfd8ea"
+        },
+        "date": 1767823979705,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "schema_creation/small_3_fields",
+            "value": 289,
+            "range": "± 5",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/medium_10_fields",
+            "value": 1204,
+            "range": "± 14",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/large_50_fields",
+            "value": 6974,
+            "range": "± 22",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/default",
+            "value": 23,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/with_options",
+            "value": 23,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/100",
+            "value": 236,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/100",
+            "value": 1115,
+            "range": "± 10",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/100",
+            "value": 107,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/1000",
+            "value": 3011,
+            "range": "± 145",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/1000",
+            "value": 11550,
+            "range": "± 70",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/1000",
+            "value": 1004,
+            "range": "± 6",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/10000",
+            "value": 41533,
+            "range": "± 226",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/10000",
+            "value": 122315,
+            "range": "± 584",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/10000",
+            "value": 9957,
+            "range": "± 52",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "arrow_schema/to_arrow_schema",
+            "value": 844,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/no_filter",
+            "value": 18,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/5_of_50_fields",
+            "value": 895,
+            "range": "± 13",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/25_of_50_fields",
+            "value": 1026,
+            "range": "± 24",
             "unit": "ns/iter"
           }
         ]
