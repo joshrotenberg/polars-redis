@@ -86,6 +86,12 @@ from polars_redis._keys import (
     set_ttl,
     set_ttl_from_column,
 )
+from polars_redis._pipeline import (
+    CommandResult,
+    Pipeline,
+    PipelineResult,
+    Transaction,
+)
 from polars_redis._pubsub import (
     collect_pubsub,
     iter_batches,
@@ -201,6 +207,11 @@ __all__ = [
     "write_strings",
     "write_zsets",
     "WriteResult",
+    # Pipeline and Transaction
+    "Pipeline",
+    "Transaction",
+    "PipelineResult",
+    "CommandResult",
     # Utilities
     "scan_keys",
     "infer_hash_schema",
