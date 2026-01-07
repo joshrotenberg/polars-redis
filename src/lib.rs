@@ -132,6 +132,8 @@ mod scanner;
 mod schema;
 #[cfg(feature = "search")]
 pub mod search;
+#[cfg(feature = "search")]
+pub mod smart;
 mod types;
 mod write;
 
@@ -157,6 +159,8 @@ pub use parallel::{FetchResult, KeyBatch, ParallelConfig, ParallelFetch};
 #[cfg(feature = "search")]
 pub use query_builder::{Predicate, PredicateBuilder, Value};
 pub use schema::{HashSchema, RedisType};
+#[cfg(feature = "search")]
+pub use smart::{DetectedIndex, ExecutionStrategy, QueryPlan};
 pub use types::hash::{BatchConfig, HashBatchIterator, HashFetcher};
 #[cfg(feature = "cluster")]
 pub use types::hash::{ClusterHashBatchIterator, ClusterHashFetcher};
