@@ -766,11 +766,14 @@ class Expr:
         elif self._op == "or":
             left = self._left.to_redis() if self._left else "*"
             right = self._right.to_redis() if self._right else "*"
+            # Wrap each OR branch in parentheses for proper RediSearch parsing
+            # RediSearch requires parentheses around OR clauses
             if self._left and self._left._op == "and":
                 left = f"({left})"
             if self._right and self._right._op == "and":
                 right = f"({right})"
-            return f"{left} | {right}"
+            # Always wrap the entire OR in parentheses for proper precedence
+            return f"({left} | {right})"
         elif self._op == "not":
             inner = self._left.to_redis() if self._left else "*"
             return f"-({inner})"

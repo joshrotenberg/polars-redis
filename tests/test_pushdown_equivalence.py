@@ -488,11 +488,13 @@ class TestResultEdgeCases:
         assert len(pushed) == 100
 
     def test_single_match(self, redis_url, indexed_test_data):
-        """Test predicate that matches exactly one row."""
+        """Test predicate that matches exactly two rows."""
         schema = indexed_test_data["schema"]
         prefix = indexed_test_data["prefix"]
 
-        # User0 has age=20, level=0 - should be unique combination
+        # User0 has age=20, level=0
+        # User50 has age=20 (20 + 50%50 = 20), level=0 (50%5 = 0)
+        # So both match this query
         pushed = search_hashes(
             redis_url,
             index="pushdown_test_idx",
@@ -507,8 +509,8 @@ class TestResultEdgeCases:
         )
 
         compare_results(pushed, filtered)
-        # There are 2 users with age=20 (user:0 and user:50), but only user:0 has level=0
-        assert len(pushed) == 1
+        # Both user:0 and user:50 have age=20 AND level=0
+        assert len(pushed) == 2
 
 
 # =============================================================================
