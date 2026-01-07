@@ -63,27 +63,31 @@ nav:
   - Getting Started:
       - Installation: getting-started/installation.md
       - Quick Start: getting-started/quickstart.md
-  - User Guide:
+  - Scanning & Writing:
       - Scanning Data: guide/scanning.md
-      - RediSearch: guide/redisearch.md
       - Writing Data: guide/writing.md
-      - DataFrame Caching: guide/caching.md
-      - Pub/Sub Streaming: guide/pubsub.md
-      - Streams Consumption: guide/streams.md
       - Schema Inference: guide/schema-inference.md
+  - Caching & Streaming:
+      - DataFrame Caching: guide/caching.md
+      - Pub/Sub: guide/pubsub.md
+      - Redis Streams: guide/streams.md
+  - RediSearch:
+      - Queries & Aggregation: guide/redisearch.md
+      - Advanced Queries: examples/advanced-queries.md
+  - Operations:
       - Configuration: guide/configuration.md
       - Performance: guide/performance.md
       - Cluster Support: guide/cluster.md
+      - Migration Guide: guide/migration.md
+  - Patterns:
       - Use Cases: guide/use-cases.md
       - Ephemeral Workbench: guide/ephemeral-workbench.md
-      - Migration Guide: guide/migration.md
   - API Reference:
       - Python API: api/python.md
       - Rust API: api/rust.md
   - Examples:
       - Python Examples: examples/python.md
       - Rust Examples: examples/rust.md
-      - Advanced Queries: examples/advanced-queries.md
   - Presentation: slides.md
 
 extra:
