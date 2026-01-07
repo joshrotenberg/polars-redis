@@ -101,6 +101,15 @@ from polars_redis._search import (
     search_hashes,
     search_json,
 )
+from polars_redis._smart import (
+    DetectedIndex,
+    ExecutionStrategy,
+    QueryPlan,
+    explain_scan,
+    find_index_for_pattern,
+    list_indexes,
+    smart_scan,
+)
 from polars_redis._streams import (
     ack_entries,
     iter_stream,
@@ -235,6 +244,14 @@ __all__ = [
     "get_default_batch_size",
     "get_default_count_hint",
     "get_default_timeout_ms",
+    # Smart scan (auto-detection)
+    "smart_scan",
+    "explain_scan",
+    "list_indexes",
+    "find_index_for_pattern",
+    "ExecutionStrategy",
+    "QueryPlan",
+    "DetectedIndex",
     # Version
     "__version__",
 ]

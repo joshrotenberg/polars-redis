@@ -1076,6 +1076,149 @@ Differences between desired and existing index schemas.
 
 ---
 
+## Smart Scan (Auto-detection)
+
+### smart_scan
+
+```python
+def smart_scan(
+    url: str,
+    pattern: str = "*",
+    schema: dict | None = None,
+    *,
+    index: str | Index | None = None,
+    include_key: bool = True,
+    key_column_name: str = "_key",
+    include_ttl: bool = False,
+    ttl_column_name: str = "_ttl",
+    batch_size: int = 1000,
+    auto_detect_index: bool = True,
+) -> pl.LazyFrame
+```
+
+Smart scan that automatically detects and uses RediSearch indexes when available.
+
+**Parameters:**
+
+- `url`: Redis connection URL
+- `pattern`: Key pattern to match (e.g., `"user:*"`)
+- `schema`: Dictionary mapping field names to Polars dtypes (required)
+- `index`: Force use of specific index (name or Index object)
+- `include_key`: Include Redis key as a column
+- `key_column_name`: Name of the key column
+- `include_ttl`: Include TTL as a column
+- `ttl_column_name`: Name of the TTL column
+- `batch_size`: Documents per batch
+- `auto_detect_index`: Auto-detect matching indexes (default: True)
+
+**Returns:** `pl.LazyFrame`
+
+---
+
+### explain_scan
+
+```python
+def explain_scan(
+    url: str,
+    pattern: str = "*",
+    schema: dict | None = None,
+    filter_expr: pl.Expr | None = None,
+) -> QueryPlan
+```
+
+Explain how a scan would be executed without running it.
+
+**Parameters:**
+
+- `url`: Redis connection URL
+- `pattern`: Key pattern to match
+- `schema`: Schema dictionary
+- `filter_expr`: Optional Polars filter expression
+
+**Returns:** `QueryPlan` object
+
+---
+
+### find_index_for_pattern
+
+```python
+def find_index_for_pattern(url: str, pattern: str) -> DetectedIndex | None
+```
+
+Find a RediSearch index that covers the given key pattern.
+
+**Parameters:**
+
+- `url`: Redis connection URL
+- `pattern`: Key pattern (e.g., `"user:*"`)
+
+**Returns:** `DetectedIndex` if found, `None` otherwise
+
+---
+
+### list_indexes
+
+```python
+def list_indexes(url: str) -> list[DetectedIndex]
+```
+
+List all RediSearch indexes.
+
+**Parameters:**
+
+- `url`: Redis connection URL
+
+**Returns:** List of `DetectedIndex` objects
+
+---
+
+### ExecutionStrategy
+
+```python
+class ExecutionStrategy(Enum):
+    SEARCH = "search"   # Use FT.SEARCH with index
+    SCAN = "scan"       # Use SCAN without index
+    HYBRID = "hybrid"   # Use FT.SEARCH + client-side filtering
+```
+
+Enum representing query execution strategies.
+
+---
+
+### DetectedIndex
+
+```python
+@dataclass
+class DetectedIndex:
+    name: str           # Index name
+    prefixes: list[str] # Key prefixes covered
+    on_type: str        # "HASH" or "JSON"
+    fields: list[str]   # Indexed field names
+```
+
+Information about an auto-detected index.
+
+---
+
+### QueryPlan
+
+```python
+@dataclass
+class QueryPlan:
+    strategy: ExecutionStrategy
+    index: DetectedIndex | None = None
+    server_query: str | None = None
+    client_filters: list[str] = []
+    warnings: list[str] = []
+
+    def explain(self) -> str:
+        """Return human-readable explanation of the query plan."""
+```
+
+Execution plan for a query.
+
+---
+
 ## Schema Inference
 
 ### infer_hash_schema

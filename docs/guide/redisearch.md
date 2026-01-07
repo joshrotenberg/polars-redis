@@ -710,6 +710,145 @@ print(query.explain())
 
 The query builder automatically optimizes for minimum data transfer.
 
+## Smart Scan: Automatic Index Detection
+
+The `smart_scan()` function provides a higher-level API that automatically detects whether a RediSearch index exists for your key pattern and optimizes query execution accordingly. This enables "RediSearch without learning RediSearch" - you get the performance benefits of FT.SEARCH when indexes are available, with automatic fallback to SCAN when they're not.
+
+### Basic Usage
+
+```python
+from polars_redis import smart_scan
+
+# Auto-detect index and use FT.SEARCH if available
+df = smart_scan(
+    "redis://localhost:6379",
+    "user:*",
+    schema={"name": pl.Utf8, "age": pl.Int64, "status": pl.Utf8},
+).filter(pl.col("age") > 30).collect()
+```
+
+If an index exists with prefix "user:", `smart_scan` uses FT.SEARCH automatically. Otherwise, it falls back to SCAN - same API, optimal execution.
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `url` | str | required | Redis connection URL |
+| `pattern` | str | `"*"` | Key pattern to match |
+| `schema` | dict | required | Field names to Polars dtypes |
+| `index` | str or Index | `None` | Force use of specific index |
+| `include_key` | bool | `True` | Include Redis key as column |
+| `key_column_name` | str | `"_key"` | Name of key column |
+| `include_ttl` | bool | `False` | Include TTL as column |
+| `ttl_column_name` | str | `"_ttl"` | Name of TTL column |
+| `batch_size` | int | `1000` | Documents per batch |
+| `auto_detect_index` | bool | `True` | Auto-detect matching indexes |
+
+### Execution Strategies
+
+`smart_scan` chooses from three strategies:
+
+| Strategy | When Used | Description |
+|----------|-----------|-------------|
+| **SEARCH** | Index found for pattern | Uses FT.SEARCH for server-side filtering |
+| **SCAN** | No matching index | Falls back to Redis SCAN |
+| **HYBRID** | Partial predicate pushdown | FT.SEARCH + client-side filtering |
+
+### Query Explanation
+
+Use `explain_scan()` to see exactly how a query will execute before running it:
+
+```python
+from polars_redis import explain_scan
+
+plan = explain_scan(
+    "redis://localhost:6379",
+    "user:*",
+    schema={"name": pl.Utf8, "age": pl.Int64},
+)
+
+print(plan.explain())
+# Strategy: SEARCH
+# Index: users_idx
+#   Prefixes: user:
+#   Type: HASH
+# Server Query: *
+```
+
+The `QueryPlan` object provides:
+
+- `strategy`: ExecutionStrategy enum (SEARCH, SCAN, or HYBRID)
+- `index`: DetectedIndex with name, prefixes, type, and fields
+- `server_query`: RediSearch query that will run server-side
+- `client_filters`: Filters that will run in Polars
+- `warnings`: Any optimization warnings
+
+### Index Discovery
+
+Explore available indexes:
+
+```python
+from polars_redis import list_indexes, find_index_for_pattern
+
+# List all RediSearch indexes
+indexes = list_indexes("redis://localhost:6379")
+for idx in indexes:
+    print(f"{idx.name}: prefixes={idx.prefixes}, fields={idx.fields}")
+
+# Find index for specific pattern
+idx = find_index_for_pattern("redis://localhost:6379", "user:*")
+if idx:
+    print(f"Found index: {idx.name}")
+else:
+    print("No index covers this pattern")
+```
+
+### Explicit Index Control
+
+Override auto-detection when needed:
+
+```python
+# Use a specific index by name
+df = smart_scan(
+    url,
+    "user:*",
+    schema={"name": pl.Utf8},
+    index="users_idx",
+    auto_detect_index=False,
+)
+
+# Use an Index object (auto-creates if needed)
+from polars_redis import Index, TextField, NumericField
+
+idx = Index(
+    name="users_idx",
+    prefix="user:",
+    schema=[TextField("name"), NumericField("age")],
+)
+
+df = smart_scan(
+    url,
+    "user:*",
+    schema={"name": pl.Utf8, "age": pl.Int64},
+    index=idx,
+).collect()
+```
+
+### Graceful Degradation
+
+When RediSearch is unavailable (no module loaded), `smart_scan` falls back to SCAN without errors:
+
+```python
+# Works whether RediSearch is available or not
+df = smart_scan(
+    url,
+    "user:*",
+    schema={"name": pl.Utf8, "age": pl.Int64},
+).collect()
+```
+
+This makes `smart_scan` the recommended default for new code - you get automatic optimization when indexes exist, with zero changes needed when they don't.
+
 ## Performance Comparison
 
 | Method | Data Transfer | Use Case |
@@ -717,6 +856,7 @@ The query builder automatically optimizes for minimum data transfer.
 | `scan_hashes()` | All matching keys | No index, small datasets |
 | `scan_hashes()` + filter | All keys, filter client-side | No index available |
 | `search_hashes()` | Only matching docs | Indexed data, selective queries |
+| `smart_scan()` | Optimized automatically | Best default - auto-selects strategy |
 | `aggregate_hashes()` | Only aggregated results | Analytics, reporting |
 
-For large datasets with selective queries, RediSearch can reduce data transfer by 90%+ compared to scanning.
+For large datasets with selective queries, RediSearch can reduce data transfer by 90%+ compared to scanning. With `smart_scan`, you get this optimization automatically when indexes are available.
