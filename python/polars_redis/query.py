@@ -60,6 +60,7 @@ class Expr:
         self._value4: str | None = None  # For geo unit
         self._left: Expr | None = None
         self._right: Expr | None = None
+        self._client_side: bool = False  # True if this op runs in Polars, not Redis
 
     # =========================================================================
     # Comparison operators
@@ -402,6 +403,262 @@ class Expr:
         return expr
 
     # =========================================================================
+    # Enhanced operations (client-side in Polars)
+    #
+    # These operations cannot be pushed down to RediSearch and will be
+    # executed client-side in Polars after fetching results. They are
+    # marked with _client_side=True and provide capabilities beyond
+    # RediSearch's query syntax.
+    # =========================================================================
+
+    def matches_regex(self, pattern: str) -> Expr:
+        """Regex match (client-side): col("email").matches_regex(r".*@gmail\\.com$")
+
+        This operation cannot be pushed to RediSearch and will execute
+        in Polars after fetching results from Redis.
+
+        Args:
+            pattern: Regular expression pattern.
+
+        Example:
+            >>> # Find Gmail addresses
+            >>> col("email").matches_regex(r".*@gmail\\.com$")
+            >>> # Find phone numbers
+            >>> col("phone").matches_regex(r"\\d{3}-\\d{3}-\\d{4}")
+        """
+        expr = Expr(self._field)
+        expr._op = "regex"
+        expr._value = pattern
+        expr._client_side = True
+        return expr
+
+    def icontains(self, text: str) -> Expr:
+        """Case-insensitive contains (client-side): col("name").icontains("john")
+
+        RediSearch TAG fields are case-sensitive. This operation performs
+        case-insensitive matching in Polars.
+
+        Args:
+            text: Text to search for (case-insensitive).
+        """
+        expr = Expr(self._field)
+        expr._op = "icontains"
+        expr._value = text
+        expr._client_side = True
+        return expr
+
+    def iequals(self, value: str) -> Expr:
+        """Case-insensitive equality (client-side): col("status").iequals("ACTIVE")
+
+        Args:
+            value: Value to compare (case-insensitive).
+        """
+        expr = Expr(self._field)
+        expr._op = "iequals"
+        expr._value = value
+        expr._client_side = True
+        return expr
+
+    def contains_any(self, substrings: list[str]) -> Expr:
+        """Match any substring (client-side): col("desc").contains_any(["python", "rust"])
+
+        Args:
+            substrings: List of substrings to match.
+        """
+        expr = Expr(self._field)
+        expr._op = "contains_any"
+        expr._value = substrings
+        expr._client_side = True
+        return expr
+
+    def similar_to(self, text: str, threshold: float = 0.8) -> Expr:
+        """String similarity match (client-side): col("name").similar_to("john", 0.8)
+
+        Uses Levenshtein distance normalized to [0, 1] range.
+
+        Args:
+            text: Text to compare against.
+            threshold: Minimum similarity score (0.0 to 1.0).
+        """
+        expr = Expr(self._field)
+        expr._op = "similar_to"
+        expr._value = text
+        expr._value2 = threshold
+        expr._client_side = True
+        return expr
+
+    # Date/time operations (client-side)
+
+    def as_date(self) -> DateExpr:
+        """Parse field as date for comparisons (client-side).
+
+        Returns a DateExpr that supports date comparisons.
+
+        Example:
+            >>> col("created_at").as_date() > "2024-01-01"
+            >>> col("birth_date").as_date().year() == 1990
+        """
+        return DateExpr(self._field)
+
+    def as_datetime(self) -> DateExpr:
+        """Parse field as datetime for comparisons (client-side).
+
+        Returns a DateExpr that supports datetime comparisons.
+        """
+        return DateExpr(self._field, is_datetime=True)
+
+    # Array/JSON operations (client-side)
+
+    def array_contains(self, value: ValueType) -> Expr:
+        """Check if array field contains value (client-side).
+
+        For JSON arrays stored in Redis.
+
+        Args:
+            value: Value to search for in the array.
+        """
+        expr = Expr(self._field)
+        expr._op = "array_contains"
+        expr._value = value
+        expr._client_side = True
+        return expr
+
+    def array_len(self) -> Expr:
+        """Get array length for comparison (client-side).
+
+        Returns an expression that can be compared.
+
+        Example:
+            >>> col("tags").array_len() > 5
+        """
+        expr = Expr(self._field)
+        expr._op = "array_len"
+        expr._client_side = True
+        return expr
+
+    def json_path(self, path: str) -> Expr:
+        """Extract value at JSON path (client-side): col("data").json_path("$.user.name")
+
+        Args:
+            path: JSONPath expression.
+        """
+        expr = Expr(self._field)
+        expr._op = "json_path"
+        expr._value = path
+        expr._client_side = True
+        return expr
+
+    # =========================================================================
+    # Query metadata
+    # =========================================================================
+
+    @property
+    def is_client_side(self) -> bool:
+        """Check if this expression requires client-side evaluation."""
+        if getattr(self, "_client_side", False):
+            return True
+        if self._left and self._left.is_client_side:
+            return True
+        if self._right and self._right.is_client_side:
+            return True
+        return False
+
+    def get_server_filter(self) -> Expr | None:
+        """Extract the server-side (RediSearch) portion of this expression.
+
+        For hybrid queries, returns only the parts that can be pushed to Redis.
+        """
+        if self.is_client_side and self._op not in ("and", "or"):
+            return None
+
+        if self._op == "and":
+            left = self._left.get_server_filter() if self._left else None
+            right = self._right.get_server_filter() if self._right else None
+            if left and right:
+                return left & right
+            return left or right
+
+        if self._op == "or":
+            # For OR, if either side is client-side, we can't push anything
+            if (self._left and self._left.is_client_side) or (
+                self._right and self._right.is_client_side
+            ):
+                return None
+            return self
+
+        return self if not self.is_client_side else None
+
+    def get_client_filter(self) -> Expr | None:
+        """Extract the client-side (Polars) portion of this expression.
+
+        For hybrid queries, returns only the parts that must run in Polars.
+        """
+        if self.is_client_side and self._op not in ("and", "or"):
+            return self
+
+        if self._op == "and":
+            left = self._left.get_client_filter() if self._left else None
+            right = self._right.get_client_filter() if self._right else None
+            if left and right:
+                return left & right
+            return left or right
+
+        return None
+
+    def to_polars(self) -> str:
+        """Convert client-side expression to Polars filter expression.
+
+        Returns a string that can be used with df.filter() via eval,
+        or raises an error if the expression is server-side only.
+        """
+        import polars as pl
+
+        if self._op == "regex":
+            return f'pl.col("{self._field}").str.contains(r"{self._value}")'
+        elif self._op == "icontains":
+            return f'pl.col("{self._field}").str.to_lowercase().str.contains("{str(self._value).lower()}")'
+        elif self._op == "iequals":
+            return f'pl.col("{self._field}").str.to_lowercase() == "{str(self._value).lower()}"'
+        elif self._op == "contains_any":
+            patterns = "|".join(str(s) for s in self._value)
+            return f'pl.col("{self._field}").str.contains(r"({patterns})")'
+        elif self._op == "array_contains":
+            return f'pl.col("{self._field}").list.contains({repr(self._value)})'
+        elif self._op == "array_len":
+            return f'pl.col("{self._field}").list.len()'
+        else:
+            raise ValueError(f"Cannot convert operation '{self._op}' to Polars expression")
+
+    def explain(self) -> str:
+        """Explain how this query will be executed.
+
+        Returns a human-readable explanation of which parts will run
+        on Redis vs. in Polars.
+
+        Example:
+            >>> query = (col("age") > 30) & col("email").matches_regex(r".*@gmail.com")
+            >>> print(query.explain())
+            RediSearch: @age:[(30 +inf]
+            Polars filter: pl.col("email").str.contains(r".*@gmail.com")
+        """
+        lines = []
+
+        server_part = self.get_server_filter()
+        client_part = self.get_client_filter()
+
+        if server_part:
+            lines.append(f"RediSearch: {server_part.to_redis()}")
+        else:
+            lines.append("RediSearch: * (fetch all)")
+
+        if client_part:
+            lines.append(f"Polars filter: {client_part.to_polars()}")
+        else:
+            lines.append("Polars filter: none (all filtering done server-side)")
+
+        return "\n".join(lines)
+
+    # =========================================================================
     # Internal helpers
     # =========================================================================
 
@@ -708,6 +965,155 @@ def cols(*names: str) -> MultiFieldExpr:
         >>> # Generates: @title|body:python
     """
     return MultiFieldExpr(list(names))
+
+
+# =============================================================================
+# Date expression helpers (client-side)
+# =============================================================================
+
+
+class DateExpr:
+    """Expression for date/datetime comparisons (client-side).
+
+    Provides date-aware comparisons that execute in Polars after
+    fetching results from Redis.
+
+    Example:
+        >>> col("created_at").as_date() > "2024-01-01"
+        >>> col("birth_date").as_date().year() == 1990
+        >>> col("updated_at").as_datetime().month().is_in([1, 2, 3])
+    """
+
+    def __init__(self, field: str, is_datetime: bool = False):
+        self._field = field
+        self._is_datetime = is_datetime
+
+    def __gt__(self, value: str) -> Expr:
+        """Date greater than: col("date").as_date() > "2024-01-01" """
+        expr = Expr(self._field)
+        expr._op = "date_gt"
+        expr._value = value
+        expr._value2 = self._is_datetime
+        expr._client_side = True
+        return expr
+
+    def __ge__(self, value: str) -> Expr:
+        """Date greater than or equal."""
+        expr = Expr(self._field)
+        expr._op = "date_gte"
+        expr._value = value
+        expr._value2 = self._is_datetime
+        expr._client_side = True
+        return expr
+
+    def __lt__(self, value: str) -> Expr:
+        """Date less than."""
+        expr = Expr(self._field)
+        expr._op = "date_lt"
+        expr._value = value
+        expr._value2 = self._is_datetime
+        expr._client_side = True
+        return expr
+
+    def __le__(self, value: str) -> Expr:
+        """Date less than or equal."""
+        expr = Expr(self._field)
+        expr._op = "date_lte"
+        expr._value = value
+        expr._value2 = self._is_datetime
+        expr._client_side = True
+        return expr
+
+    def __eq__(self, value: str) -> Expr:  # type: ignore[override]
+        """Date equality."""
+        expr = Expr(self._field)
+        expr._op = "date_eq"
+        expr._value = value
+        expr._value2 = self._is_datetime
+        expr._client_side = True
+        return expr
+
+    def year(self) -> DatePartExpr:
+        """Extract year for comparison: col("date").as_date().year() == 2024"""
+        return DatePartExpr(self._field, "year", self._is_datetime)
+
+    def month(self) -> DatePartExpr:
+        """Extract month for comparison: col("date").as_date().month() == 12"""
+        return DatePartExpr(self._field, "month", self._is_datetime)
+
+    def day(self) -> DatePartExpr:
+        """Extract day for comparison: col("date").as_date().day() == 25"""
+        return DatePartExpr(self._field, "day", self._is_datetime)
+
+    def weekday(self) -> DatePartExpr:
+        """Extract weekday (0=Monday, 6=Sunday)."""
+        return DatePartExpr(self._field, "weekday", self._is_datetime)
+
+    def hour(self) -> DatePartExpr:
+        """Extract hour (for datetime)."""
+        return DatePartExpr(self._field, "hour", self._is_datetime)
+
+    def minute(self) -> DatePartExpr:
+        """Extract minute (for datetime)."""
+        return DatePartExpr(self._field, "minute", self._is_datetime)
+
+
+class DatePartExpr:
+    """Expression for date part comparisons (client-side)."""
+
+    def __init__(self, field: str, part: str, is_datetime: bool):
+        self._field = field
+        self._part = part
+        self._is_datetime = is_datetime
+
+    def __eq__(self, value: int) -> Expr:  # type: ignore[override]
+        expr = Expr(self._field)
+        expr._op = f"date_part_{self._part}_eq"
+        expr._value = value
+        expr._value2 = self._is_datetime
+        expr._client_side = True
+        return expr
+
+    def __gt__(self, value: int) -> Expr:
+        expr = Expr(self._field)
+        expr._op = f"date_part_{self._part}_gt"
+        expr._value = value
+        expr._value2 = self._is_datetime
+        expr._client_side = True
+        return expr
+
+    def __lt__(self, value: int) -> Expr:
+        expr = Expr(self._field)
+        expr._op = f"date_part_{self._part}_lt"
+        expr._value = value
+        expr._value2 = self._is_datetime
+        expr._client_side = True
+        return expr
+
+    def __ge__(self, value: int) -> Expr:
+        expr = Expr(self._field)
+        expr._op = f"date_part_{self._part}_gte"
+        expr._value = value
+        expr._value2 = self._is_datetime
+        expr._client_side = True
+        return expr
+
+    def __le__(self, value: int) -> Expr:
+        expr = Expr(self._field)
+        expr._op = f"date_part_{self._part}_lte"
+        expr._value = value
+        expr._value2 = self._is_datetime
+        expr._client_side = True
+        return expr
+
+    def is_in(self, values: list[int]) -> Expr:
+        """Check if date part is in a list of values."""
+        expr = Expr(self._field)
+        expr._op = f"date_part_{self._part}_in"
+        expr._value = values
+        expr._value2 = self._is_datetime
+        expr._client_side = True
+        return expr
 
 
 class MultiFieldExpr:

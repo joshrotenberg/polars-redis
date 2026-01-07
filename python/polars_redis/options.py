@@ -33,6 +33,8 @@ __all__ = [
     "StreamScanOptions",
     "TimeSeriesScanOptions",
     "SearchOptions",
+    "SummarizeOptions",
+    "HighlightOptions",
     "get_default_batch_size",
     "get_default_count_hint",
     "get_default_timeout_ms",
@@ -840,8 +842,48 @@ class TimeSeriesScanOptions:
 
 
 @dataclass
+class SummarizeOptions:
+    """Options for SUMMARIZE in FT.SEARCH results.
+
+    SUMMARIZE returns a snippet of the matching text with the search terms
+    highlighted, useful for search result previews.
+
+    Attributes:
+        fields: Fields to summarize (None = all TEXT fields).
+        frags: Number of fragments to return per field.
+        len: Length of each fragment in words.
+        separator: Separator between fragments (default: "...").
+    """
+
+    fields: list[str] | None = None
+    frags: int = 3
+    len: int = 20
+    separator: str = "..."
+
+
+@dataclass
+class HighlightOptions:
+    """Options for HIGHLIGHT in FT.SEARCH results.
+
+    HIGHLIGHT wraps matching terms with open/close tags for display.
+
+    Attributes:
+        fields: Fields to highlight (None = all TEXT fields).
+        open_tag: Opening tag for highlighted terms (default: "<b>").
+        close_tag: Closing tag for highlighted terms (default: "</b>").
+    """
+
+    fields: list[str] | None = None
+    open_tag: str = "<b>"
+    close_tag: str = "</b>"
+
+
+@dataclass
 class SearchOptions:
     """Options for RediSearch FT.SEARCH queries.
+
+    This class provides comprehensive configuration for FT.SEARCH including
+    query modifiers, result formatting, and advanced options.
 
     Example:
         >>> opts = SearchOptions(
@@ -849,6 +891,16 @@ class SearchOptions:
         ...     query="@age:[30 +inf]",
         ...     sort_by="score",
         ...     sort_ascending=False,
+        ... )
+        >>>
+        >>> # With advanced options
+        >>> opts = SearchOptions(
+        ...     index="articles_idx",
+        ...     query="python programming",
+        ...     verbatim=True,  # Exact match, no stemming
+        ...     language="english",
+        ...     highlight=HighlightOptions(open_tag="<em>", close_tag="</em>"),
+        ...     summarize=SummarizeOptions(len=50),
         ... )
 
     Attributes:
@@ -862,9 +914,25 @@ class SearchOptions:
         ttl_column_name: Name of the TTL column.
         include_row_index: Whether to include the row index as a column.
         row_index_column_name: Name of the row index column.
+        include_score: Whether to include the relevance score.
+        score_column_name: Name of the score column.
         sort_by: Optional field name to sort results by.
         sort_ascending: Sort direction (default: True for ascending).
         projection: Fields to return (None = all indexed fields).
+        verbatim: If True, disable stemming (exact term matching).
+        no_stopwords: If True, include stop words in the query.
+        language: Language for stemming (e.g., "english", "spanish").
+        scorer: Custom scorer function name (e.g., "BM25", "TFIDF").
+        in_keys: Limit search to specific document keys.
+        in_fields: Limit search to specific fields.
+        timeout_ms: Query timeout in milliseconds.
+        dialect: RediSearch dialect version (1, 2, 3, or 4).
+        params: Additional PARAMS for parameterized queries.
+        summarize: Options for generating text snippets.
+        highlight: Options for highlighting matching terms.
+        slop: Default slop for phrase queries.
+        in_order: Whether phrase terms must appear in order.
+        expander: Query expander to use.
     """
 
     index: str = ""
@@ -877,9 +945,31 @@ class SearchOptions:
     ttl_column_name: str = "_ttl"
     include_row_index: bool = False
     row_index_column_name: str = "_index"
+    include_score: bool = False
+    score_column_name: str = "_score"
     sort_by: str | None = None
     sort_ascending: bool = True
     projection: list[str] | None = None
+    # Query modifiers
+    verbatim: bool = False
+    no_stopwords: bool = False
+    language: str | None = None
+    scorer: str | None = None
+    # Filtering
+    in_keys: list[str] | None = None
+    in_fields: list[str] | None = None
+    # Performance
+    timeout_ms: int | None = None
+    # Dialect and params
+    dialect: int | None = None
+    params: dict[str, str | bytes] | None = None
+    # Result enrichment
+    summarize: SummarizeOptions | None = None
+    highlight: HighlightOptions | None = None
+    # Phrase options
+    slop: int | None = None
+    in_order: bool | None = None
+    expander: str | None = None
 
     def with_index(self, index: str) -> SearchOptions:
         """Set the RediSearch index name."""
@@ -922,6 +1012,13 @@ class SearchOptions:
             self.row_index_column_name = name
         return self
 
+    def with_score(self, include: bool = True, name: str | None = None) -> SearchOptions:
+        """Configure the relevance score column."""
+        self.include_score = include
+        if name is not None:
+            self.score_column_name = name
+        return self
+
     def with_sort(self, field: str, ascending: bool = True) -> SearchOptions:
         """Set the sort field and direction."""
         self.sort_by = field
@@ -931,4 +1028,85 @@ class SearchOptions:
     def with_projection(self, fields: list[str]) -> SearchOptions:
         """Set the fields to return (projection)."""
         self.projection = fields
+        return self
+
+    def with_verbatim(self, verbatim: bool = True) -> SearchOptions:
+        """Disable stemming for exact term matching."""
+        self.verbatim = verbatim
+        return self
+
+    def with_no_stopwords(self, no_stopwords: bool = True) -> SearchOptions:
+        """Include stop words in the query."""
+        self.no_stopwords = no_stopwords
+        return self
+
+    def with_language(self, language: str) -> SearchOptions:
+        """Set the language for stemming."""
+        self.language = language
+        return self
+
+    def with_scorer(self, scorer: str) -> SearchOptions:
+        """Set the scoring function (e.g., 'BM25', 'TFIDF', 'DISMAX')."""
+        self.scorer = scorer
+        return self
+
+    def with_in_keys(self, keys: list[str]) -> SearchOptions:
+        """Limit search to specific document keys."""
+        self.in_keys = keys
+        return self
+
+    def with_in_fields(self, fields: list[str]) -> SearchOptions:
+        """Limit search to specific fields."""
+        self.in_fields = fields
+        return self
+
+    def with_timeout(self, timeout_ms: int) -> SearchOptions:
+        """Set query timeout in milliseconds."""
+        self.timeout_ms = timeout_ms
+        return self
+
+    def with_dialect(self, dialect: int) -> SearchOptions:
+        """Set RediSearch dialect version (1, 2, 3, or 4)."""
+        self.dialect = dialect
+        return self
+
+    def with_params(self, params: dict[str, str | bytes]) -> SearchOptions:
+        """Set additional PARAMS for parameterized queries."""
+        self.params = params
+        return self
+
+    def with_summarize(
+        self,
+        fields: list[str] | None = None,
+        frags: int = 3,
+        len: int = 20,
+        separator: str = "...",
+    ) -> SearchOptions:
+        """Configure text summarization for search results."""
+        self.summarize = SummarizeOptions(fields=fields, frags=frags, len=len, separator=separator)
+        return self
+
+    def with_highlight(
+        self,
+        fields: list[str] | None = None,
+        open_tag: str = "<b>",
+        close_tag: str = "</b>",
+    ) -> SearchOptions:
+        """Configure term highlighting for search results."""
+        self.highlight = HighlightOptions(fields=fields, open_tag=open_tag, close_tag=close_tag)
+        return self
+
+    def with_slop(self, slop: int) -> SearchOptions:
+        """Set default slop for phrase queries."""
+        self.slop = slop
+        return self
+
+    def with_in_order(self, in_order: bool = True) -> SearchOptions:
+        """Set whether phrase terms must appear in order."""
+        self.in_order = in_order
+        return self
+
+    def with_expander(self, expander: str) -> SearchOptions:
+        """Set the query expander to use."""
+        self.expander = expander
         return self
