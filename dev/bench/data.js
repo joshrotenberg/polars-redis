@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1767818373072,
+  "lastUpdate": 1767820142695,
   "repoUrl": "https://github.com/joshrotenberg/polars-redis",
   "entries": {
     "Rust Benchmarks": [
@@ -2903,6 +2903,138 @@ window.BENCHMARK_DATA = {
             "name": "projection/25_of_50_fields",
             "value": 1161,
             "range": "± 2",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "joshrotenberg@gmail.com",
+            "name": "Josh Rotenberg",
+            "username": "joshrotenberg"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "637f742bea90b490dac50ebed59bf8d5be95142e",
+          "message": "feat: add pipeline and transaction support (#174)\n\nAdd Pipeline and Transaction types for efficient batched Redis operations\nwith DataFrame ergonomics and Rust/Python API parity.\n\n## Rust API\n\n- Pipeline: batch multiple commands, execute in single round-trip\n- Transaction: atomic operations with MULTI/EXEC\n- CommandResult: typed result enum for command responses\n- PipelineResult: aggregate results with success/failure counts\n\nCommands supported:\n- String: set, set_ex, get, mget, incr, incrby, decr\n- Hash: hset, hmset, hget, hgetall, hdel, hincrby\n- List: lpush, rpush, lrange, llen\n- Set: sadd, smembers, sismember, scard\n- Sorted Set: zadd, zrange, zscore, zcard\n- Key: del, exists, expire, ttl, rename, type\n- Raw: execute any command with raw()\n\n## Python API\n\n- Pipeline class with fluent interface\n- Transaction class for atomic operations\n- PipelineResult and CommandResult wrappers\n- Full parity with Rust API\n\nCloses #168",
+          "timestamp": "2026-01-07T12:58:49-08:00",
+          "tree_id": "cfba03bc2c346b760c631c2a4b38aeedfb29ee8c",
+          "url": "https://github.com/joshrotenberg/polars-redis/commit/637f742bea90b490dac50ebed59bf8d5be95142e"
+        },
+        "date": 1767820141781,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "schema_creation/small_3_fields",
+            "value": 320,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/medium_10_fields",
+            "value": 1092,
+            "range": "± 6",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/large_50_fields",
+            "value": 6941,
+            "range": "± 43",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/default",
+            "value": 27,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/with_options",
+            "value": 27,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/100",
+            "value": 249,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/100",
+            "value": 1221,
+            "range": "± 5",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/100",
+            "value": 98,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/1000",
+            "value": 3254,
+            "range": "± 32",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/1000",
+            "value": 12529,
+            "range": "± 92",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/1000",
+            "value": 808,
+            "range": "± 77",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/10000",
+            "value": 38117,
+            "range": "± 488",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/10000",
+            "value": 138146,
+            "range": "± 1470",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/10000",
+            "value": 9435,
+            "range": "± 32",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "arrow_schema/to_arrow_schema",
+            "value": 732,
+            "range": "± 17",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/no_filter",
+            "value": 21,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/5_of_50_fields",
+            "value": 953,
+            "range": "± 3",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/25_of_50_fields",
+            "value": 1117,
+            "range": "± 7",
             "unit": "ns/iter"
           }
         ]
