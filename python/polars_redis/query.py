@@ -696,6 +696,57 @@ class Expr:
         """Check if a value should be treated as numeric."""
         return isinstance(value, (int, float)) and not isinstance(value, bool)
 
+    def _is_tag_eq(self) -> bool:
+        """Check if this expression is a tag equality (non-numeric eq)."""
+        return self._op == "eq" and not self._is_numeric(self._value)
+
+    def _collect_tag_or_values(self) -> tuple[str | None, list[str]]:
+        """Collect all tag values from an OR tree on the same field.
+
+        Returns:
+            Tuple of (field_name, list of tag values) if this is a valid tag OR,
+            or (None, []) if it's not optimizable.
+        """
+        if self._op == "or":
+            # Recursively collect from both branches
+            left_field, left_values = (
+                self._left._collect_tag_or_values() if self._left else (None, [])
+            )
+            right_field, right_values = (
+                self._right._collect_tag_or_values() if self._right else (None, [])
+            )
+
+            # Both sides must be valid and on the same field
+            if left_field and right_field and left_field == right_field:
+                return left_field, left_values + right_values
+            elif left_field and not right_values:
+                return None, []
+            elif right_field and not left_values:
+                return None, []
+            else:
+                return None, []
+        elif self._is_tag_eq():
+            return self._field, [str(self._value)]
+        else:
+            return None, []
+
+    def _try_optimize_tag_or(self) -> str | None:
+        """Try to optimize an OR of tag equality checks into @field:{tag1|tag2}.
+
+        RediSearch requires the @field:{tag1|tag2} syntax for OR on tag fields.
+        The general OR syntax (query1 | query2) doesn't work for tags.
+
+        Returns:
+            Optimized query string if applicable, None otherwise.
+        """
+        field, values = self._collect_tag_or_values()
+        if field and len(values) >= 2:
+            # Format as @field:{tag1|tag2|...}
+            # RediSearch tag OR syntax uses pipe without spaces
+            escaped_values = [self._format_value(v) for v in values]
+            return f"@{field}:{{{'|'.join(escaped_values)}}}"
+        return None
+
     # =========================================================================
     # Query generation
     # =========================================================================
@@ -764,15 +815,20 @@ class Expr:
                 right = f"({right})"
             return f"{left} {right}"
         elif self._op == "or":
+            # Check if this is an OR of tag equality checks on the same field
+            # RediSearch requires @field:{tag1|tag2} syntax for tag ORs
+            tag_or_result = self._try_optimize_tag_or()
+            if tag_or_result:
+                return tag_or_result
+
             left = self._left.to_redis() if self._left else "*"
             right = self._right.to_redis() if self._right else "*"
-            # Wrap each OR branch in parentheses for proper RediSearch parsing
-            # RediSearch requires parentheses around OR clauses
+            # Wrap AND clauses in parentheses for proper precedence
             if self._left and self._left._op == "and":
                 left = f"({left})"
             if self._right and self._right._op == "and":
                 right = f"({right})"
-            # Always wrap the entire OR in parentheses for proper precedence
+            # Wrap the entire OR in parentheses for proper precedence
             return f"({left} | {right})"
         elif self._op == "not":
             inner = self._left.to_redis() if self._left else "*"
