@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1767810441759,
+  "lastUpdate": 1767816638398,
   "repoUrl": "https://github.com/joshrotenberg/polars-redis",
   "entries": {
     "Rust Benchmarks": [
@@ -2639,6 +2639,138 @@ window.BENCHMARK_DATA = {
             "name": "projection/25_of_50_fields",
             "value": 1085,
             "range": "± 2",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "joshrotenberg@gmail.com",
+            "name": "Josh Rotenberg",
+            "username": "joshrotenberg"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "4a658660ae5ef812c74eb74be07d31f49afb2696",
+          "message": "perf: expand benchmark coverage for caching and streaming (#160)\n\n* test: add streaming semantics tests\n\nAdd comprehensive tests for Redis Streams and Pub/Sub semantics:\n- Message ordering verification (3 tests)\n- Delivery semantics (at-least-once, at-most-once) (3 tests)\n- Timeout behavior testing (3 tests)\n- Consumer group semantics (XGROUP, XREADGROUP, XCLAIM) (4 tests)\n- Multi-channel Pub/Sub with pattern subscriptions (2 tests)\n- Streaming edge cases (empty streams, large messages) (5 tests)\n\nCloses #152\n\n* perf: expand benchmark coverage for caching and streaming\n\nAdd comprehensive benchmarks for new features:\n\nCache Operations:\n- IPC write with varying row counts (1K, 10K, 100K)\n- IPC compression comparison (uncompressed, LZ4, Zstd)\n- Parquet compression comparison (uncompressed, Snappy, Zstd)\n- Cache read throughput by row count\n- Format comparison (IPC vs Parquet)\n- Chunked caching with varying chunk sizes\n\nStreaming Operations:\n- Stream write (XADD) throughput\n- Stream read (XRANGE) throughput\n\nLatency Tracking:\n- Individual operation latencies for p50/p95/p99 analysis\n- Small and medium batch write latencies\n- Cache read latencies\n- Single XADD latencies\n\nAlso includes baseline performance expectations documentation\nand updates CI workflow with notes about Redis-dependent benchmarks.\n\nCloses #150",
+          "timestamp": "2026-01-07T12:00:56-08:00",
+          "tree_id": "15d6056751a543806ec7861ec1d50184d885b789",
+          "url": "https://github.com/joshrotenberg/polars-redis/commit/4a658660ae5ef812c74eb74be07d31f49afb2696"
+        },
+        "date": 1767816637941,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "schema_creation/small_3_fields",
+            "value": 320,
+            "range": "± 5",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/medium_10_fields",
+            "value": 1079,
+            "range": "± 9",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/large_50_fields",
+            "value": 6796,
+            "range": "± 23",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/default",
+            "value": 26,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/with_options",
+            "value": 27,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/100",
+            "value": 248,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/100",
+            "value": 1207,
+            "range": "± 5",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/100",
+            "value": 76,
+            "range": "± 3",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/1000",
+            "value": 3103,
+            "range": "± 29",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/1000",
+            "value": 12775,
+            "range": "± 45",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/1000",
+            "value": 722,
+            "range": "± 35",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/10000",
+            "value": 38495,
+            "range": "± 225",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/10000",
+            "value": 134936,
+            "range": "± 410",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/10000",
+            "value": 8159,
+            "range": "± 27",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "arrow_schema/to_arrow_schema",
+            "value": 753,
+            "range": "± 7",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/no_filter",
+            "value": 19,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/5_of_50_fields",
+            "value": 933,
+            "range": "± 2",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/25_of_50_fields",
+            "value": 1113,
+            "range": "± 6",
             "unit": "ns/iter"
           }
         ]
