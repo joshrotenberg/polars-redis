@@ -851,6 +851,231 @@ Get the remaining TTL of a cached DataFrame.
 
 ---
 
+## Index Management
+
+### Index
+
+```python
+class Index:
+    def __init__(
+        self,
+        name: str,
+        prefix: str | list[str] = "",
+        schema: list[Field] = [],
+        on: Literal["HASH", "JSON"] = "HASH",
+        stopwords: list[str] | None = None,
+        language: str | None = None,
+        language_field: str | None = None,
+        score: float | None = None,
+        score_field: str | None = None,
+        payload_field: str | None = None,
+        maxtextfields: bool = False,
+        nooffsets: bool = False,
+        nohl: bool = False,
+        nofields: bool = False,
+        nofreqs: bool = False,
+        skipinitialscan: bool = False,
+    )
+```
+
+RediSearch index definition.
+
+**Parameters:**
+
+- `name`: Index name
+- `prefix`: Key prefix(es) to index
+- `schema`: List of field definitions
+- `on`: Data type (`"HASH"` or `"JSON"`)
+- `stopwords`: Custom stopwords list (empty list disables)
+- `language`: Default language for stemming
+- `language_field`: Field containing per-document language
+- `score`: Default document score
+- `score_field`: Field containing per-document score
+- `payload_field`: Field to use as document payload
+- `maxtextfields`: Optimize for many TEXT fields
+- `nooffsets`: Don't store term offsets (saves memory)
+- `nohl`: Don't store data for highlighting
+- `nofields`: Don't store field names
+- `nofreqs`: Don't store term frequencies
+- `skipinitialscan`: Don't scan existing keys when creating
+
+**Methods:**
+
+```python
+Index.create(url: str, *, if_not_exists: bool = False) -> None
+Index.drop(url: str, *, delete_docs: bool = False) -> None
+Index.exists(url: str) -> bool
+Index.ensure_exists(url: str, *, recreate: bool = False) -> Index
+Index.info(url: str) -> IndexInfo | None
+Index.diff(url: str) -> IndexDiff
+Index.migrate(url: str, *, drop_existing: bool = False) -> bool
+Index.validate_schema(schema: dict) -> list[str]
+
+# Class methods
+Index.from_frame(df, name, prefix, *, text_fields=None, sortable=None, on="HASH") -> Index
+Index.from_schema(schema, name, prefix, *, text_fields=None, sortable=None, on="HASH") -> Index
+Index.from_redis(url: str, name: str) -> Index | None
+```
+
+---
+
+### Field Types
+
+#### TextField
+
+```python
+class TextField(Field):
+    def __init__(
+        self,
+        name: str,
+        sortable: bool = False,
+        nostem: bool = False,
+        weight: float = 1.0,
+        phonetic: str | None = None,
+        noindex: bool = False,
+        withsuffixtrie: bool = False,
+    )
+```
+
+Full-text search field with stemming and scoring.
+
+---
+
+#### NumericField
+
+```python
+class NumericField(Field):
+    def __init__(
+        self,
+        name: str,
+        sortable: bool = False,
+        noindex: bool = False,
+    )
+```
+
+Numeric field for range queries.
+
+---
+
+#### TagField
+
+```python
+class TagField(Field):
+    def __init__(
+        self,
+        name: str,
+        separator: str = ",",
+        casesensitive: bool = False,
+        sortable: bool = False,
+        noindex: bool = False,
+        withsuffixtrie: bool = False,
+    )
+```
+
+Exact-match field for categories and tags.
+
+---
+
+#### GeoField
+
+```python
+class GeoField(Field):
+    def __init__(
+        self,
+        name: str,
+        noindex: bool = False,
+    )
+```
+
+Geographic field for radius queries.
+
+---
+
+#### VectorField
+
+```python
+class VectorField(Field):
+    def __init__(
+        self,
+        name: str,
+        algorithm: Literal["FLAT", "HNSW"] = "HNSW",
+        dim: int = 384,
+        distance_metric: Literal["COSINE", "L2", "IP"] = "COSINE",
+        initial_cap: int | None = None,
+        m: int | None = None,
+        ef_construction: int | None = None,
+        ef_runtime: int | None = None,
+        block_size: int | None = None,
+    )
+```
+
+Vector field for similarity search.
+
+---
+
+#### GeoShapeField
+
+```python
+class GeoShapeField(Field):
+    def __init__(
+        self,
+        name: str,
+        coord_system: Literal["SPHERICAL", "FLAT"] = "SPHERICAL",
+    )
+```
+
+Polygon/geometry field for complex geo queries.
+
+---
+
+### IndexInfo
+
+```python
+class IndexInfo:
+    name: str
+    num_docs: int
+    max_doc_id: int
+    num_terms: int
+    num_records: int
+    inverted_sz_mb: float
+    total_inverted_index_blocks: int
+    offset_vectors_sz_mb: float
+    doc_table_size_mb: float
+    sortable_values_size_mb: float
+    key_table_size_mb: float
+    records_per_doc_avg: float
+    bytes_per_record_avg: float
+    offsets_per_term_avg: float
+    offset_bits_per_record_avg: float
+    hash_indexing_failures: int
+    indexing: bool
+    percent_indexed: float
+    fields: list[dict]
+    prefixes: list[str]
+    on_type: str
+```
+
+Information about an existing RediSearch index.
+
+---
+
+### IndexDiff
+
+```python
+class IndexDiff:
+    added: list[Field]              # Fields to be added
+    removed: list[str]              # Fields to be removed
+    changed: dict[str, tuple]       # Fields with type changes
+    unchanged: list[str]            # Unchanged fields
+
+    @property
+    def has_changes(self) -> bool
+```
+
+Differences between desired and existing index schemas.
+
+---
+
 ## Schema Inference
 
 ### infer_hash_schema
