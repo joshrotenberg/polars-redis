@@ -2,6 +2,14 @@
 
 Example scripts are in [`examples/python/`](https://github.com/joshrotenberg/polars-redis/tree/main/examples/python).
 
+## RediSearch: Server-Side Filtering and Aggregation
+
+This example demonstrates RediSearch integration including the query builder, server-side filtering, and aggregation:
+
+```python
+--8<-- "examples/python/search_example.py"
+```
+
 ## Basic Hashes
 
 Scanning and writing Redis hashes:

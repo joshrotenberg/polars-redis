@@ -1,6 +1,52 @@
 # RediSearch Integration
 
-polars-redis integrates with RediSearch to enable server-side filtering (predicate pushdown) and aggregation. Instead of scanning all keys and filtering in Python, RediSearch filters data in Redis - only matching documents are transferred.
+## Why RediSearch?
+
+When you have thousands or millions of documents in Redis, scanning everything and filtering in Python is slow and wasteful. RediSearch changes this by filtering and aggregating **inside Redis** - only the data you need crosses the network.
+
+With polars-redis + RediSearch, you can:
+
+- **Filter server-side**: Query `@age > 30 AND @status = "active"` returns only matching documents
+- **Aggregate server-side**: Get `COUNT`, `AVG`, `SUM` by group without transferring raw data
+- **Search text**: Full-text search with stemming, fuzzy matching, and phrase queries
+- **Query geospatially**: Find documents within a radius or polygon
+- **Search vectors**: K-nearest neighbors for semantic similarity
+
+The result? **90%+ reduction in data transfer** for selective queries.
+
+## Two Ways to Query
+
+You can write queries using **native RediSearch syntax** or the **polars-redis query builder**:
+
+=== "Query Builder (Recommended)"
+
+    ```python
+    from polars_redis import col, search_hashes
+    
+    # Polars-like syntax you already know
+    query = (col("age") > 30) & (col("status") == "active")
+    
+    df = search_hashes(
+        "redis://localhost:6379",
+        index="users_idx",
+        query=query,
+        schema={"name": pl.Utf8, "age": pl.Int64},
+    ).collect()
+    ```
+
+=== "Raw RediSearch Syntax"
+
+    ```python
+    # Native RediSearch query string
+    df = search_hashes(
+        "redis://localhost:6379",
+        index="users_idx",
+        query="@age:[(30 +inf] @status:{active}",
+        schema={"name": pl.Utf8, "age": pl.Int64},
+    ).collect()
+    ```
+
+The query builder generates valid RediSearch queries while giving you a familiar, composable API. Use `query.to_redis()` anytime to see the generated query string.
 
 ## Prerequisites
 
