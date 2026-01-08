@@ -103,6 +103,12 @@
                 border-radius: 8px;
                 border-left: 4px solid #dc382d;
             }
+            .reveal .warning-box {
+                background: #2d2d2d;
+                padding: 0.8em;
+                border-radius: 8px;
+                border-left: 4px solid #e5c07b;
+            }
         </style>
     </head>
     <body>
@@ -122,6 +128,41 @@
                     </h3>
                     <p class="small" style="margin-top: 2em">
                         github.com/joshrotenberg/polars-redis
+                    </p>
+                </section>
+
+                <!-- Who is this for -->
+                <section>
+                    <h2>Is This For You?</h2>
+                    <div class="highlight-box">
+                        <ul>
+                            <li>
+                                You have
+                                <span class="green">data in Redis already</span>
+                                (or want to put it there)
+                            </li>
+                            <li>
+                                You want to
+                                <span class="green"
+                                    >analyze it without ETL</span
+                                >
+                                pipelines
+                            </li>
+                            <li>
+                                Your dataset
+                                <span class="green">fits in memory</span> (10K -
+                                1M documents)
+                            </li>
+                            <li>
+                                You know
+                                <span class="polars-blue">Polars</span> (or want
+                                to learn)
+                            </li>
+                        </ul>
+                    </div>
+                    <p style="margin-top: 1em" class="small">
+                        If you're already juggling Redis + Postgres + S3 to
+                        answer questions about Redis data, keep watching.
                     </p>
                 </section>
 
@@ -152,7 +193,8 @@
                         </div>
                     </div>
                     <p style="margin-top: 1em">
-                        For 10K-1M documents, you might not need the warehouse.
+                        For the datasets most teams actually have, you might not
+                        need the warehouse.
                     </p>
                 </section>
 
@@ -528,65 +570,41 @@ for batch in redis.iter_stream(url, "events"):
                     </div>
                 </section>
 
-                <!-- Supported Types -->
+                <!-- When NOT to use -->
                 <section>
-                    <h2>Supported Redis Types</h2>
-                    <table style="font-size: 0.7em; width: 100%">
-                        <tr>
-                            <th>Redis Type</th>
-                            <th>Scan</th>
-                            <th>Write</th>
-                            <th>Notes</th>
-                        </tr>
-                        <tr>
-                            <td>Hash</td>
-                            <td class="green">Yes</td>
-                            <td class="green">Yes</td>
-                            <td>Field-level projection pushdown</td>
-                        </tr>
-                        <tr>
-                            <td>JSON</td>
-                            <td class="green">Yes</td>
-                            <td class="green">Yes</td>
-                            <td>JSONPath extraction</td>
-                        </tr>
-                        <tr>
-                            <td>String</td>
-                            <td class="green">Yes</td>
-                            <td class="green">Yes</td>
-                            <td>Key-value pairs</td>
-                        </tr>
-                        <tr>
-                            <td>Set</td>
-                            <td class="green">Yes</td>
-                            <td class="green">Yes</td>
-                            <td>One row per member</td>
-                        </tr>
-                        <tr>
-                            <td>List</td>
-                            <td class="green">Yes</td>
-                            <td class="green">Yes</td>
-                            <td>Ordered elements</td>
-                        </tr>
-                        <tr>
-                            <td>Sorted Set</td>
-                            <td class="green">Yes</td>
-                            <td class="green">Yes</td>
-                            <td>Members with scores</td>
-                        </tr>
-                        <tr>
-                            <td>Stream</td>
-                            <td class="green">Yes</td>
-                            <td class="orange">No</td>
-                            <td>Consumer groups, timestamped entries</td>
-                        </tr>
-                        <tr>
-                            <td>TimeSeries</td>
-                            <td class="green">Yes</td>
-                            <td class="orange">No</td>
-                            <td>Server-side aggregation</td>
-                        </tr>
-                    </table>
+                    <h2>When NOT to Use This</h2>
+                    <div class="warning-box">
+                        <ul>
+                            <li>
+                                <span class="orange">100M+ documents?</span> Use
+                                a proper data warehouse or Elasticsearch
+                            </li>
+                            <li>
+                                <span class="orange"
+                                    >Need ACID transactions?</span
+                                >
+                                Use PostgreSQL
+                            </li>
+                            <li>
+                                <span class="orange"
+                                    >Complex joins across datasets?</span
+                                >
+                                Use a database
+                            </li>
+                            <li>
+                                <span class="orange"
+                                    >Real-time sync to other systems?</span
+                                >
+                                Not built for that (yet)
+                            </li>
+                        </ul>
+                    </div>
+                    <p style="margin-top: 1em" class="small">
+                        This is for the <span class="green">sweet spot</span>:
+                        datasets that fit in memory, where Redis is already your
+                        source of truth, and you want to query without copying
+                        data elsewhere.
+                    </p>
                 </section>
 
                 <!-- Performance -->
@@ -645,78 +663,6 @@ lf = redis.scan_hashes(
                             <span class="green">With RediSearch:</span>
                             Server-side filtering can reduce data transfer by
                             90%+ for selective queries.
-                        </p>
-                    </div>
-                </section>
-
-                <!-- Architecture -->
-                <section>
-                    <h2>Architecture</h2>
-                    <div class="columns" style="text-align: center">
-                        <div class="column">
-                            <div
-                                style="
-                                    background: #4b8bbe;
-                                    padding: 1em;
-                                    border-radius: 8px;
-                                    margin-bottom: 0.5em;
-                                "
-                            >
-                                <strong>Python / Polars</strong>
-                            </div>
-                            <p class="small">
-                                LazyFrame API<br />DataFrame ops<br />.collect()
-                            </p>
-                        </div>
-                        <div class="column">
-                            <div
-                                style="
-                                    background: #e5c07b;
-                                    color: #1e1e1e;
-                                    padding: 1em;
-                                    border-radius: 8px;
-                                    margin-bottom: 0.5em;
-                                "
-                            >
-                                <strong>polars-redis</strong>
-                            </div>
-                            <p class="small">
-                                Rust + PyO3<br />Async batching<br />Arrow
-                                conversion
-                            </p>
-                        </div>
-                        <div class="column">
-                            <div
-                                style="
-                                    background: #dc382d;
-                                    padding: 1em;
-                                    border-radius: 8px;
-                                    margin-bottom: 0.5em;
-                                "
-                            >
-                                <strong>Redis</strong>
-                            </div>
-                            <p class="small">
-                                SCAN + HGETALL<br />FT.SEARCH / FT.AGGREGATE<br />Pub/Sub,
-                                Streams
-                            </p>
-                        </div>
-                    </div>
-                    <div
-                        style="
-                            background: #2d2d2d;
-                            padding: 0.8em;
-                            border-radius: 8px;
-                            margin-top: 1em;
-                        "
-                    >
-                        <p class="small" style="margin: 0">
-                            <span class="green">io/</span> DataFrame I/O (scan,
-                            write, cache, search)
-                        </p>
-                        <p class="small" style="margin: 0">
-                            <span class="green">client/</span> Redis operations
-                            (geo, keys, pipeline, pubsub)
                         </p>
                     </div>
                 </section>
@@ -854,12 +800,143 @@ print(result)</code></pre>
                             >redis</span
                         >
                     </h1>
-                    <h3>
-                        Redis + Polars = Analytics Without the Data Warehouse
-                    </h3>
+                    <h3>Stop copying data.<br />Query it where it lives.</h3>
                     <pre><code class="language-bash">pip install polars-redis</code></pre>
                     <p style="margin-top: 2em">
                         github.com/joshrotenberg/polars-redis
+                    </p>
+                </section>
+
+                <!-- Backup: Supported Types -->
+                <section>
+                    <h2>Appendix: Supported Redis Types</h2>
+                    <table style="font-size: 0.65em; width: 100%">
+                        <tr>
+                            <th>Redis Type</th>
+                            <th>Scan</th>
+                            <th>Write</th>
+                            <th>Notes</th>
+                        </tr>
+                        <tr>
+                            <td>Hash</td>
+                            <td class="green">Yes</td>
+                            <td class="green">Yes</td>
+                            <td>Field-level projection pushdown</td>
+                        </tr>
+                        <tr>
+                            <td>JSON</td>
+                            <td class="green">Yes</td>
+                            <td class="green">Yes</td>
+                            <td>JSONPath extraction</td>
+                        </tr>
+                        <tr>
+                            <td>String</td>
+                            <td class="green">Yes</td>
+                            <td class="green">Yes</td>
+                            <td>Key-value pairs</td>
+                        </tr>
+                        <tr>
+                            <td>Set / List / Sorted Set</td>
+                            <td class="green">Yes</td>
+                            <td class="green">Yes</td>
+                            <td>One row per member</td>
+                        </tr>
+                        <tr>
+                            <td>Stream</td>
+                            <td class="green">Yes</td>
+                            <td class="orange">No</td>
+                            <td>Consumer groups, timestamps</td>
+                        </tr>
+                        <tr>
+                            <td>TimeSeries</td>
+                            <td class="green">Yes</td>
+                            <td class="orange">No</td>
+                            <td>Server-side aggregation</td>
+                        </tr>
+                    </table>
+                    <p
+                        class="small"
+                        style="margin-top: 1em; text-align: center"
+                    >
+                        (backup slide)
+                    </p>
+                </section>
+
+                <!-- Backup: Architecture -->
+                <section>
+                    <h2>Appendix: Architecture</h2>
+                    <div class="columns" style="text-align: center">
+                        <div class="column">
+                            <div
+                                style="
+                                    background: #4b8bbe;
+                                    padding: 1em;
+                                    border-radius: 8px;
+                                    margin-bottom: 0.5em;
+                                "
+                            >
+                                <strong>Python / Polars</strong>
+                            </div>
+                            <p class="small">
+                                LazyFrame API<br />DataFrame ops<br />.collect()
+                            </p>
+                        </div>
+                        <div class="column">
+                            <div
+                                style="
+                                    background: #e5c07b;
+                                    color: #1e1e1e;
+                                    padding: 1em;
+                                    border-radius: 8px;
+                                    margin-bottom: 0.5em;
+                                "
+                            >
+                                <strong>polars-redis</strong>
+                            </div>
+                            <p class="small">
+                                Rust + PyO3<br />Async batching<br />Arrow
+                                conversion
+                            </p>
+                        </div>
+                        <div class="column">
+                            <div
+                                style="
+                                    background: #dc382d;
+                                    padding: 1em;
+                                    border-radius: 8px;
+                                    margin-bottom: 0.5em;
+                                "
+                            >
+                                <strong>Redis</strong>
+                            </div>
+                            <p class="small">
+                                SCAN + HGETALL<br />FT.SEARCH / FT.AGGREGATE<br />Pub/Sub,
+                                Streams
+                            </p>
+                        </div>
+                    </div>
+                    <div
+                        style="
+                            background: #2d2d2d;
+                            padding: 0.8em;
+                            border-radius: 8px;
+                            margin-top: 1em;
+                        "
+                    >
+                        <p class="small" style="margin: 0">
+                            <span class="green">io/</span> DataFrame I/O (scan,
+                            write, cache, search)
+                        </p>
+                        <p class="small" style="margin: 0">
+                            <span class="green">client/</span> Redis operations
+                            (geo, keys, pipeline, pubsub)
+                        </p>
+                    </div>
+                    <p
+                        class="small"
+                        style="margin-top: 1em; text-align: center"
+                    >
+                        (backup slide)
                     </p>
                 </section>
             </div>
