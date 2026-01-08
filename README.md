@@ -1,8 +1,8 @@
 # polars-redis
 
-Query Redis like a database. Transform with [Polars](https://pola.rs/). Write back without ETL.
+**Redis + Polars. No ETL required.**
 
-> **New to Polars?** [Polars](https://pola.rs/) is a lightning-fast DataFrame library for Python and Rust. Check out the [Polars User Guide](https://docs.pola.rs/) to get started.
+DataFrames from Redis without N+1 queries. Server-side filtering with RediSearch. Write results back.
 
 [![CI](https://github.com/joshrotenberg/polars-redis/actions/workflows/ci.yml/badge.svg)](https://github.com/joshrotenberg/polars-redis/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/polars-redis.svg)](https://pypi.org/project/polars-redis/)
@@ -11,6 +11,10 @@ Query Redis like a database. Transform with [Polars](https://pola.rs/). Write ba
 [![Python](https://img.shields.io/pypi/pyversions/polars-redis.svg)](https://pypi.org/project/polars-redis/)
 [![Docs](https://img.shields.io/badge/docs-mkdocs-blue.svg)](https://joshrotenberg.github.io/polars-redis/)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
+
+**Best for:** 10K-1M documents where your data already lives in Redis and you want to query it without copying it elsewhere.
+
+**What this is NOT:** A Redis client replacement. Use polars-redis alongside redis-py when you need DataFrame operations on your Redis data.
 
 ## Why polars-redis?
 
@@ -33,7 +37,7 @@ active = df[df["status"] == "active"]   # Filter client-side
 import polars_redis as redis
 from polars_redis import col
 
-# One call, proper types, server-side filtering
+# One call, proper types, server-side filtering (with RediSearch)
 df = redis.search_hashes(
     url,
     index="users_idx",
@@ -44,7 +48,7 @@ df = redis.search_hashes(
 
 - **No N+1 queries** - Batched async operations
 - **Automatic types** - Schema or inference
-- **Predicate pushdown** - Filter in Redis with RediSearch
+- **Predicate pushdown** - Filter in Redis with RediSearch (optional)
 - **Native Polars** - LazyFrames, Arrow, zero-copy
 
 ## Quick Start
@@ -113,9 +117,9 @@ high_value = (
 redis.write_hashes(high_value.collect(), url, key_prefix="region_stats:")
 ```
 
-## RediSearch: Server-Side Filtering
+## RediSearch: Server-Side Filtering (Optional)
 
-With a RediSearch index, filter and aggregate in Redis - only results are transferred:
+RediSearch enables filtering and aggregation in Redis - only results are transferred. **This is optional** - `scan_hashes()` works without any index.
 
 ```python
 from polars_redis import col, Index, TextField, NumericField, TagField
@@ -180,7 +184,7 @@ result = expensive_query("2024-01-01", "2024-12-31")
 - Projection pushdown
 - Parallel fetching
 
-**RediSearch:**
+**RediSearch (optional):**
 - Server-side filtering with `search_hashes()`
 - Server-side aggregation with `aggregate_hashes()`
 - Polars-like query builder
@@ -214,13 +218,15 @@ result = expensive_query("2024-01-01", "2024-12-31")
 
 - Python 3.9+ (or Rust)
 - Redis 7.0+
-- Redis Stack for RediSearch/JSON features
+- Redis Stack for RediSearch/JSON features (optional for basic scanning)
 
 ## Documentation
 
 - [Full Documentation](https://joshrotenberg.github.io/polars-redis/)
 - [Product Catalog Example](https://joshrotenberg.github.io/polars-redis/examples/product-catalog/)
 - [API Reference](https://joshrotenberg.github.io/polars-redis/api/python/)
+
+> **New to Polars?** [Polars](https://pola.rs/) is a lightning-fast DataFrame library for Python and Rust. Check out the [Polars User Guide](https://docs.pola.rs/) to get started.
 
 ## License
 
