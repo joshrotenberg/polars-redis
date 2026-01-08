@@ -11,10 +11,21 @@ cargo run --example scan_json
 cargo run --example scan_strings
 cargo run --example schema_inference
 
+# Search examples (requires Redis Stack)
+cargo run --example search_example
+
 # Write examples
 cargo run --example write_hashes
 cargo run --example write_json
 cargo run --example write_strings
+```
+
+## RediSearch: Server-Side Filtering
+
+This example demonstrates RediSearch integration for server-side filtering with `HashSearchIterator`:
+
+```rust
+--8<-- "examples/rust/search_example.rs"
 ```
 
 ## Scan Hashes
