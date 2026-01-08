@@ -12,47 +12,47 @@ Query Redis like a database. Transform with [Polars](https://pola.rs/). Write ba
 [![Docs](https://img.shields.io/badge/docs-mkdocs-blue.svg)](https://joshrotenberg.github.io/polars-redis/)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
 
-## What is polars-redis?
+## Why polars-redis?
 
-polars-redis makes Redis a first-class data source in your Polars workflows. Query, transform, and write back - Redis becomes just another connector alongside Parquet, CSV, and databases.
-
+**The old way:**
 ```python
-import polars as pl
-import polars_redis as redis
+# Fetch everything, process in Python
+keys = redis.scan_iter("user:*")
+users = []
+for key in keys:                        # N+1 queries
+    data = redis.hgetall(key)
+    users.append(data)
 
-# Redis is just another source
-users = redis.read_hashes(url, "user:*", schema)
-orders = pl.read_parquet("s3://bucket/orders.parquet")
-
-# Full Polars transformation power
-result = (
-    users.join(orders, on="user_id")
-    .group_by("region")
-    .agg(pl.col("amount").sum())
-)
-
-# Write back to Redis
-redis.write_hashes(result, url, key_prefix="region_stats:")
+df = pd.DataFrame(users)
+df["age"] = df["age"].astype(int)       # Manual type coercion
+active = df[df["status"] == "active"]   # Filter client-side
 ```
 
-## Installation
+**With polars-redis:**
+```python
+import polars_redis as redis
+from polars_redis import col
+
+# One call, proper types, server-side filtering
+df = redis.search_hashes(
+    url,
+    index="users_idx",
+    query=col("status") == "active",
+    schema={"name": pl.Utf8, "age": pl.Int64},
+).collect()
+```
+
+- **No N+1 queries** - Batched async operations
+- **Automatic types** - Schema or inference
+- **Predicate pushdown** - Filter in Redis with RediSearch
+- **Native Polars** - LazyFrames, Arrow, zero-copy
+
+## Quick Start
 
 ```bash
 pip install polars-redis
+docker run -d -p 6379:6379 redis/redis-stack:latest
 ```
-
-## When to Use What
-
-| Your data | Use | Why |
-|-----------|-----|-----|
-| User profiles, configs | `scan_hashes()` | Field-level access, projection pushdown |
-| Nested documents | `scan_json()` | Full document structure |
-| Counters, flags, caches | `scan_strings()` | Simple key-value |
-| Tags, memberships | `scan_sets()` | Unique members |
-| Queues, recent items | `scan_lists()` | Ordered elements |
-| Leaderboards, rankings | `scan_zsets()` | Score-based ordering |
-
-## Quick Start
 
 ```python
 import polars as pl
@@ -60,100 +60,167 @@ import polars_redis as redis
 
 url = "redis://localhost:6379"
 
-# Scan with schema
-lf = redis.scan_hashes(
+# Write a DataFrame to Redis
+df = pl.DataFrame({
+    "id": [1, 2, 3],
+    "name": ["Alice", "Bob", "Carol"],
+    "score": [95.5, 87.3, 92.1],
+})
+redis.write_hashes(df, url, key_column="id", key_prefix="user:")
+
+# Scan it back
+result = redis.scan_hashes(
     url,
     pattern="user:*",
-    schema={"name": pl.Utf8, "age": pl.Int64, "active": pl.Boolean},
-)
+    schema={"name": pl.Utf8, "score": pl.Float64},
+).collect()
 
-# Filter and collect (projection pushdown applies)
-active_users = lf.filter(pl.col("active")).select(["name", "age"]).collect()
-
-# Write with TTL
-redis.write_hashes(active_users, url, key_prefix="cache:user:", ttl=3600)
+print(result)
+# shape: (3, 3)
+# +---------+-------+-------+
+# | _key    | name  | score |
+# +---------+-------+-------+
+# | user:1  | Alice | 95.5  |
+# | user:2  | Bob   | 87.3  |
+# | user:3  | Carol | 92.1  |
+# +---------+-------+-------+
 ```
 
-### RediSearch (Server-Side Filtering)
+## The Golden Path
+
+Redis is just another data source alongside Parquet, CSV, and databases:
 
 ```python
+import polars as pl
+import polars_redis as redis
 from polars_redis import col
 
-# Filter in Redis, not Python - only matching docs are transferred
+url = "redis://localhost:6379"
+
+# Join Redis data with external sources
+users = redis.scan_hashes(url, "user:*", {"user_id": pl.Utf8, "region": pl.Utf8})
+orders = pl.read_parquet("s3://bucket/orders.parquet")
+
+# Full Polars transformation power
+high_value = (
+    users.join(orders, on="user_id")
+    .group_by("region")
+    .agg(pl.col("amount").sum().alias("revenue"))
+    .filter(pl.col("revenue") > 10000)
+)
+
+# Write results back to Redis
+redis.write_hashes(high_value.collect(), url, key_prefix="region_stats:")
+```
+
+## RediSearch: Server-Side Filtering
+
+With a RediSearch index, filter and aggregate in Redis - only results are transferred:
+
+```python
+from polars_redis import col, Index, TextField, NumericField, TagField
+
+# Create an index (one-time setup)
+Index(
+    name="users_idx",
+    prefix="user:",
+    schema=[
+        TextField("name"),
+        NumericField("age", sortable=True),
+        TagField("status"),
+    ]
+).create(url)
+
+# Query with Polars-like syntax
 df = redis.search_hashes(
     url,
     index="users_idx",
     query=(col("age") > 30) & (col("status") == "active"),
-    schema={"name": pl.Utf8, "age": pl.Int64, "status": pl.Utf8},
+    schema={"name": pl.Utf8, "age": pl.Int64},
 ).collect()
 
 # Server-side aggregation
-df = redis.aggregate_hashes(
+stats = redis.aggregate_hashes(
     url,
     index="users_idx",
     query="*",
-    group_by=["@department"],
-    reduce=[("COUNT", [], "count"), ("AVG", ["@salary"], "avg_salary")],
+    group_by=["@status"],
+    reduce=[("COUNT", [], "count"), ("AVG", ["@age"], "avg_age")],
 )
 ```
 
-### Parallel Fetching
+## DataFrame Caching
+
+Cache expensive computations with one decorator:
 
 ```python
-# Speed up large scans with parallel workers
-lf = redis.scan_hashes(
-    url,
-    pattern="user:*",
-    schema={"name": pl.Utf8, "age": pl.Int64},
-    parallel=4,  # Use 4 parallel workers
-)
+@redis.cache(url=url, ttl=3600, compression="zstd")
+def expensive_query(start_date, end_date):
+    return (
+        pl.scan_parquet("huge_dataset.parquet")
+        .filter(pl.col("date").is_between(start_date, end_date))
+        .group_by("category")
+        .agg(pl.sum("revenue"))
+        .collect()
+    )
+
+# First call: computes and caches
+result = expensive_query("2024-01-01", "2024-12-31")
+
+# Second call: instant cache hit
+result = expensive_query("2024-01-01", "2024-12-31")
 ```
 
 ## Features
 
-**Read:**
-- `scan_hashes()` / `read_hashes()` - Redis hashes
-- `scan_json()` / `read_json()` - RedisJSON documents  
-- `scan_strings()` / `read_strings()` - Redis strings
-- `scan_sets()` / `read_sets()` - Redis sets
-- `scan_lists()` / `read_lists()` - Redis lists
-- `scan_zsets()` / `read_zsets()` - Redis sorted sets
-- Projection pushdown (fetch only requested fields)
-- Schema inference (`infer_hash_schema()`, `infer_json_schema()`)
-- Metadata columns (key, TTL, row index)
-- Parallel fetching for improved throughput
+**DataFrame I/O:**
+- Scan hashes, JSON, strings, sets, lists, sorted sets, streams, time series
+- Write DataFrames back to Redis
+- Schema inference
+- Projection pushdown
+- Parallel fetching
 
-**RediSearch (Predicate Pushdown):**
-- `search_hashes()` - Server-side filtering with FT.SEARCH
-- `aggregate_hashes()` - Server-side aggregation with FT.AGGREGATE
-- Polars-like query builder: `col("age") > 30`
+**RediSearch:**
+- Server-side filtering with `search_hashes()`
+- Server-side aggregation with `aggregate_hashes()`
+- Polars-like query builder
+- Smart scan (auto-detects indexes)
 
-**Write:**
-- `write_hashes()`, `write_json()`, `write_strings()`
-- `write_sets()`, `write_lists()`, `write_zsets()`
-- TTL support
-- Key prefix
-- Write modes: fail, replace, append
+**Caching:**
+- `@cache` decorator for function memoization
+- Auto-chunking (no 512MB limit)
+- Compression (lz4, zstd, gzip)
+
+**Client Operations:**
+- Geospatial queries (`geo_radius`, `geo_dist`)
+- Key management (`set_ttl`, `delete_keys`)
+- Pipelines and transactions
+- Pub/Sub message collection
 
 ## Supported Types
 
-| Polars | Redis |
-|--------|-------|
-| `Utf8` | string |
-| `Int64` | parsed int |
-| `Float64` | parsed float |
-| `Boolean` | true/false, 1/0, yes/no |
-| `Date` | YYYY-MM-DD or epoch days |
-| `Datetime` | ISO 8601 or Unix timestamp |
+| Your Data | Use | Notes |
+|-----------|-----|-------|
+| User profiles, configs | `scan_hashes()` | Field-level projection pushdown |
+| Nested documents | `scan_json()` | JSONPath extraction |
+| Key-value pairs | `scan_strings()` | Simple values |
+| Tags, memberships | `scan_sets()` | Unique members |
+| Queues, recent items | `scan_lists()` | Ordered elements |
+| Leaderboards | `scan_zsets()` | Score-based ordering |
+| Event logs | `scan_streams()` | Consumer groups |
+| Metrics | `scan_timeseries()` | Server-side aggregation |
 
 ## Requirements
 
-- Python 3.9+
-- Redis 7.0+ (RedisJSON module for JSON support)
+- Python 3.9+ (or Rust)
+- Redis 7.0+
+- Redis Stack for RediSearch/JSON features
 
 ## Documentation
 
-Full documentation at [joshrotenberg.github.io/polars-redis](https://joshrotenberg.github.io/polars-redis/)
+- [Full Documentation](https://joshrotenberg.github.io/polars-redis/)
+- [Product Catalog Example](https://joshrotenberg.github.io/polars-redis/examples/product-catalog/)
+- [API Reference](https://joshrotenberg.github.io/polars-redis/api/python/)
 
 ## License
 
