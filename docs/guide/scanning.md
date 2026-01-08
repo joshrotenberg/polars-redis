@@ -1,6 +1,26 @@
 # Scanning Data
 
-polars-redis provides scan functions for eight Redis data types: hashes, JSON, strings, sets, lists, sorted sets, streams, and time series.
+polars-redis provides scan functions for eight Redis data types. Each returns a Polars LazyFrame for efficient, streaming reads.
+
+## Which Data Type?
+
+| Data Structure | Use Case | Function |
+|----------------|----------|----------|
+| **Hashes** | Structured records (most common) | `scan_hashes` |
+| **JSON** | Nested/complex documents | `scan_json` |
+| **Strings** | Simple values, counters | `scan_strings` |
+| **Sets** | Tags, membership | `scan_sets` |
+| **Lists** | Queues, ordered items | `scan_lists` |
+| **Sorted Sets** | Leaderboards, rankings | `scan_zsets` |
+| **Streams** | Event logs, time-ordered data | `scan_streams` |
+| **TimeSeries** | Metrics, sensor data | `scan_timeseries` |
+
+!!! tip "Eager Reading"
+    All `scan_*` functions have `read_*` equivalents that return DataFrames directly:
+    ```python
+    lf = redis.scan_hashes(...)   # LazyFrame
+    df = redis.read_hashes(...)   # DataFrame (eager)
+    ```
 
 ## Scanning Hashes
 
@@ -45,6 +65,57 @@ lf = redis.scan_hashes(
 | `pl.Date` | ISO date or epoch days |
 | `pl.Datetime` | ISO datetime or Unix timestamp |
 
+## Projection Pushdown
+
+When you select specific columns, polars-redis optimizes the Redis query to fetch only what you need:
+
+```python
+lf = redis.scan_hashes(
+    "redis://localhost:6379",
+    pattern="user:*",
+    schema={"name": pl.Utf8, "age": pl.Int64, "email": pl.Utf8, "phone": pl.Utf8},
+)
+
+# Without projection: HGETALL fetches all 4 fields
+df = lf.collect()
+
+# With projection: HMGET fetches only 2 fields
+df = lf.select(["name", "age"]).collect()
+```
+
+This can significantly reduce network transfer for wide hashes.
+
+**Projection support by type:**
+
+| Type | Projection Support |
+|------|-------------------|
+| Hashes | Yes (HMGET vs HGETALL) |
+| JSON | Yes (JSONPath extraction) |
+| Strings | N/A (single value) |
+| Sets | No (must fetch all members) |
+| Lists | No (must fetch all elements) |
+| Sorted Sets | No (must fetch all members) |
+| Streams | Partial (field selection) |
+| TimeSeries | N/A (timestamp + value only) |
+
+## Error Handling
+
+polars-redis handles common edge cases gracefully:
+
+| Scenario | Behavior |
+|----------|----------|
+| Missing field in hash | `null` value in that column |
+| Type coercion fails (e.g., "abc" as Int64) | `null` value |
+| Key doesn't match expected type | Row skipped with warning |
+| Connection fails mid-scan | Exception raised |
+| Empty result set | Empty DataFrame |
+
+```python
+# Missing fields become null
+# Hash: {"name": "Alice"} with schema {"name": pl.Utf8, "age": pl.Int64}
+# Result: {"name": "Alice", "age": null}
+```
+
 ## Scanning JSON
 
 `scan_json` scans RedisJSON documents:
@@ -84,36 +155,6 @@ lf = redis.scan_strings(
 |-----------|------|---------|-------------|
 | `value_type` | type | `pl.Utf8` | Type for value column |
 | `value_column_name` | str | `"value"` | Name of value column |
-
-## Eager Reading
-
-Each scan function has an eager counterpart that returns a DataFrame:
-
-```python
-# Lazy (returns LazyFrame)
-lf = redis.scan_hashes(...)
-df = lf.collect()
-
-# Eager (returns DataFrame directly)
-df = redis.read_hashes(...)
-```
-
-## Projection Pushdown
-
-When you select specific columns, polars-redis optimizes the Redis query:
-
-```python
-lf = redis.scan_hashes(
-    "redis://localhost:6379",
-    pattern="user:*",
-    schema={"name": pl.Utf8, "age": pl.Int64, "email": pl.Utf8, "phone": pl.Utf8},
-)
-
-# Only 'name' and 'age' are fetched from Redis
-df = lf.select(["name", "age"]).collect()
-```
-
-For hashes, this uses `HMGET` instead of `HGETALL`, reducing network transfer.
 
 ## Metadata Columns
 
@@ -391,18 +432,18 @@ lf = redis.scan_hashes(
 )
 ```
 
-Each batch is split across workers, with results collected in order. This is most effective for:
+Each batch is split across workers, with results collected in order.
 
-- Large datasets (thousands of keys)
-- High-latency connections
-- Batch sizes larger than the worker count
-
-!!! note
-    Parallel fetching uses multiple Redis connections. Ensure your Redis server can handle the additional concurrent connections.
+!!! warning "Tradeoffs"
+    More workers = more concurrent Redis connections = more server load. Start with `parallel=None` (default) and only add parallelism if scans are slow. Effective for:
+    
+    - Large datasets (10K+ keys)
+    - High-latency connections
+    - When Redis server has capacity
 
 ## RediSearch: Server-Side Filtering
 
-For even better performance, use RediSearch to filter data in Redis before transfer:
+For large datasets, use RediSearch to filter data in Redis before transfer:
 
 ```python
 from polars_redis import col
