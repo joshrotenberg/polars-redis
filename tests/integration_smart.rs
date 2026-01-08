@@ -9,8 +9,7 @@ use polars_redis::smart::{
 
 mod common;
 use common::{
-    cleanup_keys, create_hash_index, redis_available, redis_cli, redis_url, setup_test_hashes,
-    wait_for_index,
+    cleanup_keys, create_hash_index, ensure_redis, redis_cli, setup_test_hashes, wait_for_index,
 };
 
 /// Test ExecutionStrategy display.
@@ -78,14 +77,10 @@ fn test_detected_index_clone() {
 
 /// Test find_index_for_pattern with no RediSearch (returns None gracefully).
 #[tokio::test]
-#[ignore] // Requires Redis
 async fn test_find_index_no_redisearch() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+    let url = ensure_redis().await;
 
-    let client = redis::Client::open(redis_url()).unwrap();
+    let client = redis::Client::open(url).unwrap();
     let mut conn = client.get_connection_manager().await.unwrap();
 
     // This should return None if no matching index exists
@@ -96,14 +91,10 @@ async fn test_find_index_no_redisearch() {
 
 /// Test list_indexes returns empty when no indexes.
 #[tokio::test]
-#[ignore] // Requires Redis
 async fn test_list_indexes_empty() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+    let url = ensure_redis().await;
 
-    let client = redis::Client::open(redis_url()).unwrap();
+    let client = redis::Client::open(url).unwrap();
     let mut conn = client.get_connection_manager().await.unwrap();
 
     // This should not error even if RediSearch is not available
@@ -113,12 +104,8 @@ async fn test_list_indexes_empty() {
 
 /// Test find_index_for_pattern finds matching index.
 #[tokio::test]
-#[ignore] // Requires Redis with RediSearch
 async fn test_find_index_for_pattern() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+    let url = ensure_redis().await;
 
     cleanup_keys("rust:smart:find:*");
 
@@ -133,7 +120,7 @@ async fn test_find_index_for_pattern() {
     setup_test_hashes("rust:smart:find:", 5);
     wait_for_index("rust_smart_find_idx");
 
-    let client = redis::Client::open(redis_url()).unwrap();
+    let client = redis::Client::open(url).unwrap();
     let mut conn = client.get_connection_manager().await.unwrap();
 
     let result = find_index_for_pattern(&mut conn, "rust:smart:find:*").await;
@@ -155,12 +142,8 @@ async fn test_find_index_for_pattern() {
 
 /// Test list_indexes returns created indexes.
 #[tokio::test]
-#[ignore] // Requires Redis with RediSearch
 async fn test_list_indexes() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+    let url = ensure_redis().await;
 
     cleanup_keys("rust:smart:list:*");
 
@@ -173,7 +156,7 @@ async fn test_list_indexes() {
 
     wait_for_index("rust_smart_list_idx");
 
-    let client = redis::Client::open(redis_url()).unwrap();
+    let client = redis::Client::open(url).unwrap();
     let mut conn = client.get_connection_manager().await.unwrap();
 
     let result = list_indexes(&mut conn).await;
@@ -193,12 +176,8 @@ async fn test_list_indexes() {
 
 /// Test plan_query with index available.
 #[tokio::test]
-#[ignore] // Requires Redis with RediSearch
 async fn test_plan_query_with_index() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+    let url = ensure_redis().await;
 
     cleanup_keys("rust:smart:plan:*");
 
@@ -211,7 +190,7 @@ async fn test_plan_query_with_index() {
     setup_test_hashes("rust:smart:plan:", 3);
     wait_for_index("rust_smart_plan_idx");
 
-    let client = redis::Client::open(redis_url()).unwrap();
+    let client = redis::Client::open(url).unwrap();
     let mut conn = client.get_connection_manager().await.unwrap();
 
     let result = plan_query(&mut conn, "rust:smart:plan:*").await;
@@ -230,14 +209,10 @@ async fn test_plan_query_with_index() {
 
 /// Test plan_query without index falls back to scan.
 #[tokio::test]
-#[ignore] // Requires Redis
 async fn test_plan_query_without_index() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+    let url = ensure_redis().await;
 
-    let client = redis::Client::open(redis_url()).unwrap();
+    let client = redis::Client::open(url).unwrap();
     let mut conn = client.get_connection_manager().await.unwrap();
 
     // Use a pattern that definitely has no index
@@ -253,12 +228,8 @@ async fn test_plan_query_without_index() {
 
 /// Test index detection with partial prefix match.
 #[tokio::test]
-#[ignore] // Requires Redis with RediSearch
 async fn test_find_index_partial_prefix() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+    let url = ensure_redis().await;
 
     cleanup_keys("rust:smart:partial:*");
 
@@ -271,7 +242,7 @@ async fn test_find_index_partial_prefix() {
 
     wait_for_index("rust_smart_partial_idx");
 
-    let client = redis::Client::open(redis_url()).unwrap();
+    let client = redis::Client::open(url).unwrap();
     let mut conn = client.get_connection_manager().await.unwrap();
 
     // Query with more specific pattern should still find the broader index

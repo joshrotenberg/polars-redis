@@ -1,7 +1,7 @@
 //! Integration tests for RediSearch index management.
 //!
 //! These tests require a running Redis instance with RediSearch.
-//! Run with: `cargo test --test integration_index --all-features`
+//! Run with: `cargo test --test integration_index`
 
 use polars_redis::RedisType;
 use polars_redis::index::{
@@ -10,7 +10,7 @@ use polars_redis::index::{
 };
 
 mod common;
-use common::{cleanup_keys, redis_available, redis_cli, redis_cli_output, redis_url};
+use common::{cleanup_keys, ensure_redis, get_redis_url, redis_cli, redis_cli_output};
 
 /// Test TextField builder.
 #[test]
@@ -252,24 +252,29 @@ fn test_index_from_schema() {
 }
 
 /// Test Index::create and Index::drop.
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_index_create_drop() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_index_create_drop() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     // First ensure index doesn't exist
     redis_cli(&["FT.DROPINDEX", "rust_idx_create_test"]);
 
-    let index = Index::new("rust_idx_create_test")
-        .with_prefix("rust:idx:create:")
-        .with_field(TextField::new("name").sortable())
-        .with_field(NumericField::new("value"));
-
     // Create the index
-    if let Err(e) = index.create(&redis_url()) {
+    let create_result = tokio::task::spawn_blocking({
+        let url = url.clone();
+        move || {
+            let index = Index::new("rust_idx_create_test")
+                .with_prefix("rust:idx:create:")
+                .with_field(TextField::new("name").sortable())
+                .with_field(NumericField::new("value"));
+            index.create(&url)
+        }
+    })
+    .await
+    .expect("spawn_blocking failed");
+
+    if let Err(e) = create_result {
         let err = e.to_string();
         if err.contains("unknown command") {
             eprintln!("Skipping test: RediSearch not available");
@@ -283,31 +288,51 @@ fn test_index_create_drop() {
     assert!(info.is_some());
 
     // Drop the index
-    let result = index.drop(&redis_url());
-    assert!(result.is_ok());
+    let drop_result = tokio::task::spawn_blocking({
+        let url = url.clone();
+        move || {
+            let index = Index::new("rust_idx_create_test")
+                .with_prefix("rust:idx:create:")
+                .with_field(TextField::new("name").sortable())
+                .with_field(NumericField::new("value"));
+            index.drop(&url)
+        }
+    })
+    .await
+    .expect("spawn_blocking failed");
+
+    assert!(drop_result.is_ok());
 
     // Verify it's gone
     let info = redis_cli_output(&["FT.INFO", "rust_idx_create_test"]);
-    assert!(info.is_none() || info.unwrap().contains("Unknown index name"));
+    assert!(
+        info.is_none()
+            || info.as_ref().unwrap().contains("Unknown index name")
+            || info.as_ref().unwrap().contains("no such index")
+    );
 }
 
 /// Test Index::exists.
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_index_exists() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_index_exists() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     redis_cli(&["FT.DROPINDEX", "rust_idx_exists_test"]);
 
-    let index = Index::new("rust_idx_exists_test")
-        .with_prefix("rust:idx:exists:")
-        .with_field(TextField::new("name"));
-
     // Should not exist
-    let exists = index.exists(&redis_url());
+    let exists = tokio::task::spawn_blocking({
+        let url = url.clone();
+        move || {
+            let index = Index::new("rust_idx_exists_test")
+                .with_prefix("rust:idx:exists:")
+                .with_field(TextField::new("name"));
+            index.exists(&url)
+        }
+    })
+    .await
+    .expect("spawn_blocking failed");
+
     match exists {
         Ok(val) => assert!(!val),
         Err(e) => {
@@ -320,32 +345,69 @@ fn test_index_exists() {
     }
 
     // Create it
-    index.create(&redis_url()).unwrap();
+    let create_result = tokio::task::spawn_blocking({
+        let url = url.clone();
+        move || {
+            let index = Index::new("rust_idx_exists_test")
+                .with_prefix("rust:idx:exists:")
+                .with_field(TextField::new("name"));
+            index.create(&url)
+        }
+    })
+    .await
+    .expect("spawn_blocking failed");
+    create_result.unwrap();
 
     // Should exist now
-    assert!(index.exists(&redis_url()).unwrap());
+    let exists = tokio::task::spawn_blocking({
+        let url = url.clone();
+        move || {
+            let index = Index::new("rust_idx_exists_test")
+                .with_prefix("rust:idx:exists:")
+                .with_field(TextField::new("name"));
+            index.exists(&url)
+        }
+    })
+    .await
+    .expect("spawn_blocking failed");
+    assert!(exists.unwrap());
 
     // Cleanup
-    index.drop(&redis_url()).unwrap();
+    let _ = tokio::task::spawn_blocking({
+        let url = url.clone();
+        move || {
+            let index = Index::new("rust_idx_exists_test")
+                .with_prefix("rust:idx:exists:")
+                .with_field(TextField::new("name"));
+            index.drop(&url)
+        }
+    })
+    .await
+    .expect("spawn_blocking failed");
 }
 
 /// Test Index::create_if_not_exists.
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_index_create_if_not_exists() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_index_create_if_not_exists() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     redis_cli(&["FT.DROPINDEX", "rust_idx_idempotent"]);
 
-    let index = Index::new("rust_idx_idempotent")
-        .with_prefix("rust:idx:idempotent:")
-        .with_field(TextField::new("name"));
-
     // First call creates
-    if let Err(e) = index.create_if_not_exists(&redis_url()) {
+    let first_result = tokio::task::spawn_blocking({
+        let url = url.clone();
+        move || {
+            let index = Index::new("rust_idx_idempotent")
+                .with_prefix("rust:idx:idempotent:")
+                .with_field(TextField::new("name"));
+            index.create_if_not_exists(&url)
+        }
+    })
+    .await
+    .expect("spawn_blocking failed");
+
+    if let Err(e) = first_result {
         let err = e.to_string();
         if err.contains("unknown command") {
             eprintln!("Skipping test: RediSearch not available");
@@ -355,29 +417,58 @@ fn test_index_create_if_not_exists() {
     }
 
     // Second call is idempotent
-    let result = index.create_if_not_exists(&redis_url());
-    assert!(result.is_ok());
+    let second_result = tokio::task::spawn_blocking({
+        let url = url.clone();
+        move || {
+            let index = Index::new("rust_idx_idempotent")
+                .with_prefix("rust:idx:idempotent:")
+                .with_field(TextField::new("name"));
+            index.create_if_not_exists(&url)
+        }
+    })
+    .await
+    .expect("spawn_blocking failed");
+    assert!(
+        second_result.is_ok(),
+        "create_if_not_exists should be idempotent: {:?}",
+        second_result
+    );
 
     // Cleanup
-    index.drop(&redis_url()).unwrap();
+    let _ = tokio::task::spawn_blocking({
+        let url = url.clone();
+        move || {
+            let index = Index::new("rust_idx_idempotent")
+                .with_prefix("rust:idx:idempotent:")
+                .with_field(TextField::new("name"));
+            index.drop(&url)
+        }
+    })
+    .await
+    .expect("spawn_blocking failed");
 }
 
 /// Test Index::ensure_exists (alias for create_if_not_exists).
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_index_ensure_exists() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_index_ensure_exists() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     redis_cli(&["FT.DROPINDEX", "rust_idx_ensure"]);
 
-    let index = Index::new("rust_idx_ensure")
-        .with_prefix("rust:idx:ensure:")
-        .with_field(TextField::new("name"));
+    let result = tokio::task::spawn_blocking({
+        let url = url.clone();
+        move || {
+            let index = Index::new("rust_idx_ensure")
+                .with_prefix("rust:idx:ensure:")
+                .with_field(TextField::new("name"));
+            index.ensure_exists(&url)
+        }
+    })
+    .await
+    .expect("spawn_blocking failed");
 
-    if let Err(e) = index.ensure_exists(&redis_url()) {
+    if let Err(e) = result {
         let err = e.to_string();
         if err.contains("unknown command") {
             eprintln!("Skipping test: RediSearch not available");
@@ -386,29 +477,55 @@ fn test_index_ensure_exists() {
         panic!("Unexpected error: {}", err);
     }
 
-    assert!(index.exists(&redis_url()).unwrap());
+    let exists = tokio::task::spawn_blocking({
+        let url = url.clone();
+        move || {
+            let index = Index::new("rust_idx_ensure")
+                .with_prefix("rust:idx:ensure:")
+                .with_field(TextField::new("name"));
+            index.exists(&url)
+        }
+    })
+    .await
+    .expect("spawn_blocking failed");
+    assert!(exists.unwrap());
 
     // Cleanup
-    index.drop(&redis_url()).unwrap();
+    let _ = tokio::task::spawn_blocking({
+        let url = url.clone();
+        move || {
+            let index = Index::new("rust_idx_ensure")
+                .with_prefix("rust:idx:ensure:")
+                .with_field(TextField::new("name"));
+            index.drop(&url)
+        }
+    })
+    .await
+    .expect("spawn_blocking failed");
 }
 
 /// Test Index::recreate.
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_index_recreate() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_index_recreate() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     redis_cli(&["FT.DROPINDEX", "rust_idx_recreate"]);
 
-    let index = Index::new("rust_idx_recreate")
-        .with_prefix("rust:idx:recreate:")
-        .with_field(TextField::new("name"));
-
     // Create initial index
-    if let Err(e) = index.create(&redis_url()) {
+    let create_result = tokio::task::spawn_blocking({
+        let url = url.clone();
+        move || {
+            let index = Index::new("rust_idx_recreate")
+                .with_prefix("rust:idx:recreate:")
+                .with_field(TextField::new("name"));
+            index.create(&url)
+        }
+    })
+    .await
+    .expect("spawn_blocking failed");
+
+    if let Err(e) = create_result {
         let err = e.to_string();
         if err.contains("unknown command") {
             eprintln!("Skipping test: RediSearch not available");
@@ -418,13 +535,19 @@ fn test_index_recreate() {
     }
 
     // Recreate with different schema
-    let new_index = Index::new("rust_idx_recreate")
-        .with_prefix("rust:idx:recreate:")
-        .with_field(TextField::new("title"))
-        .with_field(NumericField::new("count"));
-
-    let result = new_index.recreate(&redis_url());
-    assert!(result.is_ok());
+    let recreate_result = tokio::task::spawn_blocking({
+        let url = url.clone();
+        move || {
+            let new_index = Index::new("rust_idx_recreate")
+                .with_prefix("rust:idx:recreate:")
+                .with_field(TextField::new("title"))
+                .with_field(NumericField::new("count"));
+            new_index.recreate(&url)
+        }
+    })
+    .await
+    .expect("spawn_blocking failed");
+    assert!(recreate_result.is_ok());
 
     // Verify new schema
     let info = redis_cli_output(&["FT.INFO", "rust_idx_recreate"]);
@@ -433,26 +556,42 @@ fn test_index_recreate() {
     assert!(info_str.contains("title"));
 
     // Cleanup
-    new_index.drop(&redis_url()).unwrap();
+    let _ = tokio::task::spawn_blocking({
+        let url = url.clone();
+        move || {
+            let new_index = Index::new("rust_idx_recreate")
+                .with_prefix("rust:idx:recreate:")
+                .with_field(TextField::new("title"))
+                .with_field(NumericField::new("count"));
+            new_index.drop(&url)
+        }
+    })
+    .await
+    .expect("spawn_blocking failed");
 }
 
 /// Test Index::drop_with_docs.
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_index_drop_with_docs() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_index_drop_with_docs() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:idx:dropdocs:*");
     redis_cli(&["FT.DROPINDEX", "rust_idx_dropdocs"]);
 
-    let index = Index::new("rust_idx_dropdocs")
-        .with_prefix("rust:idx:dropdocs:")
-        .with_field(TextField::new("name"));
+    let create_result = tokio::task::spawn_blocking({
+        let url = url.clone();
+        move || {
+            let index = Index::new("rust_idx_dropdocs")
+                .with_prefix("rust:idx:dropdocs:")
+                .with_field(TextField::new("name"));
+            index.create(&url)
+        }
+    })
+    .await
+    .expect("spawn_blocking failed");
 
-    if let Err(e) = index.create(&redis_url()) {
+    if let Err(e) = create_result {
         let err = e.to_string();
         if err.contains("unknown command") {
             eprintln!("Skipping test: RediSearch not available");
@@ -470,8 +609,18 @@ fn test_index_drop_with_docs() {
     assert_eq!(exists, Some("1".to_string()));
 
     // Drop index with documents
-    let result = index.drop_with_docs(&redis_url());
-    assert!(result.is_ok());
+    let drop_result = tokio::task::spawn_blocking({
+        let url = url.clone();
+        move || {
+            let index = Index::new("rust_idx_dropdocs")
+                .with_prefix("rust:idx:dropdocs:")
+                .with_field(TextField::new("name"));
+            index.drop_with_docs(&url)
+        }
+    })
+    .await
+    .expect("spawn_blocking failed");
+    assert!(drop_result.is_ok());
 
     // Verify keys are deleted
     let exists = redis_cli_output(&["EXISTS", "rust:idx:dropdocs:1"]);
@@ -479,20 +628,24 @@ fn test_index_drop_with_docs() {
 }
 
 /// Test dropping non-existent index doesn't error.
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_drop_nonexistent_index() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
-
-    let index = Index::new("rust_idx_nonexistent")
-        .with_prefix("rust:idx:none:")
-        .with_field(TextField::new("name"));
+#[tokio::test]
+async fn test_drop_nonexistent_index() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     // Should not error even if index doesn't exist
-    let result = index.drop(&redis_url());
+    let result = tokio::task::spawn_blocking({
+        let url = url.clone();
+        move || {
+            let index = Index::new("rust_idx_nonexistent")
+                .with_prefix("rust:idx:none:")
+                .with_field(TextField::new("name"));
+            index.drop(&url)
+        }
+    })
+    .await
+    .expect("spawn_blocking failed");
+
     // This might error if RediSearch is not available
     if let Err(e) = &result {
         if e.to_string().contains("unknown command") {

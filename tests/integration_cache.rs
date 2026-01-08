@@ -1,7 +1,7 @@
 //! Integration tests for Redis cache operations.
 //!
 //! These tests require a running Redis instance.
-//! Run with: `cargo test --test integration_cache --all-features`
+//! Run with: `cargo test --test integration_cache`
 
 use std::sync::Arc;
 
@@ -14,7 +14,7 @@ use polars_redis::io::cache::{
 };
 
 mod common;
-use common::{cleanup_keys, redis_available, redis_url};
+use common::{cleanup_keys, ensure_redis, get_redis_url};
 
 /// Helper to create a test RecordBatch.
 fn create_test_batch(num_rows: usize) -> RecordBatch {
@@ -40,157 +40,170 @@ fn create_test_batch(num_rows: usize) -> RecordBatch {
 }
 
 /// Test basic cache and retrieve with IPC format.
-#[test]
-#[ignore] // Requires Redis
-fn test_cache_ipc_basic() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_cache_ipc_basic() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:cache:ipc:*");
 
     let batch = create_test_batch(100);
     let config = CacheConfig::ipc();
 
-    let bytes_written =
-        cache_record_batch(&redis_url(), "rust:cache:ipc:basic", &batch, &config).unwrap();
+    let (bytes_written, retrieved_rows, retrieved_cols) = tokio::task::spawn_blocking(move || {
+        let bytes_written =
+            cache_record_batch(&url, "rust:cache:ipc:basic", &batch, &config).unwrap();
+
+        let cached = get_cached_record_batch(&url, "rust:cache:ipc:basic").unwrap();
+        let retrieved = cached.unwrap();
+
+        (bytes_written, retrieved.num_rows(), retrieved.num_columns())
+    })
+    .await
+    .expect("spawn_blocking failed");
+
     assert!(bytes_written > 0);
-
-    let cached = get_cached_record_batch(&redis_url(), "rust:cache:ipc:basic").unwrap();
-    assert!(cached.is_some());
-
-    let retrieved = cached.unwrap();
-    assert_eq!(retrieved.num_rows(), batch.num_rows());
-    assert_eq!(retrieved.num_columns(), batch.num_columns());
+    assert_eq!(retrieved_rows, 100);
+    assert_eq!(retrieved_cols, 3);
 
     cleanup_keys("rust:cache:ipc:*");
 }
 
 /// Test cache with IPC LZ4 compression.
-#[test]
-#[ignore] // Requires Redis
-fn test_cache_ipc_lz4() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_cache_ipc_lz4() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:cache:ipclz4:*");
 
     let batch = create_test_batch(100);
     let config = CacheConfig::ipc().with_ipc_compression(IpcCompression::Lz4);
 
-    let bytes_written =
-        cache_record_batch(&redis_url(), "rust:cache:ipclz4:basic", &batch, &config).unwrap();
+    let (bytes_written, retrieved_rows) = tokio::task::spawn_blocking(move || {
+        let bytes_written =
+            cache_record_batch(&url, "rust:cache:ipclz4:basic", &batch, &config).unwrap();
+
+        let cached = get_cached_record_batch(&url, "rust:cache:ipclz4:basic").unwrap();
+        let retrieved = cached.unwrap();
+
+        (bytes_written, retrieved.num_rows())
+    })
+    .await
+    .expect("spawn_blocking failed");
+
     assert!(bytes_written > 0);
-
-    let cached = get_cached_record_batch(&redis_url(), "rust:cache:ipclz4:basic").unwrap();
-    assert!(cached.is_some());
-
-    let retrieved = cached.unwrap();
-    assert_eq!(retrieved.num_rows(), batch.num_rows());
+    assert_eq!(retrieved_rows, 100);
 
     cleanup_keys("rust:cache:ipclz4:*");
 }
 
 /// Test cache with IPC Zstd compression.
-#[test]
-#[ignore] // Requires Redis
-fn test_cache_ipc_zstd() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_cache_ipc_zstd() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:cache:ipczstd:*");
 
     let batch = create_test_batch(100);
     let config = CacheConfig::ipc().with_ipc_compression(IpcCompression::Zstd);
 
-    let bytes_written =
-        cache_record_batch(&redis_url(), "rust:cache:ipczstd:basic", &batch, &config).unwrap();
+    let (bytes_written, retrieved_rows) = tokio::task::spawn_blocking(move || {
+        let bytes_written =
+            cache_record_batch(&url, "rust:cache:ipczstd:basic", &batch, &config).unwrap();
+
+        let cached = get_cached_record_batch(&url, "rust:cache:ipczstd:basic").unwrap();
+        let retrieved = cached.unwrap();
+
+        (bytes_written, retrieved.num_rows())
+    })
+    .await
+    .expect("spawn_blocking failed");
+
     assert!(bytes_written > 0);
-
-    let cached = get_cached_record_batch(&redis_url(), "rust:cache:ipczstd:basic").unwrap();
-    assert!(cached.is_some());
-
-    let retrieved = cached.unwrap();
-    assert_eq!(retrieved.num_rows(), batch.num_rows());
+    assert_eq!(retrieved_rows, 100);
 
     cleanup_keys("rust:cache:ipczstd:*");
 }
 
 /// Test basic cache and retrieve with Parquet format.
-#[test]
-#[ignore] // Requires Redis
-fn test_cache_parquet_basic() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_cache_parquet_basic() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:cache:parquet:*");
 
     let batch = create_test_batch(100);
     let config = CacheConfig::parquet();
 
-    let bytes_written =
-        cache_record_batch(&redis_url(), "rust:cache:parquet:basic", &batch, &config).unwrap();
+    let (bytes_written, retrieved_rows, retrieved_cols) = tokio::task::spawn_blocking(move || {
+        let bytes_written =
+            cache_record_batch(&url, "rust:cache:parquet:basic", &batch, &config).unwrap();
+
+        let cached = get_cached_record_batch(&url, "rust:cache:parquet:basic").unwrap();
+        let retrieved = cached.unwrap();
+
+        (bytes_written, retrieved.num_rows(), retrieved.num_columns())
+    })
+    .await
+    .expect("spawn_blocking failed");
+
     assert!(bytes_written > 0);
-
-    let cached = get_cached_record_batch(&redis_url(), "rust:cache:parquet:basic").unwrap();
-    assert!(cached.is_some());
-
-    let retrieved = cached.unwrap();
-    assert_eq!(retrieved.num_rows(), batch.num_rows());
-    assert_eq!(retrieved.num_columns(), batch.num_columns());
+    assert_eq!(retrieved_rows, 100);
+    assert_eq!(retrieved_cols, 3);
 
     cleanup_keys("rust:cache:parquet:*");
 }
 
 /// Test cache with Parquet Snappy compression.
-#[test]
-#[ignore] // Requires Redis
-fn test_cache_parquet_snappy() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_cache_parquet_snappy() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:cache:pqsnappy:*");
 
     let batch = create_test_batch(100);
     let config = CacheConfig::parquet().with_parquet_compression(ParquetCompressionType::Snappy);
 
-    let bytes_written =
-        cache_record_batch(&redis_url(), "rust:cache:pqsnappy:basic", &batch, &config).unwrap();
-    assert!(bytes_written > 0);
+    let (bytes_written, cached_exists) = tokio::task::spawn_blocking(move || {
+        let bytes_written =
+            cache_record_batch(&url, "rust:cache:pqsnappy:basic", &batch, &config).unwrap();
 
-    let cached = get_cached_record_batch(&redis_url(), "rust:cache:pqsnappy:basic").unwrap();
-    assert!(cached.is_some());
+        let cached = get_cached_record_batch(&url, "rust:cache:pqsnappy:basic").unwrap();
+
+        (bytes_written, cached.is_some())
+    })
+    .await
+    .expect("spawn_blocking failed");
+
+    assert!(bytes_written > 0);
+    assert!(cached_exists);
 
     cleanup_keys("rust:cache:pqsnappy:*");
 }
 
 /// Test cache with TTL.
-#[test]
-#[ignore] // Requires Redis
-fn test_cache_with_ttl() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_cache_with_ttl() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:cache:ttl:*");
 
     let batch = create_test_batch(10);
     let config = CacheConfig::ipc().with_ttl(3600);
 
-    cache_record_batch(&redis_url(), "rust:cache:ttl:basic", &batch, &config).unwrap();
+    let ttl = tokio::task::spawn_blocking(move || {
+        cache_record_batch(&url, "rust:cache:ttl:basic", &batch, &config).unwrap();
 
-    // Check TTL is set
-    let ttl = cache_ttl(&redis_url(), "rust:cache:ttl:basic").unwrap();
+        cache_ttl(&url, "rust:cache:ttl:basic").unwrap()
+    })
+    .await
+    .expect("spawn_blocking failed");
+
     assert!(ttl.is_some());
     assert!(ttl.unwrap() > 0 && ttl.unwrap() <= 3600);
 
@@ -198,79 +211,99 @@ fn test_cache_with_ttl() {
 }
 
 /// Test cache_exists.
-#[test]
-#[ignore] // Requires Redis
-fn test_cache_exists() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_cache_exists() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:cache:exists:*");
 
     let batch = create_test_batch(10);
     let config = CacheConfig::ipc();
 
-    // Should not exist initially
-    assert!(!cache_exists(&redis_url(), "rust:cache:exists:test").unwrap());
+    let (before_exists, after_exists) = tokio::task::spawn_blocking(move || {
+        // Should not exist initially
+        let before = cache_exists(&url, "rust:cache:exists:test").unwrap();
 
-    // Cache it
-    cache_record_batch(&redis_url(), "rust:cache:exists:test", &batch, &config).unwrap();
+        // Cache it
+        cache_record_batch(&url, "rust:cache:exists:test", &batch, &config).unwrap();
 
-    // Should exist now
-    assert!(cache_exists(&redis_url(), "rust:cache:exists:test").unwrap());
+        // Should exist now
+        let after = cache_exists(&url, "rust:cache:exists:test").unwrap();
+
+        (before, after)
+    })
+    .await
+    .expect("spawn_blocking failed");
+
+    assert!(!before_exists);
+    assert!(after_exists);
 
     cleanup_keys("rust:cache:exists:*");
 }
 
 /// Test delete_cached.
-#[test]
-#[ignore] // Requires Redis
-fn test_delete_cached() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_delete_cached() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:cache:delete:*");
 
     let batch = create_test_batch(10);
     let config = CacheConfig::ipc();
 
-    cache_record_batch(&redis_url(), "rust:cache:delete:test", &batch, &config).unwrap();
-    assert!(cache_exists(&redis_url(), "rust:cache:delete:test").unwrap());
+    let (exists_after_cache, deleted, exists_after_delete, deleted_again) =
+        tokio::task::spawn_blocking(move || {
+            cache_record_batch(&url, "rust:cache:delete:test", &batch, &config).unwrap();
+            let exists_after_cache = cache_exists(&url, "rust:cache:delete:test").unwrap();
 
-    // Delete it
-    let deleted = delete_cached(&redis_url(), "rust:cache:delete:test").unwrap();
+            // Delete it
+            let deleted = delete_cached(&url, "rust:cache:delete:test").unwrap();
+
+            // Should not exist anymore
+            let exists_after_delete = cache_exists(&url, "rust:cache:delete:test").unwrap();
+
+            // Deleting non-existent key returns false
+            let deleted_again = delete_cached(&url, "rust:cache:delete:test").unwrap();
+
+            (
+                exists_after_cache,
+                deleted,
+                exists_after_delete,
+                deleted_again,
+            )
+        })
+        .await
+        .expect("spawn_blocking failed");
+
+    assert!(exists_after_cache);
     assert!(deleted);
-
-    // Should not exist anymore
-    assert!(!cache_exists(&redis_url(), "rust:cache:delete:test").unwrap());
-
-    // Deleting non-existent key returns false
-    let deleted_again = delete_cached(&redis_url(), "rust:cache:delete:test").unwrap();
+    assert!(!exists_after_delete);
     assert!(!deleted_again);
 
     cleanup_keys("rust:cache:delete:*");
 }
 
 /// Test cache_info.
-#[test]
-#[ignore] // Requires Redis
-fn test_cache_info() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_cache_info() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:cache:info:*");
 
     let batch = create_test_batch(100);
     let config = CacheConfig::ipc().with_ttl(7200);
 
-    cache_record_batch(&redis_url(), "rust:cache:info:test", &batch, &config).unwrap();
+    let info = tokio::task::spawn_blocking(move || {
+        cache_record_batch(&url, "rust:cache:info:test", &batch, &config).unwrap();
 
-    let info = cache_info(&redis_url(), "rust:cache:info:test").unwrap();
+        cache_info(&url, "rust:cache:info:test").unwrap()
+    })
+    .await
+    .expect("spawn_blocking failed");
+
     assert!(info.is_some());
 
     let info = info.unwrap();
@@ -285,49 +318,50 @@ fn test_cache_info() {
 }
 
 /// Test caching non-existent key returns None.
-#[test]
-#[ignore] // Requires Redis
-fn test_get_nonexistent() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_get_nonexistent() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
-    let cached = get_cached_record_batch(&redis_url(), "rust:cache:nonexistent:key").unwrap();
+    let cached = tokio::task::spawn_blocking(move || {
+        get_cached_record_batch(&url, "rust:cache:nonexistent:key").unwrap()
+    })
+    .await
+    .expect("spawn_blocking failed");
+
     assert!(cached.is_none());
 }
 
 /// Test caching empty batch.
-#[test]
-#[ignore] // Requires Redis
-fn test_cache_empty_batch() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_cache_empty_batch() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:cache:empty:*");
 
     let batch = create_test_batch(0);
     let config = CacheConfig::ipc();
 
-    cache_record_batch(&redis_url(), "rust:cache:empty:test", &batch, &config).unwrap();
+    let cached_rows = tokio::task::spawn_blocking(move || {
+        cache_record_batch(&url, "rust:cache:empty:test", &batch, &config).unwrap();
 
-    let cached = get_cached_record_batch(&redis_url(), "rust:cache:empty:test").unwrap();
-    assert!(cached.is_some());
-    assert_eq!(cached.unwrap().num_rows(), 0);
+        let cached = get_cached_record_batch(&url, "rust:cache:empty:test").unwrap();
+        cached.unwrap().num_rows()
+    })
+    .await
+    .expect("spawn_blocking failed");
+
+    assert_eq!(cached_rows, 0);
 
     cleanup_keys("rust:cache:empty:*");
 }
 
 /// Test caching large batch (to test chunking).
-#[test]
-#[ignore] // Requires Redis
-fn test_cache_large_batch() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_cache_large_batch() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:cache:large:*");
 
@@ -337,60 +371,71 @@ fn test_cache_large_batch() {
     // Use small chunk size to force chunking
     let config = CacheConfig::ipc().with_chunk_size(1024);
 
-    let bytes_written =
-        cache_record_batch(&redis_url(), "rust:cache:large:test", &batch, &config).unwrap();
+    let (bytes_written, is_chunked, num_chunks, cached_rows, deleted) =
+        tokio::task::spawn_blocking(move || {
+            let bytes_written =
+                cache_record_batch(&url, "rust:cache:large:test", &batch, &config).unwrap();
+
+            // Get info to verify chunking
+            let info = cache_info(&url, "rust:cache:large:test").unwrap().unwrap();
+
+            // Retrieve and verify
+            let cached = get_cached_record_batch(&url, "rust:cache:large:test").unwrap();
+            let cached_rows = cached.unwrap().num_rows();
+
+            // Delete chunked data
+            let deleted = delete_cached(&url, "rust:cache:large:test").unwrap();
+
+            (
+                bytes_written,
+                info.is_chunked,
+                info.num_chunks,
+                cached_rows,
+                deleted,
+            )
+        })
+        .await
+        .expect("spawn_blocking failed");
+
     assert!(bytes_written > 0);
-
-    // Get info to verify chunking
-    let info = cache_info(&redis_url(), "rust:cache:large:test").unwrap();
-    assert!(info.is_some());
-    let info = info.unwrap();
-    assert!(info.is_chunked);
-    assert!(info.num_chunks > 1);
-
-    // Retrieve and verify
-    let cached = get_cached_record_batch(&redis_url(), "rust:cache:large:test").unwrap();
-    assert!(cached.is_some());
-    assert_eq!(cached.unwrap().num_rows(), 10000);
-
-    // Delete chunked data
-    let deleted = delete_cached(&redis_url(), "rust:cache:large:test").unwrap();
+    assert!(is_chunked);
+    assert!(num_chunks > 1);
+    assert_eq!(cached_rows, 10000);
     assert!(deleted);
 
     cleanup_keys("rust:cache:large:*");
 }
 
 /// Test cache without chunking.
-#[test]
-#[ignore] // Requires Redis
-fn test_cache_without_chunking() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_cache_without_chunking() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:cache:nochunk:*");
 
     let batch = create_test_batch(1000);
     let config = CacheConfig::ipc().without_chunking();
 
-    cache_record_batch(&redis_url(), "rust:cache:nochunk:test", &batch, &config).unwrap();
+    let is_chunked = tokio::task::spawn_blocking(move || {
+        cache_record_batch(&url, "rust:cache:nochunk:test", &batch, &config).unwrap();
 
-    let info = cache_info(&redis_url(), "rust:cache:nochunk:test").unwrap();
-    assert!(info.is_some());
-    assert!(!info.unwrap().is_chunked);
+        let info = cache_info(&url, "rust:cache:nochunk:test").unwrap();
+        info.unwrap().is_chunked
+    })
+    .await
+    .expect("spawn_blocking failed");
+
+    assert!(!is_chunked);
 
     cleanup_keys("rust:cache:nochunk:*");
 }
 
 /// Test overwriting cached data.
-#[test]
-#[ignore] // Requires Redis
-fn test_cache_overwrite() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_cache_overwrite() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:cache:overwrite:*");
 
@@ -398,16 +443,25 @@ fn test_cache_overwrite() {
     let batch2 = create_test_batch(100);
     let config = CacheConfig::ipc();
 
-    cache_record_batch(&redis_url(), "rust:cache:overwrite:test", &batch1, &config).unwrap();
+    let (cached1_rows, cached2_rows) = tokio::task::spawn_blocking(move || {
+        cache_record_batch(&url, "rust:cache:overwrite:test", &batch1, &config).unwrap();
 
-    let cached1 = get_cached_record_batch(&redis_url(), "rust:cache:overwrite:test").unwrap();
-    assert_eq!(cached1.unwrap().num_rows(), 50);
+        let cached1 = get_cached_record_batch(&url, "rust:cache:overwrite:test").unwrap();
+        let cached1_rows = cached1.unwrap().num_rows();
 
-    // Overwrite with different batch
-    cache_record_batch(&redis_url(), "rust:cache:overwrite:test", &batch2, &config).unwrap();
+        // Overwrite with different batch
+        cache_record_batch(&url, "rust:cache:overwrite:test", &batch2, &config).unwrap();
 
-    let cached2 = get_cached_record_batch(&redis_url(), "rust:cache:overwrite:test").unwrap();
-    assert_eq!(cached2.unwrap().num_rows(), 100);
+        let cached2 = get_cached_record_batch(&url, "rust:cache:overwrite:test").unwrap();
+        let cached2_rows = cached2.unwrap().num_rows();
+
+        (cached1_rows, cached2_rows)
+    })
+    .await
+    .expect("spawn_blocking failed");
+
+    assert_eq!(cached1_rows, 50);
+    assert_eq!(cached2_rows, 100);
 
     cleanup_keys("rust:cache:overwrite:*");
 }
