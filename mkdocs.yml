@@ -75,6 +75,7 @@ nav:
       - Overview: guide/redisearch.md
       - Query Builder: guide/redisearch-queries.md
       - Aggregation: guide/redisearch-aggregation.md
+      - Vector Search: guide/vector-search.md
       - Index Management: guide/index-management.md
       - Advanced Options: guide/redisearch-advanced.md
       - Query Examples: examples/advanced-queries.md
