@@ -18,6 +18,7 @@ These examples demonstrate common polars-redis usage patterns.
 | `ttl_and_metadata.py` | TTL and row index columns |
 | `write_modes.py` | Write modes: fail, replace, append |
 | `search_example.py` | RediSearch: server-side filtering and aggregation |
+| `vector_search.py` | Vector similarity search with embeddings |
 
 ## Running
 
@@ -30,4 +31,8 @@ python examples/python/basic_hashes.py
 
 # Run RediSearch example
 python examples/python/search_example.py
+
+# Run vector search example (requires sentence-transformers)
+pip install sentence-transformers
+python examples/python/vector_search.py
 ```
