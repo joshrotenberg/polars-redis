@@ -9,16 +9,12 @@ use polars_redis::{
 };
 
 mod common;
-use common::{cleanup_keys, redis_available, redis_cli, redis_cli_output, redis_url};
+use common::{cleanup_keys, ensure_redis, redis_cli, redis_cli_output};
 
 /// Test basic hash writing.
-#[test]
-#[ignore] // Requires Redis
-fn test_write_hashes_basic() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_hashes_basic() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:write:*");
 
@@ -34,8 +30,12 @@ fn test_write_hashes_basic() {
         vec![Some("Charlie".to_string()), Some("35".to_string())],
     ];
 
-    let result = write_hashes(&redis_url(), keys, fields, values, None, WriteMode::Replace)
-        .expect("Failed to write hashes");
+    let result = tokio::task::spawn_blocking(move || {
+        write_hashes(&url, keys, fields, values, None, WriteMode::Replace)
+            .expect("Failed to write hashes")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.keys_written, 3);
     assert_eq!(result.keys_failed, 0);
@@ -52,13 +52,9 @@ fn test_write_hashes_basic() {
 }
 
 /// Test hash writing with TTL.
-#[test]
-#[ignore] // Requires Redis
-fn test_write_hashes_with_ttl() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_hashes_with_ttl() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:ttlwrite:*");
 
@@ -66,15 +62,19 @@ fn test_write_hashes_with_ttl() {
     let fields = vec!["name".to_string()];
     let values = vec![vec![Some("Test".to_string())]];
 
-    let result = write_hashes(
-        &redis_url(),
-        keys,
-        fields,
-        values,
-        Some(3600), // 1 hour TTL
-        WriteMode::Replace,
-    )
-    .expect("Failed to write hashes");
+    let result = tokio::task::spawn_blocking(move || {
+        write_hashes(
+            &url,
+            keys,
+            fields,
+            values,
+            Some(3600), // 1 hour TTL
+            WriteMode::Replace,
+        )
+        .expect("Failed to write hashes")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.keys_written, 1);
 
@@ -88,13 +88,9 @@ fn test_write_hashes_with_ttl() {
 }
 
 /// Test hash writing with null values.
-#[test]
-#[ignore] // Requires Redis
-fn test_write_hashes_with_nulls() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_hashes_with_nulls() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:nullwrite:*");
 
@@ -102,8 +98,12 @@ fn test_write_hashes_with_nulls() {
     let fields = vec!["name".to_string(), "age".to_string()];
     let values = vec![vec![Some("Alice".to_string()), None]]; // age is null
 
-    let result = write_hashes(&redis_url(), keys, fields, values, None, WriteMode::Replace)
-        .expect("Failed to write hashes");
+    let result = tokio::task::spawn_blocking(move || {
+        write_hashes(&url, keys, fields, values, None, WriteMode::Replace)
+            .expect("Failed to write hashes")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.keys_written, 1);
 
@@ -118,21 +118,21 @@ fn test_write_hashes_with_nulls() {
 }
 
 /// Test string writing.
-#[test]
-#[ignore] // Requires Redis
-fn test_write_strings_basic() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_strings_basic() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:strwrite:*");
 
     let keys = vec!["rust:strwrite:1".to_string(), "rust:strwrite:2".to_string()];
     let values = vec![Some("value1".to_string()), Some("value2".to_string())];
 
-    let result = write_strings(&redis_url(), keys, values, None, WriteMode::Replace)
-        .expect("Failed to write strings");
+    let result = tokio::task::spawn_blocking(move || {
+        write_strings(&url, keys, values, None, WriteMode::Replace)
+            .expect("Failed to write strings")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.keys_written, 2);
 
@@ -147,13 +147,9 @@ fn test_write_strings_basic() {
 }
 
 /// Test write mode: Replace.
-#[test]
-#[ignore] // Requires Redis
-fn test_write_mode_replace() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_mode_replace() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:mode:*");
 
@@ -162,22 +158,25 @@ fn test_write_mode_replace() {
     let fields = vec!["name".to_string(), "old_field".to_string()];
     let values = vec![vec![Some("Old".to_string()), Some("data".to_string())]];
 
-    write_hashes(
-        &redis_url(),
-        keys.clone(),
-        fields,
-        values,
-        None,
-        WriteMode::Replace,
-    )
-    .expect("Failed to write initial data");
+    let url_clone = url.clone();
+    tokio::task::spawn_blocking(move || {
+        write_hashes(&url_clone, keys, fields, values, None, WriteMode::Replace)
+            .expect("Failed to write initial data")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     // Replace with new data
+    let keys = vec!["rust:mode:1".to_string()];
     let fields = vec!["name".to_string(), "new_field".to_string()];
     let values = vec![vec![Some("New".to_string()), Some("data".to_string())]];
 
-    let result = write_hashes(&redis_url(), keys, fields, values, None, WriteMode::Replace)
-        .expect("Failed to replace data");
+    let result = tokio::task::spawn_blocking(move || {
+        write_hashes(&url, keys, fields, values, None, WriteMode::Replace)
+            .expect("Failed to replace data")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.keys_written, 1);
 
@@ -192,13 +191,9 @@ fn test_write_mode_replace() {
 }
 
 /// Test write mode: Append.
-#[test]
-#[ignore] // Requires Redis
-fn test_write_mode_append() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_mode_append() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:append:*");
 
@@ -207,22 +202,25 @@ fn test_write_mode_append() {
     let fields = vec!["name".to_string()];
     let values = vec![vec![Some("Original".to_string())]];
 
-    write_hashes(
-        &redis_url(),
-        keys.clone(),
-        fields,
-        values,
-        None,
-        WriteMode::Replace,
-    )
-    .expect("Failed to write initial data");
+    let url_clone = url.clone();
+    tokio::task::spawn_blocking(move || {
+        write_hashes(&url_clone, keys, fields, values, None, WriteMode::Replace)
+            .expect("Failed to write initial data")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     // Append new field
+    let keys = vec!["rust:append:1".to_string()];
     let fields = vec!["age".to_string()];
     let values = vec![vec![Some("30".to_string())]];
 
-    let result = write_hashes(&redis_url(), keys, fields, values, None, WriteMode::Append)
-        .expect("Failed to append data");
+    let result = tokio::task::spawn_blocking(move || {
+        write_hashes(&url, keys, fields, values, None, WriteMode::Append)
+            .expect("Failed to append data")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.keys_written, 1);
 
@@ -237,15 +235,11 @@ fn test_write_mode_append() {
 }
 
 /// Test batch_to_ipc function.
-#[test]
-#[ignore] // Requires Redis
-fn test_batch_to_ipc() {
+#[tokio::test]
+async fn test_batch_to_ipc() {
     use polars_redis::{BatchConfig, HashBatchIterator, HashSchema, RedisType, batch_to_ipc};
 
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:ipc:*");
 
@@ -256,16 +250,20 @@ fn test_batch_to_ipc() {
 
     let config = BatchConfig::new("rust:ipc:*".to_string()).with_batch_size(100);
 
-    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create iterator");
+    let ipc_bytes = tokio::task::spawn_blocking(move || {
+        let mut iterator =
+            HashBatchIterator::new(&url, schema, config, None).expect("Failed to create iterator");
 
-    let batch = iterator
-        .next_batch()
-        .expect("Failed to get batch")
-        .expect("Expected a batch");
+        let batch = iterator
+            .next_batch()
+            .expect("Failed to get batch")
+            .expect("Expected a batch");
 
-    // Convert to IPC
-    let ipc_bytes = batch_to_ipc(&batch).expect("Failed to convert to IPC");
+        // Convert to IPC
+        batch_to_ipc(&batch).expect("Failed to convert to IPC")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     // IPC bytes should be non-empty and start with Arrow magic bytes
     assert!(!ipc_bytes.is_empty());
@@ -279,13 +277,9 @@ fn test_batch_to_ipc() {
 // =============================================================================
 
 /// Test basic JSON writing.
-#[test]
-#[ignore] // Requires Redis with RedisJSON
-fn test_write_json_basic() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_json_basic() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:jsonwrite:*");
 
@@ -298,8 +292,12 @@ fn test_write_json_basic() {
         r#"{"name": "Bob", "age": 25}"#.to_string(),
     ];
 
-    let result = write_json(&redis_url(), keys, json_strings, None, WriteMode::Replace)
-        .expect("Failed to write JSON");
+    let result = tokio::task::spawn_blocking(move || {
+        write_json(&url, keys, json_strings, None, WriteMode::Replace)
+            .expect("Failed to write JSON")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.keys_written, 2);
     assert_eq!(result.keys_failed, 0);
@@ -313,27 +311,21 @@ fn test_write_json_basic() {
 }
 
 /// Test JSON writing with TTL.
-#[test]
-#[ignore] // Requires Redis with RedisJSON
-fn test_write_json_with_ttl() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_json_with_ttl() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:jsonttl:*");
 
     let keys = vec!["rust:jsonttl:1".to_string()];
     let json_strings = vec![r#"{"test": true}"#.to_string()];
 
-    let result = write_json(
-        &redis_url(),
-        keys,
-        json_strings,
-        Some(3600),
-        WriteMode::Replace,
-    )
-    .expect("Failed to write JSON");
+    let result = tokio::task::spawn_blocking(move || {
+        write_json(&url, keys, json_strings, Some(3600), WriteMode::Replace)
+            .expect("Failed to write JSON")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.keys_written, 1);
 
@@ -351,13 +343,9 @@ fn test_write_json_with_ttl() {
 // =============================================================================
 
 /// Test basic list writing.
-#[test]
-#[ignore] // Requires Redis
-fn test_write_lists_basic() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_lists_basic() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:listwrite:*");
 
@@ -370,8 +358,11 @@ fn test_write_lists_basic() {
         vec!["x".to_string(), "y".to_string()],
     ];
 
-    let result = write_lists(&redis_url(), keys, elements, None, WriteMode::Replace)
-        .expect("Failed to write lists");
+    let result = tokio::task::spawn_blocking(move || {
+        write_lists(&url, keys, elements, None, WriteMode::Replace).expect("Failed to write lists")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.keys_written, 2);
     assert_eq!(result.keys_failed, 0);
@@ -387,13 +378,9 @@ fn test_write_lists_basic() {
 }
 
 /// Test list writing with append mode.
-#[test]
-#[ignore] // Requires Redis
-fn test_write_lists_append() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_lists_append() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:listappend:*");
 
@@ -403,8 +390,12 @@ fn test_write_lists_append() {
     let keys = vec!["rust:listappend:1".to_string()];
     let elements = vec![vec!["new1".to_string(), "new2".to_string()]];
 
-    let result = write_lists(&redis_url(), keys, elements, None, WriteMode::Append)
-        .expect("Failed to append to list");
+    let result = tokio::task::spawn_blocking(move || {
+        write_lists(&url, keys, elements, None, WriteMode::Append)
+            .expect("Failed to append to list")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.keys_written, 1);
 
@@ -420,13 +411,9 @@ fn test_write_lists_append() {
 // =============================================================================
 
 /// Test basic set writing.
-#[test]
-#[ignore] // Requires Redis
-fn test_write_sets_basic() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_sets_basic() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:setwrite:*");
 
@@ -436,8 +423,11 @@ fn test_write_sets_basic() {
         vec!["x".to_string(), "y".to_string()],
     ];
 
-    let result = write_sets(&redis_url(), keys, members, None, WriteMode::Replace)
-        .expect("Failed to write sets");
+    let result = tokio::task::spawn_blocking(move || {
+        write_sets(&url, keys, members, None, WriteMode::Replace).expect("Failed to write sets")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.keys_written, 2);
     assert_eq!(result.keys_failed, 0);
@@ -453,13 +443,9 @@ fn test_write_sets_basic() {
 }
 
 /// Test set writing with append mode (adds to existing set).
-#[test]
-#[ignore] // Requires Redis
-fn test_write_sets_append() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_sets_append() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:setappend:*");
 
@@ -469,8 +455,11 @@ fn test_write_sets_append() {
     let keys = vec!["rust:setappend:1".to_string()];
     let members = vec![vec!["new1".to_string(), "new2".to_string()]];
 
-    let result = write_sets(&redis_url(), keys, members, None, WriteMode::Append)
-        .expect("Failed to append to set");
+    let result = tokio::task::spawn_blocking(move || {
+        write_sets(&url, keys, members, None, WriteMode::Append).expect("Failed to append to set")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.keys_written, 1);
 
@@ -486,13 +475,9 @@ fn test_write_sets_append() {
 // =============================================================================
 
 /// Test basic sorted set writing.
-#[test]
-#[ignore] // Requires Redis
-fn test_write_zsets_basic() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_zsets_basic() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:zsetwrite:*");
 
@@ -509,8 +494,12 @@ fn test_write_zsets_basic() {
         vec![("dave".to_string(), 50.0)],
     ];
 
-    let result = write_zsets(&redis_url(), keys, members, None, WriteMode::Replace)
-        .expect("Failed to write sorted sets");
+    let result = tokio::task::spawn_blocking(move || {
+        write_zsets(&url, keys, members, None, WriteMode::Replace)
+            .expect("Failed to write sorted sets")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.keys_written, 2);
     assert_eq!(result.keys_failed, 0);
@@ -530,21 +519,21 @@ fn test_write_zsets_basic() {
 }
 
 /// Test sorted set with TTL.
-#[test]
-#[ignore] // Requires Redis
-fn test_write_zsets_with_ttl() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_zsets_with_ttl() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:zsetttl:*");
 
     let keys = vec!["rust:zsetttl:1".to_string()];
     let members = vec![vec![("member".to_string(), 1.0)]];
 
-    let result = write_zsets(&redis_url(), keys, members, Some(3600), WriteMode::Replace)
-        .expect("Failed to write sorted set");
+    let result = tokio::task::spawn_blocking(move || {
+        write_zsets(&url, keys, members, Some(3600), WriteMode::Replace)
+            .expect("Failed to write sorted set")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.keys_written, 1);
 
@@ -562,13 +551,9 @@ fn test_write_zsets_with_ttl() {
 // =============================================================================
 
 /// Test WriteMode::Fail skips existing keys.
-#[test]
-#[ignore] // Requires Redis
-fn test_write_mode_fail_skips_existing() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_mode_fail_skips_existing() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:failmode:*");
 
@@ -585,8 +570,12 @@ fn test_write_mode_fail_skips_existing() {
         vec![Some("Attempt2".to_string())],
     ];
 
-    let result = write_hashes(&redis_url(), keys, fields, values, None, WriteMode::Fail)
-        .expect("Failed to write hashes");
+    let result = tokio::task::spawn_blocking(move || {
+        write_hashes(&url, keys, fields, values, None, WriteMode::Fail)
+            .expect("Failed to write hashes")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.keys_written, 1); // Only key2 written
     assert_eq!(result.keys_skipped, 1); // Key1 skipped
@@ -603,13 +592,9 @@ fn test_write_mode_fail_skips_existing() {
 }
 
 /// Test WriteMode::Fail for strings.
-#[test]
-#[ignore] // Requires Redis
-fn test_write_strings_fail_mode() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_strings_fail_mode() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:strfail:*");
 
@@ -619,8 +604,11 @@ fn test_write_strings_fail_mode() {
     let keys = vec!["rust:strfail:1".to_string(), "rust:strfail:2".to_string()];
     let values = vec![Some("new1".to_string()), Some("new2".to_string())];
 
-    let result = write_strings(&redis_url(), keys, values, None, WriteMode::Fail)
-        .expect("Failed to write strings");
+    let result = tokio::task::spawn_blocking(move || {
+        write_strings(&url, keys, values, None, WriteMode::Fail).expect("Failed to write strings")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.keys_written, 1);
     assert_eq!(result.keys_skipped, 1);
@@ -637,13 +625,9 @@ fn test_write_strings_fail_mode() {
 // =============================================================================
 
 /// Test detailed write results with successful writes.
-#[test]
-#[ignore] // Requires Redis
-fn test_write_hashes_detailed_success() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_hashes_detailed_success() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:detailed:*");
 
@@ -659,9 +643,12 @@ fn test_write_hashes_detailed_success() {
         vec![Some("Charlie".to_string())],
     ];
 
-    let result =
-        write_hashes_detailed(&redis_url(), keys, fields, values, None, WriteMode::Replace)
-            .expect("Failed to write hashes");
+    let result = tokio::task::spawn_blocking(move || {
+        write_hashes_detailed(&url, keys, fields, values, None, WriteMode::Replace)
+            .expect("Failed to write hashes")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert!(result.is_complete_success());
     assert_eq!(result.keys_written, 3);
@@ -673,13 +660,9 @@ fn test_write_hashes_detailed_success() {
 }
 
 /// Test detailed write results track succeeded keys.
-#[test]
-#[ignore] // Requires Redis
-fn test_write_hashes_detailed_tracks_keys() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_hashes_detailed_tracks_keys() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:track:*");
 
@@ -690,9 +673,12 @@ fn test_write_hashes_detailed_tracks_keys() {
         vec![Some("value2".to_string())],
     ];
 
-    let result =
-        write_hashes_detailed(&redis_url(), keys, fields, values, None, WriteMode::Replace)
-            .expect("Failed to write hashes");
+    let result = tokio::task::spawn_blocking(move || {
+        write_hashes_detailed(&url, keys, fields, values, None, WriteMode::Replace)
+            .expect("Failed to write hashes")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert!(result.succeeded_keys.contains(&"rust:track:1".to_string()));
     assert!(result.succeeded_keys.contains(&"rust:track:2".to_string()));
@@ -705,13 +691,9 @@ fn test_write_hashes_detailed_tracks_keys() {
 // =============================================================================
 
 /// Test writing a large batch of hashes.
-#[test]
-#[ignore] // Requires Redis
-fn test_write_large_batch_hashes() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_large_batch_hashes() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:largebatch:*");
 
@@ -724,8 +706,12 @@ fn test_write_large_batch_hashes() {
         .map(|i| vec![Some(i.to_string()), Some(format!("value_{}", i))])
         .collect();
 
-    let result = write_hashes(&redis_url(), keys, fields, values, None, WriteMode::Replace)
-        .expect("Failed to write large batch");
+    let result = tokio::task::spawn_blocking(move || {
+        write_hashes(&url, keys, fields, values, None, WriteMode::Replace)
+            .expect("Failed to write large batch")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.keys_written, count);
     assert_eq!(result.keys_failed, 0);
@@ -741,13 +727,9 @@ fn test_write_large_batch_hashes() {
 }
 
 /// Test writing a large batch of strings.
-#[test]
-#[ignore] // Requires Redis
-fn test_write_large_batch_strings() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_large_batch_strings() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:largestr:*");
 
@@ -757,8 +739,12 @@ fn test_write_large_batch_strings() {
         .collect();
     let values: Vec<Option<String>> = (1..=count).map(|i| Some(format!("value_{}", i))).collect();
 
-    let result = write_strings(&redis_url(), keys, values, None, WriteMode::Replace)
-        .expect("Failed to write large batch");
+    let result = tokio::task::spawn_blocking(move || {
+        write_strings(&url, keys, values, None, WriteMode::Replace)
+            .expect("Failed to write large batch")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.keys_written, count);
     assert_eq!(result.keys_failed, 0);
@@ -775,21 +761,21 @@ fn test_write_large_batch_strings() {
 // =============================================================================
 
 /// Test writing with empty values.
-#[test]
-#[ignore] // Requires Redis
-fn test_write_empty_string_value() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_empty_string_value() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:empty:*");
 
     let keys = vec!["rust:empty:1".to_string()];
     let values = vec![Some("".to_string())]; // Empty string
 
-    let result = write_strings(&redis_url(), keys, values, None, WriteMode::Replace)
-        .expect("Failed to write empty string");
+    let result = tokio::task::spawn_blocking(move || {
+        write_strings(&url, keys, values, None, WriteMode::Replace)
+            .expect("Failed to write empty string")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.keys_written, 1);
 
@@ -800,13 +786,9 @@ fn test_write_empty_string_value() {
 }
 
 /// Test writing set with duplicate members (should deduplicate).
-#[test]
-#[ignore] // Requires Redis
-fn test_write_set_with_duplicates() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_set_with_duplicates() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:setdup:*");
 
@@ -819,8 +801,11 @@ fn test_write_set_with_duplicates() {
         "b".to_string(), // duplicate
     ]];
 
-    let result = write_sets(&redis_url(), keys, members, None, WriteMode::Replace)
-        .expect("Failed to write set");
+    let result = tokio::task::spawn_blocking(move || {
+        write_sets(&url, keys, members, None, WriteMode::Replace).expect("Failed to write set")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.keys_written, 1);
 
@@ -832,21 +817,21 @@ fn test_write_set_with_duplicates() {
 }
 
 /// Test writing empty list (should not create key).
-#[test]
-#[ignore] // Requires Redis
-fn test_write_empty_list() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_empty_list() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:emptylist:*");
 
     let keys = vec!["rust:emptylist:1".to_string()];
     let elements: Vec<Vec<String>> = vec![vec![]]; // Empty list
 
-    let result = write_lists(&redis_url(), keys, elements, None, WriteMode::Replace)
-        .expect("Failed to write empty list");
+    let result = tokio::task::spawn_blocking(move || {
+        write_lists(&url, keys, elements, None, WriteMode::Replace)
+            .expect("Failed to write empty list")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     // Empty lists are skipped
     assert_eq!(result.keys_written, 0);
@@ -858,13 +843,9 @@ fn test_write_empty_list() {
 }
 
 /// Test writing strings with null values (should skip nulls).
-#[test]
-#[ignore] // Requires Redis
-fn test_write_strings_with_nulls() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_write_strings_with_nulls() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:strnull:*");
 
@@ -879,8 +860,12 @@ fn test_write_strings_with_nulls() {
         Some("value3".to_string()),
     ];
 
-    let result = write_strings(&redis_url(), keys, values, None, WriteMode::Replace)
-        .expect("Failed to write strings");
+    let result = tokio::task::spawn_blocking(move || {
+        write_strings(&url, keys, values, None, WriteMode::Replace)
+            .expect("Failed to write strings")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.keys_written, 2); // Only non-null values
 

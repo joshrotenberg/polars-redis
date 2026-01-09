@@ -3,28 +3,27 @@
 //! This module provides helper functions for setting up test data,
 //! connecting to Redis, and cleaning up after tests.
 //!
-//! ## Using ContainerGuard (Recommended)
+//! ## Redis Connection Strategy
 //!
-//! For tests that need Redis, use `redis_guard()` to get a `ContainerGuard`
-//! that automatically manages the container lifecycle:
+//! Tests automatically detect and use Redis in this order:
+//! 1. `REDIS_URL` env var (for CI with GitHub Actions service)
+//! 2. Existing Redis on port 6379 (from docker-compose or manual)
+//! 3. Auto-start container via docker-wrapper
+//!
+//! ## Usage
 //!
 //! ```ignore
 //! #[tokio::test]
 //! async fn test_example() {
-//!     let guard = redis_guard().await;
-//!     let url = guard.connection_string();
+//!     let url = ensure_redis().await;
 //!     // ... test code using url ...
-//!     // Container is automatically cleaned up when guard is dropped
 //! }
 //! ```
 //!
 //! ## Environment Variables
 //!
-//! - `REDIS_URL`: Redis connection URL (default: from container)
+//! - `REDIS_URL`: Redis connection URL (skips auto-detection)
 //! - `REDIS_PORT`: Redis port for CLI commands (default: `6379`)
-//!
-//! For CI, set `REDIS_URL=redis://localhost:6379` and `REDIS_PORT=6379` to use
-//! the GitHub Actions Redis service.
 
 #![allow(dead_code)]
 
@@ -34,51 +33,110 @@ use std::sync::OnceLock;
 use docker_wrapper::template::redis::RedisTemplate;
 use docker_wrapper::testing::ContainerGuard;
 
-/// Container name for the test Redis instance.
+/// Container name for the test Redis instance (when auto-started).
 pub const CONTAINER_NAME: &str = "polars-redis-test";
 
-/// Global container guard - ensures we only start one container per test run.
-static REDIS_GUARD: OnceLock<tokio::sync::OnceCell<ContainerGuard<RedisTemplate>>> =
+/// Global container guard - only used if we need to start our own container.
+static REDIS_GUARD: OnceLock<tokio::sync::OnceCell<Option<ContainerGuard<RedisTemplate>>>> =
     OnceLock::new();
+
+/// Global Redis URL - set once per test run.
+static REDIS_URL: OnceLock<String> = OnceLock::new();
+
+/// Ensure Redis is available and return the connection URL.
+///
+/// This function:
+/// 1. Returns `REDIS_URL` env var if set (CI mode)
+/// 2. Returns localhost:6379 if Redis is already running there
+/// 3. Starts a container via docker-wrapper and returns its URL
+///
+/// The result is cached - subsequent calls return the same URL.
+pub async fn ensure_redis() -> &'static str {
+    // Fast path: already initialized
+    if let Some(url) = REDIS_URL.get() {
+        return url;
+    }
+
+    // Check for REDIS_URL env var first (CI mode)
+    if let Ok(url) = std::env::var("REDIS_URL") {
+        let _ = REDIS_URL.set(url);
+        return REDIS_URL.get().unwrap();
+    }
+
+    // Check if Redis is already running on default port
+    if redis_available() {
+        let _ = REDIS_URL.set("redis://localhost:6379".to_string());
+        return REDIS_URL.get().unwrap();
+    }
+
+    // Need to start our own container
+    let cell = REDIS_GUARD.get_or_init(tokio::sync::OnceCell::new);
+    let guard = cell
+        .get_or_init(|| async {
+            let template = RedisTemplate::new(CONTAINER_NAME);
+            match ContainerGuard::new(template)
+                .reuse_if_running(true)
+                .wait_for_ready(true)
+                .keep_on_panic(true)
+                .start()
+                .await
+            {
+                Ok(g) => Some(g),
+                Err(e) => {
+                    eprintln!("Warning: Failed to start Redis container: {}", e);
+                    None
+                },
+            }
+        })
+        .await;
+
+    let url = match guard {
+        Some(g) => g.connection_string(),
+        None => "redis://localhost:6379".to_string(), // Fallback
+    };
+
+    let _ = REDIS_URL.set(url);
+    REDIS_URL.get().unwrap()
+}
 
 /// Get or create a Redis container guard.
 ///
-/// This function ensures only one Redis container is started per test run,
-/// and it's automatically cleaned up when all tests complete.
-///
-/// The container is configured with:
-/// - `reuse_if_running(true)` - Reuses existing containers for faster local dev
-/// - `wait_for_ready(true)` - Waits for Redis to be ready before returning
-/// - `keep_on_panic(true)` - Keeps container running on test failure for debugging
-///
-/// # Returns
-/// A reference to the ContainerGuard that provides the connection string.
+/// **Prefer `ensure_redis()` for new code.** This function is kept for
+/// backwards compatibility with existing tests.
 pub async fn redis_guard() -> &'static ContainerGuard<RedisTemplate> {
+    // Ensure Redis is available (might use existing instance)
+    let _ = ensure_redis().await;
+
+    // Return the guard if we started a container
     let cell = REDIS_GUARD.get_or_init(tokio::sync::OnceCell::new);
-    cell.get_or_init(|| async {
-        let template = RedisTemplate::new(CONTAINER_NAME);
-        ContainerGuard::new(template)
-            .reuse_if_running(true)
-            .wait_for_ready(true)
-            .keep_on_panic(true)
-            .start()
-            .await
-            .expect("Failed to start Redis container")
-    })
-    .await
+    let guard = cell.get_or_init(|| async { None }).await;
+
+    // If we didn't start a container, we need to create a dummy guard
+    // This is a workaround - ideally callers would use ensure_redis() instead
+    guard
+        .as_ref()
+        .expect("redis_guard() called but Redis was already running. Use ensure_redis() instead.")
+}
+
+/// Get the Redis URL (for tests using ensure_redis pattern).
+pub fn get_redis_url() -> &'static str {
+    REDIS_URL
+        .get()
+        .map(|s| s.as_str())
+        .unwrap_or("redis://localhost:6379")
 }
 
 /// Get the Redis URL from the container guard or environment.
 ///
 /// Prefers REDIS_URL env var if set (for CI), otherwise uses the container's
 /// connection string.
-pub fn redis_url() -> String {
-    std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".to_string())
-}
-
-/// Get the Redis URL from an active container guard.
 pub fn redis_url_from_guard(guard: &ContainerGuard<RedisTemplate>) -> String {
     std::env::var("REDIS_URL").unwrap_or_else(|_| guard.connection_string())
+}
+
+/// Get the Redis URL from environment or default.
+pub fn redis_url() -> String {
+    std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://localhost:6379".to_string())
 }
 
 /// Default Redis port for CLI commands.
@@ -246,13 +304,52 @@ pub fn create_hash_index(index_name: &str, prefix: &str) -> bool {
     ])
 }
 
+/// Parse a value from FT.INFO output (newline-separated key\nvalue pairs).
+fn parse_ft_info_value(output: &str, key: &str) -> Option<String> {
+    let lines: Vec<&str> = output.lines().collect();
+    for (i, line) in lines.iter().enumerate() {
+        if *line == key {
+            return lines.get(i + 1).map(|s| s.to_string());
+        }
+    }
+    None
+}
+
 /// Wait for index to be ready (simple polling).
+/// Waits until indexing is complete (percent_indexed reaches 1 or indexing field is 0).
 pub fn wait_for_index(index_name: &str) {
-    for _ in 0..10 {
-        if let Some(output) = redis_cli_output(&["FT.INFO", index_name])
-            && output.contains("num_docs")
-        {
-            return;
+    for _ in 0..50 {
+        if let Some(output) = redis_cli_output(&["FT.INFO", index_name]) {
+            // Check percent_indexed = 1 (indexing complete)
+            if let Some(pct) = parse_ft_info_value(&output, "percent_indexed") {
+                if pct == "1" {
+                    return;
+                }
+            }
+            // Also check indexing = 0 (not currently indexing)
+            if let Some(idx) = parse_ft_info_value(&output, "indexing") {
+                if idx == "0" {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    return;
+                }
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+/// Wait for index to have a specific number of documents.
+#[allow(dead_code)]
+pub fn wait_for_index_docs(index_name: &str, expected_docs: usize) {
+    for _ in 0..50 {
+        if let Some(output) = redis_cli_output(&["FT.INFO", index_name]) {
+            if let Some(num_str) = parse_ft_info_value(&output, "num_docs") {
+                if let Ok(num) = num_str.parse::<usize>() {
+                    if num >= expected_docs {
+                        return;
+                    }
+                }
+            }
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }

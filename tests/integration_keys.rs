@@ -1,7 +1,7 @@
 //! Integration tests for Redis key management operations.
 //!
 //! These tests require a running Redis instance.
-//! Run with: `cargo test --test integration_keys --all-features`
+//! Run with: `cargo test --test integration_keys`
 
 use polars_redis::{
     delete_keys, delete_keys_pattern, exists_keys, get_ttl, key_info, persist_keys, rename_keys,
@@ -9,16 +9,13 @@ use polars_redis::{
 };
 
 mod common;
-use common::{cleanup_keys, redis_available, redis_cli, redis_cli_output, redis_url};
+use common::{cleanup_keys, ensure_redis, get_redis_url, redis_cli, redis_cli_output};
 
 /// Test key_info returns correct information for hashes.
-#[test]
-#[ignore] // Requires Redis
-fn test_key_info_basic() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_key_info_basic() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:keyinfo:*");
 
@@ -30,7 +27,11 @@ fn test_key_info_basic() {
     // Set TTL on one key
     redis_cli(&["EXPIRE", "rust:keyinfo:2", "3600"]);
 
-    let info = key_info(&redis_url(), "rust:keyinfo:*", None).expect("Failed to get key info");
+    let info = tokio::task::spawn_blocking(move || {
+        key_info(&url, "rust:keyinfo:*", None).expect("Failed to get key info")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(info.len(), 3);
 
@@ -52,20 +53,20 @@ fn test_key_info_basic() {
 }
 
 /// Test key_info with memory usage.
-#[test]
-#[ignore] // Requires Redis
-fn test_key_info_with_memory() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_key_info_with_memory() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:keyinfomem:*");
 
     redis_cli(&["SET", "rust:keyinfomem:1", "some_value_here"]);
 
-    let info =
-        key_info(&redis_url(), "rust:keyinfomem:*", Some(true)).expect("Failed to get key info");
+    let info = tokio::task::spawn_blocking(move || {
+        key_info(&url, "rust:keyinfomem:*", Some(true)).expect("Failed to get key info")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(info.len(), 1);
     assert!(info[0].memory_usage.is_some());
@@ -76,13 +77,10 @@ fn test_key_info_with_memory() {
 }
 
 /// Test set_ttl for multiple keys.
-#[test]
-#[ignore] // Requires Redis
-fn test_set_ttl_basic() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_set_ttl_basic() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:setttl:*");
 
@@ -98,7 +96,10 @@ fn test_set_ttl_basic() {
         "rust:setttl:nonexistent".to_string(), // This one doesn't exist
     ];
 
-    let result = set_ttl(&redis_url(), &keys, 3600).expect("Failed to set TTL");
+    let result =
+        tokio::task::spawn_blocking(move || set_ttl(&url, &keys, 3600).expect("Failed to set TTL"))
+            .await
+            .expect("spawn_blocking failed");
 
     assert_eq!(result.succeeded, 3);
     assert_eq!(result.failed, 1);
@@ -114,13 +115,10 @@ fn test_set_ttl_basic() {
 }
 
 /// Test set_ttl_individual with different TTLs per key.
-#[test]
-#[ignore] // Requires Redis
-fn test_set_ttl_individual() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_set_ttl_individual() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:setttlind:*");
 
@@ -133,8 +131,11 @@ fn test_set_ttl_individual() {
         ("rust:setttlind:2".to_string(), 7200i64),
     ];
 
-    let result =
-        set_ttl_individual(&redis_url(), &keys_and_ttls).expect("Failed to set individual TTLs");
+    let result = tokio::task::spawn_blocking(move || {
+        set_ttl_individual(&url, &keys_and_ttls).expect("Failed to set individual TTLs")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.succeeded, 2);
     assert_eq!(result.failed, 0);
@@ -156,13 +157,10 @@ fn test_set_ttl_individual() {
 }
 
 /// Test delete_keys for multiple keys.
-#[test]
-#[ignore] // Requires Redis
-fn test_delete_keys_basic() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_delete_keys_basic() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:delkeys:*");
 
@@ -177,7 +175,11 @@ fn test_delete_keys_basic() {
         "rust:delkeys:nonexistent".to_string(),
     ];
 
-    let result = delete_keys(&redis_url(), &keys).expect("Failed to delete keys");
+    let result = tokio::task::spawn_blocking(move || {
+        delete_keys(&url, &keys).expect("Failed to delete keys")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.deleted, 2);
     assert_eq!(result.not_found, 1);
@@ -194,13 +196,10 @@ fn test_delete_keys_basic() {
 }
 
 /// Test delete_keys_pattern.
-#[test]
-#[ignore] // Requires Redis
-fn test_delete_keys_pattern() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_delete_keys_pattern() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:delpat:*");
 
@@ -209,7 +208,11 @@ fn test_delete_keys_pattern() {
     redis_cli(&["SET", "rust:delpat:2", "value2"]);
     redis_cli(&["SET", "rust:delpat:3", "value3"]);
 
-    let result = delete_keys_pattern(&redis_url(), "rust:delpat:*").expect("Failed to delete keys");
+    let result = tokio::task::spawn_blocking(move || {
+        delete_keys_pattern(&url, "rust:delpat:*").expect("Failed to delete keys")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.deleted, 3);
     assert_eq!(result.not_found, 0);
@@ -222,13 +225,10 @@ fn test_delete_keys_pattern() {
 }
 
 /// Test rename_keys.
-#[test]
-#[ignore] // Requires Redis
-fn test_rename_keys_basic() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_rename_keys_basic() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:rename:*");
     cleanup_keys("rust:renamed:*");
@@ -246,7 +246,11 @@ fn test_rename_keys_basic() {
         ),
     ];
 
-    let result = rename_keys(&redis_url(), &renames).expect("Failed to rename keys");
+    let result = tokio::task::spawn_blocking(move || {
+        rename_keys(&url, &renames).expect("Failed to rename keys")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.succeeded, 2);
     assert_eq!(result.failed, 1);
@@ -264,13 +268,10 @@ fn test_rename_keys_basic() {
 }
 
 /// Test persist_keys (remove TTL).
-#[test]
-#[ignore] // Requires Redis
-fn test_persist_keys() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_persist_keys() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:persist:*");
 
@@ -285,7 +286,11 @@ fn test_persist_keys() {
         "rust:persist:3".to_string(), // Already persistent
     ];
 
-    let result = persist_keys(&redis_url(), &keys).expect("Failed to persist keys");
+    let result = tokio::task::spawn_blocking(move || {
+        persist_keys(&url, &keys).expect("Failed to persist keys")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.succeeded, 2);
     assert_eq!(result.failed, 1); // Key 3 had no TTL
@@ -298,13 +303,10 @@ fn test_persist_keys() {
 }
 
 /// Test exists_keys.
-#[test]
-#[ignore] // Requires Redis
-fn test_exists_keys() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_exists_keys() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:exists:*");
 
@@ -318,7 +320,11 @@ fn test_exists_keys() {
         "rust:exists:nonexistent".to_string(),
     ];
 
-    let result = exists_keys(&redis_url(), &keys).expect("Failed to check existence");
+    let result = tokio::task::spawn_blocking(move || {
+        exists_keys(&url, &keys).expect("Failed to check existence")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.len(), 3);
 
@@ -338,13 +344,10 @@ fn test_exists_keys() {
 }
 
 /// Test get_ttl for multiple keys.
-#[test]
-#[ignore] // Requires Redis
-fn test_get_ttl() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_get_ttl() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:getttl:*");
 
@@ -358,7 +361,10 @@ fn test_get_ttl() {
         "rust:getttl:nonexistent".to_string(),
     ];
 
-    let result = get_ttl(&redis_url(), &keys).expect("Failed to get TTL");
+    let result =
+        tokio::task::spawn_blocking(move || get_ttl(&url, &keys).expect("Failed to get TTL"))
+            .await
+            .expect("spawn_blocking failed");
 
     assert_eq!(result.len(), 3);
 
@@ -378,29 +384,27 @@ fn test_get_ttl() {
 }
 
 /// Test key_info with empty result.
-#[test]
-#[ignore] // Requires Redis
-fn test_key_info_empty() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_key_info_empty() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:keyinfoempty:*");
 
-    let info = key_info(&redis_url(), "rust:keyinfoempty:*", None).expect("Failed to get key info");
+    let info = tokio::task::spawn_blocking(move || {
+        key_info(&url, "rust:keyinfoempty:*", None).expect("Failed to get key info")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert!(info.is_empty());
 }
 
 /// Test large batch of keys.
-#[test]
-#[ignore] // Requires Redis
-fn test_large_batch_operations() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_large_batch_operations() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:largebatch:*");
 
@@ -415,20 +419,33 @@ fn test_large_batch_operations() {
     }
 
     // Test key_info on large batch
-    let info = key_info(&redis_url(), "rust:largebatch:*", None)
-        .expect("Failed to get key info for large batch");
+    let url_clone = url.clone();
+    let info = tokio::task::spawn_blocking(move || {
+        key_info(&url_clone, "rust:largebatch:*", None)
+            .expect("Failed to get key info for large batch")
+    })
+    .await
+    .expect("spawn_blocking failed");
     assert_eq!(info.len(), count);
 
     // Test set_ttl on large batch
     let keys: Vec<String> = (0..count)
         .map(|i| format!("rust:largebatch:{}", i))
         .collect();
-    let result = set_ttl(&redis_url(), &keys, 3600).expect("Failed to set TTL for large batch");
+    let url_clone = url.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        set_ttl(&url_clone, &keys, 3600).expect("Failed to set TTL for large batch")
+    })
+    .await
+    .expect("spawn_blocking failed");
     assert_eq!(result.succeeded, count);
 
     // Test delete_keys_pattern on large batch
-    let delete_result = delete_keys_pattern(&redis_url(), "rust:largebatch:*")
-        .expect("Failed to delete large batch");
+    let delete_result = tokio::task::spawn_blocking(move || {
+        delete_keys_pattern(&url, "rust:largebatch:*").expect("Failed to delete large batch")
+    })
+    .await
+    .expect("spawn_blocking failed");
     assert_eq!(delete_result.deleted, count);
 
     cleanup_keys("rust:largebatch:*");

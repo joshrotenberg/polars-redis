@@ -1,24 +1,21 @@
 //! Integration tests for Redis hash operations.
 //!
-//! These tests require a running Redis instance.
-//! By default, tests connect to localhost:16379 (started via docker-wrapper).
+//! These tests automatically detect and use Redis:
+//! - Uses REDIS_URL env var if set (CI)
+//! - Uses existing Redis on port 6379 (docker-compose)
+//! - Auto-starts container via docker-wrapper if needed
 //!
-//! Run with: `cargo test --test integration_hash --all-features`
-//! Run ignored tests: `cargo test --test integration_hash --all-features -- --ignored`
+//! Run with: `cargo test --test integration_hash --features "json,search"`
 
 use polars_redis::{BatchConfig, HashBatchIterator, HashSchema, RedisType};
 
 mod common;
-use common::{cleanup_keys, redis_available, redis_cli, redis_url, setup_test_hashes};
+use common::{cleanup_keys, ensure_redis, redis_cli, setup_test_hashes};
 
 /// Test basic hash scanning with explicit schema.
-#[test]
-#[ignore] // Requires Redis
-fn test_scan_hashes_basic() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_scan_hashes_basic() {
+    let url = ensure_redis().await.to_string();
 
     // Setup test data
     cleanup_keys("rust:hash:*");
@@ -38,32 +35,32 @@ fn test_scan_hashes_basic() {
         .with_batch_size(100)
         .with_count_hint(50);
 
-    // Create iterator
-    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create iterator");
+    let (total_rows, is_done) = tokio::task::spawn_blocking(move || {
+        let mut iterator =
+            HashBatchIterator::new(&url, schema, config, None).expect("Failed to create iterator");
 
-    // Collect all batches
-    let mut total_rows = 0;
-    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
-        total_rows += batch.num_rows();
-        assert!(batch.num_columns() >= 3); // name, age, active (+ _key)
-    }
+        let mut total_rows = 0;
+        while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+            total_rows += batch.num_rows();
+            assert!(batch.num_columns() >= 3); // name, age, active (+ _key)
+        }
+
+        (total_rows, iterator.is_done())
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(total_rows, 10);
-    assert!(iterator.is_done());
+    assert!(is_done);
 
     // Cleanup
     cleanup_keys("rust:hash:*");
 }
 
 /// Test hash scanning with projection (subset of fields).
-#[test]
-#[ignore] // Requires Redis
-fn test_scan_hashes_with_projection() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_scan_hashes_with_projection() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:proj:*");
     setup_test_hashes("rust:proj:", 5);
@@ -79,51 +76,57 @@ fn test_scan_hashes_with_projection() {
 
     // Only request 'name' field
     let projection = Some(vec!["name".to_string()]);
-    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, projection)
-        .expect("Failed to create iterator");
 
-    let batch = iterator
-        .next_batch()
-        .expect("Failed to get batch")
-        .expect("Expected a batch");
+    let (num_columns, num_rows) = tokio::task::spawn_blocking(move || {
+        let mut iterator = HashBatchIterator::new(&url, schema, config, projection)
+            .expect("Failed to create iterator");
+
+        let batch = iterator
+            .next_batch()
+            .expect("Failed to get batch")
+            .expect("Expected a batch");
+
+        (batch.num_columns(), batch.num_rows())
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     // Should only have the projected column
-    assert_eq!(batch.num_columns(), 1);
-    assert_eq!(batch.num_rows(), 5);
+    assert_eq!(num_columns, 1);
+    assert_eq!(num_rows, 5);
 
     cleanup_keys("rust:proj:*");
 }
 
 /// Test hash scanning with no matching keys.
-#[test]
-#[ignore] // Requires Redis
-fn test_scan_hashes_no_matches() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_scan_hashes_no_matches() {
+    let url = ensure_redis().await.to_string();
 
     let schema = HashSchema::new(vec![("field".to_string(), RedisType::Utf8)]).with_key(false);
 
     let config = BatchConfig::new("nonexistent:pattern:*".to_string()).with_batch_size(100);
 
-    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create iterator");
+    let (is_empty, is_done) = tokio::task::spawn_blocking(move || {
+        let mut iterator =
+            HashBatchIterator::new(&url, schema, config, None).expect("Failed to create iterator");
 
-    // Should return None immediately
-    let batch = iterator.next_batch().expect("Failed to get batch");
-    assert!(batch.is_none() || batch.unwrap().num_rows() == 0);
-    assert!(iterator.is_done());
+        let batch = iterator.next_batch().expect("Failed to get batch");
+        let is_empty = batch.is_none() || batch.unwrap().num_rows() == 0;
+
+        (is_empty, iterator.is_done())
+    })
+    .await
+    .expect("spawn_blocking failed");
+
+    assert!(is_empty);
+    assert!(is_done);
 }
 
 /// Test hash scanning with max_rows limit.
-#[test]
-#[ignore] // Requires Redis
-fn test_scan_hashes_max_rows() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_scan_hashes_max_rows() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:maxrows:*");
     setup_test_hashes("rust:maxrows:", 20);
@@ -134,13 +137,18 @@ fn test_scan_hashes_max_rows() {
         .with_batch_size(100)
         .with_max_rows(5); // Only get 5 rows
 
-    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create iterator");
+    let total_rows = tokio::task::spawn_blocking(move || {
+        let mut iterator =
+            HashBatchIterator::new(&url, schema, config, None).expect("Failed to create iterator");
 
-    let mut total_rows = 0;
-    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
-        total_rows += batch.num_rows();
-    }
+        let mut total_rows = 0;
+        while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+            total_rows += batch.num_rows();
+        }
+        total_rows
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(total_rows, 5);
 
@@ -148,13 +156,9 @@ fn test_scan_hashes_max_rows() {
 }
 
 /// Test hash scanning with small batch size.
-#[test]
-#[ignore] // Requires Redis
-fn test_scan_hashes_small_batches() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_scan_hashes_small_batches() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:batch:*");
     setup_test_hashes("rust:batch:", 15);
@@ -165,15 +169,20 @@ fn test_scan_hashes_small_batches() {
         .with_batch_size(3) // Very small batch
         .with_count_hint(3);
 
-    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create iterator");
+    let (batch_count, total_rows) = tokio::task::spawn_blocking(move || {
+        let mut iterator =
+            HashBatchIterator::new(&url, schema, config, None).expect("Failed to create iterator");
 
-    let mut batch_count = 0;
-    let mut total_rows = 0;
-    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
-        batch_count += 1;
-        total_rows += batch.num_rows();
-    }
+        let mut batch_count = 0;
+        let mut total_rows = 0;
+        while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+            batch_count += 1;
+            total_rows += batch.num_rows();
+        }
+        (batch_count, total_rows)
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(total_rows, 15);
     assert!(batch_count >= 5); // Should have multiple batches
@@ -182,13 +191,9 @@ fn test_scan_hashes_small_batches() {
 }
 
 /// Test hash scanning with TTL column.
-#[test]
-#[ignore] // Requires Redis
-fn test_scan_hashes_with_ttl() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_scan_hashes_with_ttl() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:ttl:*");
 
@@ -203,29 +208,31 @@ fn test_scan_hashes_with_ttl() {
 
     let config = BatchConfig::new("rust:ttl:*".to_string()).with_batch_size(100);
 
-    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create iterator");
+    let (num_columns, num_rows) = tokio::task::spawn_blocking(move || {
+        let mut iterator =
+            HashBatchIterator::new(&url, schema, config, None).expect("Failed to create iterator");
 
-    let batch = iterator
-        .next_batch()
-        .expect("Failed to get batch")
-        .expect("Expected a batch");
+        let batch = iterator
+            .next_batch()
+            .expect("Failed to get batch")
+            .expect("Expected a batch");
+
+        (batch.num_columns(), batch.num_rows())
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     // Should have name, _key, _ttl columns
-    assert!(batch.num_columns() >= 3);
-    assert_eq!(batch.num_rows(), 1);
+    assert!(num_columns >= 3);
+    assert_eq!(num_rows, 1);
 
     cleanup_keys("rust:ttl:*");
 }
 
 /// Test hash scanning with row index.
-#[test]
-#[ignore] // Requires Redis
-fn test_scan_hashes_with_row_index() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_scan_hashes_with_row_index() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:idx:*");
     setup_test_hashes("rust:idx:", 5);
@@ -237,29 +244,31 @@ fn test_scan_hashes_with_row_index() {
 
     let config = BatchConfig::new("rust:idx:*".to_string()).with_batch_size(100);
 
-    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create iterator");
+    let (num_columns, num_rows) = tokio::task::spawn_blocking(move || {
+        let mut iterator =
+            HashBatchIterator::new(&url, schema, config, None).expect("Failed to create iterator");
 
-    let batch = iterator
-        .next_batch()
-        .expect("Failed to get batch")
-        .expect("Expected a batch");
+        let batch = iterator
+            .next_batch()
+            .expect("Failed to get batch")
+            .expect("Expected a batch");
+
+        (batch.num_columns(), batch.num_rows())
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     // Should have name and _index columns
-    assert_eq!(batch.num_columns(), 2);
-    assert_eq!(batch.num_rows(), 5);
+    assert_eq!(num_columns, 2);
+    assert_eq!(num_rows, 5);
 
     cleanup_keys("rust:idx:*");
 }
 
 /// Test type conversion for different Redis types.
-#[test]
-#[ignore] // Requires Redis
-fn test_scan_hashes_type_conversion() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_scan_hashes_type_conversion() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:types:*");
 
@@ -287,28 +296,30 @@ fn test_scan_hashes_type_conversion() {
 
     let config = BatchConfig::new("rust:types:*".to_string()).with_batch_size(100);
 
-    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create iterator");
+    let (num_rows, num_columns) = tokio::task::spawn_blocking(move || {
+        let mut iterator =
+            HashBatchIterator::new(&url, schema, config, None).expect("Failed to create iterator");
 
-    let batch = iterator
-        .next_batch()
-        .expect("Failed to get batch")
-        .expect("Expected a batch");
+        let batch = iterator
+            .next_batch()
+            .expect("Failed to get batch")
+            .expect("Expected a batch");
 
-    assert_eq!(batch.num_rows(), 1);
-    assert_eq!(batch.num_columns(), 4);
+        (batch.num_rows(), batch.num_columns())
+    })
+    .await
+    .expect("spawn_blocking failed");
+
+    assert_eq!(num_rows, 1);
+    assert_eq!(num_columns, 4);
 
     cleanup_keys("rust:types:*");
 }
 
 /// Test handling of missing fields (should be null).
-#[test]
-#[ignore] // Requires Redis
-fn test_scan_hashes_missing_fields() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_scan_hashes_missing_fields() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:missing:*");
 
@@ -324,29 +335,31 @@ fn test_scan_hashes_missing_fields() {
 
     let config = BatchConfig::new("rust:missing:*".to_string()).with_batch_size(100);
 
-    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create iterator");
+    let (num_rows, num_columns) = tokio::task::spawn_blocking(move || {
+        let mut iterator =
+            HashBatchIterator::new(&url, schema, config, None).expect("Failed to create iterator");
 
-    let batch = iterator
-        .next_batch()
-        .expect("Failed to get batch")
-        .expect("Expected a batch");
+        let batch = iterator
+            .next_batch()
+            .expect("Failed to get batch")
+            .expect("Expected a batch");
 
-    assert_eq!(batch.num_rows(), 1);
-    assert_eq!(batch.num_columns(), 2);
+        (batch.num_rows(), batch.num_columns())
+    })
+    .await
+    .expect("spawn_blocking failed");
+
+    assert_eq!(num_rows, 1);
+    assert_eq!(num_columns, 2);
     // The 'age' column should exist but have null value
 
     cleanup_keys("rust:missing:*");
 }
 
 /// Test rows_yielded tracking.
-#[test]
-#[ignore] // Requires Redis
-fn test_scan_hashes_rows_yielded() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_scan_hashes_rows_yielded() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:yielded:*");
     setup_test_hashes("rust:yielded:", 10);
@@ -355,18 +368,24 @@ fn test_scan_hashes_rows_yielded() {
 
     let config = BatchConfig::new("rust:yielded:*".to_string()).with_batch_size(100);
 
-    let mut iterator = HashBatchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create iterator");
+    let rows_yielded = tokio::task::spawn_blocking(move || {
+        let mut iterator =
+            HashBatchIterator::new(&url, schema, config, None).expect("Failed to create iterator");
 
-    assert_eq!(iterator.rows_yielded(), 0);
+        assert_eq!(iterator.rows_yielded(), 0);
 
-    while iterator
-        .next_batch()
-        .expect("Failed to get batch")
-        .is_some()
-    {}
+        while iterator
+            .next_batch()
+            .expect("Failed to get batch")
+            .is_some()
+        {}
 
-    assert_eq!(iterator.rows_yielded(), 10);
+        iterator.rows_yielded()
+    })
+    .await
+    .expect("spawn_blocking failed");
+
+    assert_eq!(rows_yielded, 10);
 
     cleanup_keys("rust:yielded:*");
 }

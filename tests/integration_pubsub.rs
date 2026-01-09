@@ -1,7 +1,7 @@
 //! Integration tests for Redis Pub/Sub operations.
 //!
 //! These tests require a running Redis instance.
-//! Run with: `cargo test --test integration_pubsub --all-features`
+//! Run with: `cargo test --test integration_pubsub`
 
 use std::thread;
 use std::time::Duration;
@@ -9,7 +9,7 @@ use std::time::Duration;
 use polars_redis::client::pubsub::{PubSubConfig, collect_pubsub};
 
 mod common;
-use common::{redis_available, redis_cli, redis_url};
+use common::{ensure_redis, get_redis_url, redis_cli};
 
 /// Test PubSubConfig builder.
 #[test]
@@ -68,30 +68,26 @@ fn test_custom_column_names() {
 }
 
 /// Test collect_pubsub with timeout (no messages).
-#[test]
-#[ignore] // Requires Redis
-fn test_collect_pubsub_timeout_empty() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_collect_pubsub_timeout_empty() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     let config =
         PubSubConfig::new(vec!["rust:pubsub:empty:channel".to_string()]).with_timeout_ms(100); // Short timeout
 
-    let batch = collect_pubsub(&redis_url(), &config).unwrap();
+    let batch = tokio::task::spawn_blocking(move || collect_pubsub(&url, &config).unwrap())
+        .await
+        .expect("spawn_blocking failed");
+
     assert_eq!(batch.num_rows(), 0);
     assert_eq!(batch.num_columns(), 1); // Just message column
 }
 
 /// Test collect_pubsub receives messages.
-#[test]
-#[ignore] // Requires Redis
-fn test_collect_pubsub_with_messages() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_collect_pubsub_with_messages() {
+    let _ = ensure_redis().await;
 
     let channel = "rust:pubsub:test:messages";
 
@@ -105,13 +101,16 @@ fn test_collect_pubsub_with_messages() {
         }
     });
 
+    let url = get_redis_url().to_string();
     let config = PubSubConfig::new(vec![channel.to_string()])
         .with_count(5)
         .with_timeout_ms(2000)
         .with_channel_column()
         .with_timestamp_column();
 
-    let batch = collect_pubsub(&redis_url(), &config).unwrap();
+    let batch = tokio::task::spawn_blocking(move || collect_pubsub(&url, &config).unwrap())
+        .await
+        .expect("spawn_blocking failed");
 
     publisher.join().unwrap();
 
@@ -120,13 +119,9 @@ fn test_collect_pubsub_with_messages() {
 }
 
 /// Test collect_pubsub with pattern subscription.
-#[test]
-#[ignore] // Requires Redis
-fn test_collect_pubsub_pattern() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_collect_pubsub_pattern() {
+    let _ = ensure_redis().await;
 
     // Spawn a thread to publish messages to different channels
     let publisher = thread::spawn(|| {
@@ -138,13 +133,16 @@ fn test_collect_pubsub_pattern() {
         redis_cli(&["PUBLISH", "rust:pubsub:pattern:c", "msg_c"]);
     });
 
+    let url = get_redis_url().to_string();
     let config = PubSubConfig::new(vec!["rust:pubsub:pattern:*".to_string()])
         .with_pattern()
         .with_count(3)
         .with_timeout_ms(2000)
         .with_channel_column();
 
-    let batch = collect_pubsub(&redis_url(), &config).unwrap();
+    let batch = tokio::task::spawn_blocking(move || collect_pubsub(&url, &config).unwrap())
+        .await
+        .expect("spawn_blocking failed");
 
     publisher.join().unwrap();
 
@@ -153,13 +151,9 @@ fn test_collect_pubsub_pattern() {
 }
 
 /// Test collect_pubsub with window_seconds.
-#[test]
-#[ignore] // Requires Redis
-fn test_collect_pubsub_window() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_collect_pubsub_window() {
+    let _ = ensure_redis().await;
 
     let channel = "rust:pubsub:window:channel";
 
@@ -173,11 +167,14 @@ fn test_collect_pubsub_window() {
         }
     });
 
+    let url = get_redis_url().to_string();
     let config = PubSubConfig::new(vec![channel.to_string()])
         .with_window_seconds(0.5) // 500ms window
         .with_timeout_ms(1000);
 
-    let batch = collect_pubsub(&redis_url(), &config).unwrap();
+    let batch = tokio::task::spawn_blocking(move || collect_pubsub(&url, &config).unwrap())
+        .await
+        .expect("spawn_blocking failed");
 
     publisher.join().unwrap();
 
@@ -186,13 +183,9 @@ fn test_collect_pubsub_window() {
 }
 
 /// Test multiple channels subscription.
-#[test]
-#[ignore] // Requires Redis
-fn test_collect_pubsub_multiple_channels() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_collect_pubsub_multiple_channels() {
+    let _ = ensure_redis().await;
 
     let channels = vec![
         "rust:pubsub:multi:ch1".to_string(),
@@ -206,12 +199,15 @@ fn test_collect_pubsub_multiple_channels() {
         redis_cli(&["PUBLISH", "rust:pubsub:multi:ch2", "from_ch2"]);
     });
 
+    let url = get_redis_url().to_string();
     let config = PubSubConfig::new(channels)
         .with_count(2)
         .with_timeout_ms(2000)
         .with_channel_column();
 
-    let batch = collect_pubsub(&redis_url(), &config).unwrap();
+    let batch = tokio::task::spawn_blocking(move || collect_pubsub(&url, &config).unwrap())
+        .await
+        .expect("spawn_blocking failed");
 
     publisher.join().unwrap();
 
@@ -219,13 +215,9 @@ fn test_collect_pubsub_multiple_channels() {
 }
 
 /// Test that count limit works.
-#[test]
-#[ignore] // Requires Redis
-fn test_collect_pubsub_count_limit() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_collect_pubsub_count_limit() {
+    let _ = ensure_redis().await;
 
     let channel = "rust:pubsub:limit:channel";
 
@@ -239,11 +231,14 @@ fn test_collect_pubsub_count_limit() {
         }
     });
 
+    let url = get_redis_url().to_string();
     let config = PubSubConfig::new(vec![channel.to_string()])
         .with_count(3) // Only collect 3
         .with_timeout_ms(2000);
 
-    let batch = collect_pubsub(&redis_url(), &config).unwrap();
+    let batch = tokio::task::spawn_blocking(move || collect_pubsub(&url, &config).unwrap())
+        .await
+        .expect("spawn_blocking failed");
 
     publisher.join().unwrap();
 

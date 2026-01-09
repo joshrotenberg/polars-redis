@@ -849,7 +849,7 @@ impl Index {
     pub fn create_if_not_exists_with_conn(&self, conn: &mut Connection) -> Result<()> {
         match self.create_with_conn(conn) {
             Ok(()) => Ok(()),
-            Err(Error::Connection(e)) if e.to_string().contains("Index already exists") => Ok(()),
+            Err(Error::Connection(e)) if e.to_string().contains("already exists") => Ok(()),
             Err(e) => Err(e),
         }
     }
@@ -877,7 +877,12 @@ impl Index {
         }
         match cmd.query::<()>(conn) {
             Ok(()) => Ok(()),
-            Err(e) if e.to_string().contains("Unknown index name") => Ok(()),
+            Err(e)
+                if e.to_string().contains("Unknown index name")
+                    || e.to_string().contains("no such index") =>
+            {
+                Ok(())
+            },
             Err(e) => Err(Error::Connection(e)),
         }
     }
@@ -896,7 +901,12 @@ impl Index {
             .query::<Vec<redis::Value>>(conn)
         {
             Ok(_) => Ok(true),
-            Err(e) if e.to_string().contains("Unknown index name") => Ok(false),
+            Err(e)
+                if e.to_string().contains("Unknown index name")
+                    || e.to_string().contains("no such index") =>
+            {
+                Ok(false)
+            },
             Err(e) => Err(Error::Connection(e)),
         }
     }

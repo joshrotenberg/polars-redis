@@ -1,7 +1,7 @@
 //! Integration tests for Redis geospatial operations.
 //!
 //! These tests require a running Redis instance.
-//! Run with: `cargo test --test integration_geo --all-features`
+//! Run with: `cargo test --test integration_geo`
 
 use polars_redis::{
     GeoSort, geo_add, geo_dist, geo_dist_matrix, geo_hash, geo_pos, geo_radius,
@@ -9,16 +9,13 @@ use polars_redis::{
 };
 
 mod common;
-use common::{cleanup_keys, redis_available, redis_url};
+use common::{cleanup_keys, ensure_redis, get_redis_url};
 
 /// Test geo_add adds locations correctly.
-#[test]
-#[ignore] // Requires Redis
-fn test_geo_add_basic() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_geo_add_basic() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:geotest:*");
 
@@ -28,16 +25,21 @@ fn test_geo_add_basic() {
         ("Chicago".to_string(), -87.6298, 41.8781),
     ];
 
-    let result = geo_add(&redis_url(), "rust:geotest:cities", &locations)
-        .expect("Failed to add geo locations");
+    let (result, result2) = tokio::task::spawn_blocking(move || {
+        let result =
+            geo_add(&url, "rust:geotest:cities", &locations).expect("Failed to add geo locations");
+
+        // Add same locations again - should update not add
+        let result2 =
+            geo_add(&url, "rust:geotest:cities", &locations).expect("Failed to add geo locations");
+
+        (result, result2)
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.added, 3);
     assert_eq!(result.updated, 0);
-
-    // Add same locations again - should update not add
-    let result2 = geo_add(&redis_url(), "rust:geotest:cities", &locations)
-        .expect("Failed to add geo locations");
-
     assert_eq!(result2.added, 0);
     assert_eq!(result2.updated, 3);
 
@@ -45,72 +47,74 @@ fn test_geo_add_basic() {
 }
 
 /// Test geo_add with mixed new and existing locations.
-#[test]
-#[ignore] // Requires Redis
-fn test_geo_add_mixed() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_geo_add_mixed() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:geomixed:*");
 
-    // Add initial locations
-    let initial = vec![
-        ("New York".to_string(), -74.006, 40.7128),
-        ("Los Angeles".to_string(), -118.2437, 34.0522),
-    ];
+    let (result_added, result_updated) = tokio::task::spawn_blocking(move || {
+        // Add initial locations
+        let initial = vec![
+            ("New York".to_string(), -74.006, 40.7128),
+            ("Los Angeles".to_string(), -118.2437, 34.0522),
+        ];
 
-    geo_add(&redis_url(), "rust:geomixed:cities", &initial).expect("Failed to add initial");
+        geo_add(&url, "rust:geomixed:cities", &initial).expect("Failed to add initial");
 
-    // Add mixed - one new, one update
-    let mixed = vec![
-        ("Los Angeles".to_string(), -118.2437, 34.0522), // Update
-        ("Chicago".to_string(), -87.6298, 41.8781),      // New
-    ];
+        // Add mixed - one new, one update
+        let mixed = vec![
+            ("Los Angeles".to_string(), -118.2437, 34.0522), // Update
+            ("Chicago".to_string(), -87.6298, 41.8781),      // New
+        ];
 
-    let result =
-        geo_add(&redis_url(), "rust:geomixed:cities", &mixed).expect("Failed to add mixed");
+        let result = geo_add(&url, "rust:geomixed:cities", &mixed).expect("Failed to add mixed");
+        (result.added, result.updated)
+    })
+    .await
+    .expect("spawn_blocking failed");
 
-    assert_eq!(result.added, 1);
-    assert_eq!(result.updated, 1);
+    assert_eq!(result_added, 1);
+    assert_eq!(result_updated, 1);
 
     cleanup_keys("rust:geomixed:*");
 }
 
 /// Test geo_radius finds locations within radius.
-#[test]
-#[ignore] // Requires Redis
-fn test_geo_radius_basic() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_geo_radius_basic() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:georadius:*");
 
-    // Add cities
-    let locations = vec![
-        ("New York".to_string(), -74.006, 40.7128),
-        ("Philadelphia".to_string(), -75.1652, 39.9526), // ~130km from NYC
-        ("Boston".to_string(), -71.0589, 42.3601),       // ~306km from NYC
-        ("Los Angeles".to_string(), -118.2437, 34.0522), // ~3936km from NYC
-    ];
+    let result = tokio::task::spawn_blocking(move || {
+        // Add cities
+        let locations = vec![
+            ("New York".to_string(), -74.006, 40.7128),
+            ("Philadelphia".to_string(), -75.1652, 39.9526), // ~130km from NYC
+            ("Boston".to_string(), -71.0589, 42.3601),       // ~306km from NYC
+            ("Los Angeles".to_string(), -118.2437, 34.0522), // ~3936km from NYC
+        ];
 
-    geo_add(&redis_url(), "rust:georadius:cities", &locations).expect("Failed to add locations");
+        geo_add(&url, "rust:georadius:cities", &locations).expect("Failed to add locations");
 
-    // Find cities within 200km of NYC
-    let result = geo_radius(
-        &redis_url(),
-        "rust:georadius:cities",
-        -74.006,
-        40.7128,
-        200.0,
-        "km",
-        None,
-        Some(GeoSort::Asc),
-    )
-    .expect("Failed to query radius");
+        // Find cities within 200km of NYC
+        geo_radius(
+            &url,
+            "rust:georadius:cities",
+            -74.006,
+            40.7128,
+            200.0,
+            "km",
+            None,
+            Some(GeoSort::Asc),
+        )
+        .expect("Failed to query radius")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.len(), 2); // NYC and Philadelphia
     assert_eq!(result[0].name, "New York");
@@ -121,89 +125,92 @@ fn test_geo_radius_basic() {
 }
 
 /// Test geo_radius with different units.
-#[test]
-#[ignore] // Requires Redis
-fn test_geo_radius_units() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_geo_radius_units() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:geounits:*");
 
-    let locations = vec![
-        ("Point A".to_string(), 0.0, 0.0),
-        ("Point B".to_string(), 0.01, 0.0), // ~1.11km east
-    ];
+    let (result_m_len, result_mi_len) = tokio::task::spawn_blocking(move || {
+        let locations = vec![
+            ("Point A".to_string(), 0.0, 0.0),
+            ("Point B".to_string(), 0.01, 0.0), // ~1.11km east
+        ];
 
-    geo_add(&redis_url(), "rust:geounits:points", &locations).expect("Failed to add locations");
+        geo_add(&url, "rust:geounits:points", &locations).expect("Failed to add locations");
 
-    // Query in meters
-    let result_m = geo_radius(
-        &redis_url(),
-        "rust:geounits:points",
-        0.0,
-        0.0,
-        2000.0, // 2km in meters
-        "m",
-        None,
-        None,
-    )
-    .expect("Failed to query radius in meters");
+        // Query in meters
+        let result_m = geo_radius(
+            &url,
+            "rust:geounits:points",
+            0.0,
+            0.0,
+            2000.0, // 2km in meters
+            "m",
+            None,
+            None,
+        )
+        .expect("Failed to query radius in meters");
 
-    assert_eq!(result_m.len(), 2);
+        // Query in miles (should get both points as they're close)
+        let result_mi = geo_radius(
+            &url,
+            "rust:geounits:points",
+            0.0,
+            0.0,
+            1.0, // 1 mile
+            "mi",
+            None,
+            None,
+        )
+        .expect("Failed to query radius in miles");
 
-    // Query in miles (should get both points as they're close)
-    let result_mi = geo_radius(
-        &redis_url(),
-        "rust:geounits:points",
-        0.0,
-        0.0,
-        1.0, // 1 mile
-        "mi",
-        None,
-        None,
-    )
-    .expect("Failed to query radius in miles");
+        (result_m.len(), result_mi.len())
+    })
+    .await
+    .expect("spawn_blocking failed");
 
-    assert_eq!(result_mi.len(), 2);
+    assert_eq!(result_m_len, 2);
+    assert_eq!(result_mi_len, 2);
 
     cleanup_keys("rust:geounits:*");
 }
 
 /// Test geo_radius with count limit.
-#[test]
-#[ignore] // Requires Redis
-fn test_geo_radius_with_count() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_geo_radius_with_count() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:geocount:*");
 
-    let locations = vec![
-        ("A".to_string(), 0.0, 0.0),
-        ("B".to_string(), 0.001, 0.0),
-        ("C".to_string(), 0.002, 0.0),
-        ("D".to_string(), 0.003, 0.0),
-        ("E".to_string(), 0.004, 0.0),
-    ];
+    let result = tokio::task::spawn_blocking(move || {
+        let locations = vec![
+            ("A".to_string(), 0.0, 0.0),
+            ("B".to_string(), 0.001, 0.0),
+            ("C".to_string(), 0.002, 0.0),
+            ("D".to_string(), 0.003, 0.0),
+            ("E".to_string(), 0.004, 0.0),
+        ];
 
-    geo_add(&redis_url(), "rust:geocount:points", &locations).expect("Failed to add locations");
+        geo_add(&url, "rust:geocount:points", &locations).expect("Failed to add locations");
 
-    // Get only 2 closest
-    let result = geo_radius(
-        &redis_url(),
-        "rust:geocount:points",
-        0.0,
-        0.0,
-        1000.0,
-        "km",
-        Some(2),
-        Some(GeoSort::Asc),
-    )
-    .expect("Failed to query radius");
+        // Get only 2 closest
+        geo_radius(
+            &url,
+            "rust:geocount:points",
+            0.0,
+            0.0,
+            1000.0,
+            "km",
+            Some(2),
+            Some(GeoSort::Asc),
+        )
+        .expect("Failed to query radius")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.len(), 2);
     assert_eq!(result[0].name, "A");
@@ -213,36 +220,37 @@ fn test_geo_radius_with_count() {
 }
 
 /// Test geo_radius_by_member.
-#[test]
-#[ignore] // Requires Redis
-fn test_geo_radius_by_member() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_geo_radius_by_member() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:geomember:*");
 
-    let locations = vec![
-        ("New York".to_string(), -74.006, 40.7128),
-        ("Philadelphia".to_string(), -75.1652, 39.9526),
-        ("Boston".to_string(), -71.0589, 42.3601),
-        ("Los Angeles".to_string(), -118.2437, 34.0522),
-    ];
+    let result = tokio::task::spawn_blocking(move || {
+        let locations = vec![
+            ("New York".to_string(), -74.006, 40.7128),
+            ("Philadelphia".to_string(), -75.1652, 39.9526),
+            ("Boston".to_string(), -71.0589, 42.3601),
+            ("Los Angeles".to_string(), -118.2437, 34.0522),
+        ];
 
-    geo_add(&redis_url(), "rust:geomember:cities", &locations).expect("Failed to add locations");
+        geo_add(&url, "rust:geomember:cities", &locations).expect("Failed to add locations");
 
-    // Find cities within 400km of Boston
-    let result = geo_radius_by_member(
-        &redis_url(),
-        "rust:geomember:cities",
-        "Boston",
-        400.0,
-        "km",
-        None,
-        Some(GeoSort::Asc),
-    )
-    .expect("Failed to query by member");
+        // Find cities within 400km of Boston
+        geo_radius_by_member(
+            &url,
+            "rust:geomember:cities",
+            "Boston",
+            400.0,
+            "km",
+            None,
+            Some(GeoSort::Asc),
+        )
+        .expect("Failed to query by member")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.len(), 2); // Boston and NYC
     assert_eq!(result[0].name, "Boston");
@@ -252,46 +260,37 @@ fn test_geo_radius_by_member() {
 }
 
 /// Test geo_dist returns correct distance.
-#[test]
-#[ignore] // Requires Redis
-fn test_geo_dist_basic() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_geo_dist_basic() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:geodist:*");
 
-    let locations = vec![
-        ("New York".to_string(), -74.006, 40.7128),
-        ("Los Angeles".to_string(), -118.2437, 34.0522),
-    ];
+    let (dist_km, dist_mi) = tokio::task::spawn_blocking(move || {
+        let locations = vec![
+            ("New York".to_string(), -74.006, 40.7128),
+            ("Los Angeles".to_string(), -118.2437, 34.0522),
+        ];
 
-    geo_add(&redis_url(), "rust:geodist:cities", &locations).expect("Failed to add locations");
+        geo_add(&url, "rust:geodist:cities", &locations).expect("Failed to add locations");
 
-    // Get distance in km
-    let dist_km = geo_dist(
-        &redis_url(),
-        "rust:geodist:cities",
-        "New York",
-        "Los Angeles",
-        "km",
-    )
-    .expect("Failed to get distance");
+        // Get distance in km
+        let dist_km = geo_dist(&url, "rust:geodist:cities", "New York", "Los Angeles", "km")
+            .expect("Failed to get distance");
+
+        // Get distance in miles
+        let dist_mi = geo_dist(&url, "rust:geodist:cities", "New York", "Los Angeles", "mi")
+            .expect("Failed to get distance");
+
+        (dist_km, dist_mi)
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert!(dist_km.is_some());
     let km = dist_km.unwrap();
     assert!(km > 3900.0 && km < 4000.0); // ~3936km
-
-    // Get distance in miles
-    let dist_mi = geo_dist(
-        &redis_url(),
-        "rust:geodist:cities",
-        "New York",
-        "Los Angeles",
-        "mi",
-    )
-    .expect("Failed to get distance");
 
     assert!(dist_mi.is_some());
     let mi = dist_mi.unwrap();
@@ -301,29 +300,30 @@ fn test_geo_dist_basic() {
 }
 
 /// Test geo_dist returns None for non-existent member.
-#[test]
-#[ignore] // Requires Redis
-fn test_geo_dist_nonexistent() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_geo_dist_nonexistent() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:geodistnone:*");
 
-    let locations = vec![("New York".to_string(), -74.006, 40.7128)];
+    let dist = tokio::task::spawn_blocking(move || {
+        let locations = vec![("New York".to_string(), -74.006, 40.7128)];
 
-    geo_add(&redis_url(), "rust:geodistnone:cities", &locations).expect("Failed to add locations");
+        geo_add(&url, "rust:geodistnone:cities", &locations).expect("Failed to add locations");
 
-    // Get distance to non-existent member
-    let dist = geo_dist(
-        &redis_url(),
-        "rust:geodistnone:cities",
-        "New York",
-        "NonExistent",
-        "km",
-    )
-    .expect("Failed to get distance");
+        // Get distance to non-existent member
+        geo_dist(
+            &url,
+            "rust:geodistnone:cities",
+            "New York",
+            "NonExistent",
+            "km",
+        )
+        .expect("Failed to get distance")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert!(dist.is_none());
 
@@ -331,31 +331,31 @@ fn test_geo_dist_nonexistent() {
 }
 
 /// Test geo_pos returns correct positions.
-#[test]
-#[ignore] // Requires Redis
-fn test_geo_pos_basic() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_geo_pos_basic() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:geopos:*");
 
-    let locations = vec![
-        ("New York".to_string(), -74.006, 40.7128),
-        ("Los Angeles".to_string(), -118.2437, 34.0522),
-    ];
+    let result = tokio::task::spawn_blocking(move || {
+        let locations = vec![
+            ("New York".to_string(), -74.006, 40.7128),
+            ("Los Angeles".to_string(), -118.2437, 34.0522),
+        ];
 
-    geo_add(&redis_url(), "rust:geopos:cities", &locations).expect("Failed to add locations");
+        geo_add(&url, "rust:geopos:cities", &locations).expect("Failed to add locations");
 
-    let members = vec![
-        "New York".to_string(),
-        "Los Angeles".to_string(),
-        "NonExistent".to_string(),
-    ];
+        let members = vec![
+            "New York".to_string(),
+            "Los Angeles".to_string(),
+            "NonExistent".to_string(),
+        ];
 
-    let result =
-        geo_pos(&redis_url(), "rust:geopos:cities", &members).expect("Failed to get positions");
+        geo_pos(&url, "rust:geopos:cities", &members).expect("Failed to get positions")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.len(), 3);
 
@@ -382,28 +382,29 @@ fn test_geo_pos_basic() {
 }
 
 /// Test geo_dist_matrix computes pairwise distances.
-#[test]
-#[ignore] // Requires Redis
-fn test_geo_dist_matrix_basic() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_geo_dist_matrix_basic() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:geomatrix:*");
 
-    let locations = vec![
-        ("A".to_string(), 0.0, 0.0),
-        ("B".to_string(), 1.0, 0.0),
-        ("C".to_string(), 0.0, 1.0),
-    ];
+    let matrix = tokio::task::spawn_blocking(move || {
+        let locations = vec![
+            ("A".to_string(), 0.0, 0.0),
+            ("B".to_string(), 1.0, 0.0),
+            ("C".to_string(), 0.0, 1.0),
+        ];
 
-    geo_add(&redis_url(), "rust:geomatrix:points", &locations).expect("Failed to add locations");
+        geo_add(&url, "rust:geomatrix:points", &locations).expect("Failed to add locations");
 
-    let members = vec!["A".to_string(), "B".to_string(), "C".to_string()];
+        let members = vec!["A".to_string(), "B".to_string(), "C".to_string()];
 
-    let matrix = geo_dist_matrix(&redis_url(), "rust:geomatrix:points", &members, "km")
-        .expect("Failed to compute matrix");
+        geo_dist_matrix(&url, "rust:geomatrix:points", &members, "km")
+            .expect("Failed to compute matrix")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(matrix.len(), 3);
     assert_eq!(matrix[0].len(), 3);
@@ -429,31 +430,31 @@ fn test_geo_dist_matrix_basic() {
 }
 
 /// Test geo_hash returns geohash strings.
-#[test]
-#[ignore] // Requires Redis
-fn test_geo_hash_basic() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_geo_hash_basic() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:geohash:*");
 
-    let locations = vec![
-        ("New York".to_string(), -74.006, 40.7128),
-        ("Los Angeles".to_string(), -118.2437, 34.0522),
-    ];
+    let result = tokio::task::spawn_blocking(move || {
+        let locations = vec![
+            ("New York".to_string(), -74.006, 40.7128),
+            ("Los Angeles".to_string(), -118.2437, 34.0522),
+        ];
 
-    geo_add(&redis_url(), "rust:geohash:cities", &locations).expect("Failed to add locations");
+        geo_add(&url, "rust:geohash:cities", &locations).expect("Failed to add locations");
 
-    let members = vec![
-        "New York".to_string(),
-        "Los Angeles".to_string(),
-        "NonExistent".to_string(),
-    ];
+        let members = vec![
+            "New York".to_string(),
+            "Los Angeles".to_string(),
+            "NonExistent".to_string(),
+        ];
 
-    let result =
-        geo_hash(&redis_url(), "rust:geohash:cities", &members).expect("Failed to get geohashes");
+        geo_hash(&url, "rust:geohash:cities", &members).expect("Failed to get geohashes")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(result.len(), 3);
 
@@ -480,28 +481,29 @@ fn test_geo_hash_basic() {
 }
 
 /// Test empty geo set returns empty results.
-#[test]
-#[ignore] // Requires Redis
-fn test_geo_empty_set() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_geo_empty_set() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:geoempty:*");
 
-    // Query empty set
-    let result = geo_radius(
-        &redis_url(),
-        "rust:geoempty:cities",
-        0.0,
-        0.0,
-        1000.0,
-        "km",
-        None,
-        None,
-    )
-    .expect("Failed to query empty set");
+    let result = tokio::task::spawn_blocking(move || {
+        // Query empty set
+        geo_radius(
+            &url,
+            "rust:geoempty:cities",
+            0.0,
+            0.0,
+            1000.0,
+            "km",
+            None,
+            None,
+        )
+        .expect("Failed to query empty set")
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert!(result.is_empty());
 
@@ -509,48 +511,52 @@ fn test_geo_empty_set() {
 }
 
 /// Test large geo set operations.
-#[test]
-#[ignore] // Requires Redis
-fn test_geo_large_set() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_geo_large_set() {
+    let _ = ensure_redis().await;
+    let url = get_redis_url().to_string();
 
     cleanup_keys("rust:geolarge:*");
 
-    // Add 1000 locations in a grid
-    let mut locations = Vec::new();
-    for i in 0..100 {
-        for j in 0..10 {
-            let name = format!("point_{}_{}", i, j);
-            let lon = -180.0 + (i as f64 * 3.6);
-            let lat = -90.0 + (j as f64 * 18.0);
-            locations.push((name, lon, lat));
+    let (result_added, radius_result_len) = tokio::task::spawn_blocking(move || {
+        // Add 1000 locations in a grid
+        // Redis GEOADD requires: -180 <= lon <= 180, -85.05112878 <= lat <= 85.05112878
+        let mut locations = Vec::new();
+        for i in 0..100 {
+            for j in 0..10 {
+                let name = format!("point_{}_{}", i, j);
+                let lon = -179.0 + (i as f64 * 3.58); // -179 to 179
+                let lat = -85.0 + (j as f64 * 17.0); // -85 to 85
+                locations.push((name, lon, lat));
+            }
         }
-    }
 
-    let result =
-        geo_add(&redis_url(), "rust:geolarge:points", &locations).expect("Failed to add locations");
+        let result =
+            geo_add(&url, "rust:geolarge:points", &locations).expect("Failed to add locations");
 
-    assert_eq!(result.added, 1000);
+        // Query around center
+        let radius_result = geo_radius(
+            &url,
+            "rust:geolarge:points",
+            0.0,
+            0.0,
+            5000.0,
+            "km",
+            Some(100),
+            Some(GeoSort::Asc),
+        )
+        .expect("Failed to query radius");
 
-    // Query around center
-    let radius_result = geo_radius(
-        &redis_url(),
-        "rust:geolarge:points",
-        0.0,
-        0.0,
-        5000.0,
-        "km",
-        Some(100),
-        Some(GeoSort::Asc),
-    )
-    .expect("Failed to query radius");
+        (result.added, radius_result.len())
+    })
+    .await
+    .expect("spawn_blocking failed");
+
+    assert_eq!(result_added, 1000);
 
     // Should get some results near the equator
-    assert!(!radius_result.is_empty());
-    assert!(radius_result.len() <= 100);
+    assert!(radius_result_len > 0);
+    assert!(radius_result_len <= 100);
 
     cleanup_keys("rust:geolarge:*");
 }

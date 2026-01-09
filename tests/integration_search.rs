@@ -12,18 +12,13 @@ use polars_redis::{HashSchema, HashSearchIterator, RedisType, SearchBatchConfig}
 
 mod common;
 use common::{
-    cleanup_keys, create_hash_index, redis_available, redis_cli, redis_url, setup_test_hashes,
-    wait_for_index,
+    cleanup_keys, create_hash_index, ensure_redis, redis_cli, setup_test_hashes, wait_for_index,
 };
 
 /// Test basic FT.SEARCH with HashSearchIterator.
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_search_hashes_basic() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_search_hashes_basic() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:search:*");
     setup_test_hashes("rust:search:", 10);
@@ -45,13 +40,18 @@ fn test_search_hashes_basic() {
     let config =
         SearchBatchConfig::new("rust_search_idx".to_string(), "*".to_string()).with_batch_size(100);
 
-    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create search iterator");
+    let total_rows = tokio::task::spawn_blocking(move || {
+        let mut iterator = HashSearchIterator::new(&url, schema, config, None)
+            .expect("Failed to create search iterator");
 
-    let mut total_rows = 0;
-    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
-        total_rows += batch.num_rows();
-    }
+        let mut total = 0;
+        while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+            total += batch.num_rows();
+        }
+        total
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(total_rows, 10);
 
@@ -61,13 +61,9 @@ fn test_search_hashes_basic() {
 }
 
 /// Test FT.SEARCH with numeric range filter.
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_search_numeric_range() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_search_numeric_range() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:numrange:*");
     setup_test_hashes("rust:numrange:", 20);
@@ -90,13 +86,18 @@ fn test_search_numeric_range() {
         SearchBatchConfig::new("rust_numrange_idx".to_string(), "@age:[25 30]".to_string())
             .with_batch_size(100);
 
-    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create search iterator");
+    let total_rows = tokio::task::spawn_blocking(move || {
+        let mut iterator = HashSearchIterator::new(&url, schema, config, None)
+            .expect("Failed to create search iterator");
 
-    let mut total_rows = 0;
-    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
-        total_rows += batch.num_rows();
-    }
+        let mut total = 0;
+        while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+            total += batch.num_rows();
+        }
+        total
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(total_rows, 6); // ages 25, 26, 27, 28, 29, 30
 
@@ -105,13 +106,9 @@ fn test_search_numeric_range() {
 }
 
 /// Test FT.SEARCH with sort.
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_search_with_sort() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_search_with_sort() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:sort:*");
     setup_test_hashes("rust:sort:", 5);
@@ -134,28 +131,30 @@ fn test_search_with_sort() {
         .with_batch_size(100)
         .with_sort_by("age".to_string(), false); // descending
 
-    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create search iterator");
+    let num_rows = tokio::task::spawn_blocking(move || {
+        let mut iterator = HashSearchIterator::new(&url, schema, config, None)
+            .expect("Failed to create search iterator");
 
-    let batch = iterator
-        .next_batch()
-        .expect("Failed to get batch")
-        .expect("Expected a batch");
+        let batch = iterator
+            .next_batch()
+            .expect("Failed to get batch")
+            .expect("Expected a batch");
 
-    assert_eq!(batch.num_rows(), 5);
+        batch.num_rows()
+    })
+    .await
+    .expect("spawn_blocking failed");
+
+    assert_eq!(num_rows, 5);
 
     redis_cli(&["FT.DROPINDEX", "rust_sort_idx"]);
     cleanup_keys("rust:sort:*");
 }
 
 /// Test FT.SEARCH with limit.
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_search_with_limit() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_search_with_limit() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:limit:*");
     setup_test_hashes("rust:limit:", 20);
@@ -173,13 +172,18 @@ fn test_search_with_limit() {
         .with_batch_size(100)
         .with_max_rows(5); // Only get 5 rows
 
-    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create search iterator");
+    let total_rows = tokio::task::spawn_blocking(move || {
+        let mut iterator = HashSearchIterator::new(&url, schema, config, None)
+            .expect("Failed to create search iterator");
 
-    let mut total_rows = 0;
-    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
-        total_rows += batch.num_rows();
-    }
+        let mut total = 0;
+        while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+            total += batch.num_rows();
+        }
+        total
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(total_rows, 5);
 
@@ -188,13 +192,9 @@ fn test_search_with_limit() {
 }
 
 /// Test FT.SEARCH total_results tracking.
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_search_total_results() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_search_total_results() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:total:*");
     setup_test_hashes("rust:total:", 15);
@@ -211,30 +211,32 @@ fn test_search_total_results() {
     let config =
         SearchBatchConfig::new("rust_total_idx".to_string(), "*".to_string()).with_batch_size(5); // Small batch to test pagination
 
-    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create search iterator");
+    let total_results = tokio::task::spawn_blocking(move || {
+        let mut iterator = HashSearchIterator::new(&url, schema, config, None)
+            .expect("Failed to create search iterator");
 
-    // Before first batch, total_results should be None
-    assert!(iterator.total_results().is_none());
+        // Before first batch, total_results should be None
+        assert!(iterator.total_results().is_none());
 
-    // Get first batch
-    let _ = iterator.next_batch().expect("Failed to get batch");
+        // Get first batch
+        let _ = iterator.next_batch().expect("Failed to get batch");
 
-    // After first batch, total_results should be available
-    assert_eq!(iterator.total_results(), Some(15));
+        // After first batch, total_results should be available
+        iterator.total_results()
+    })
+    .await
+    .expect("spawn_blocking failed");
+
+    assert_eq!(total_results, Some(15));
 
     redis_cli(&["FT.DROPINDEX", "rust_total_idx"]);
     cleanup_keys("rust:total:*");
 }
 
 /// Test FT.SEARCH with no results.
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_search_no_results() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_search_no_results() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:noresults:*");
     setup_test_hashes("rust:noresults:", 5);
@@ -255,24 +257,26 @@ fn test_search_no_results() {
     )
     .with_batch_size(100);
 
-    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create search iterator");
+    let is_empty = tokio::task::spawn_blocking(move || {
+        let mut iterator = HashSearchIterator::new(&url, schema, config, None)
+            .expect("Failed to create search iterator");
 
-    let batch = iterator.next_batch().expect("Failed to get batch");
-    assert!(batch.is_none() || batch.unwrap().num_rows() == 0);
+        let batch = iterator.next_batch().expect("Failed to get batch");
+        batch.is_none() || batch.unwrap().num_rows() == 0
+    })
+    .await
+    .expect("spawn_blocking failed");
+
+    assert!(is_empty);
 
     redis_cli(&["FT.DROPINDEX", "rust_noresults_idx"]);
     cleanup_keys("rust:noresults:*");
 }
 
 /// Test FT.SEARCH with projection.
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_search_with_projection() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_search_with_projection() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:searchproj:*");
     setup_test_hashes("rust:searchproj:", 5);
@@ -297,16 +301,22 @@ fn test_search_with_projection() {
     // Only project 'name' column
     let projection = Some(vec!["name".to_string()]);
 
-    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, projection)
-        .expect("Failed to create search iterator");
+    let (num_columns, num_rows) = tokio::task::spawn_blocking(move || {
+        let mut iterator = HashSearchIterator::new(&url, schema, config, projection)
+            .expect("Failed to create search iterator");
 
-    let batch = iterator
-        .next_batch()
-        .expect("Failed to get batch")
-        .expect("Expected a batch");
+        let batch = iterator
+            .next_batch()
+            .expect("Failed to get batch")
+            .expect("Expected a batch");
 
-    assert_eq!(batch.num_columns(), 1);
-    assert_eq!(batch.num_rows(), 5);
+        (batch.num_columns(), batch.num_rows())
+    })
+    .await
+    .expect("spawn_blocking failed");
+
+    assert_eq!(num_columns, 1);
+    assert_eq!(num_rows, 5);
 
     redis_cli(&["FT.DROPINDEX", "rust_searchproj_idx"]);
     cleanup_keys("rust:searchproj:*");
@@ -450,13 +460,9 @@ fn setup_test_products(prefix: &str) {
 }
 
 /// Test query builder with text search (contains).
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_query_builder_text_search() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_query_builder_text_search() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:qb:text:*");
     setup_test_products("rust:qb:text:");
@@ -481,13 +487,18 @@ fn test_query_builder_text_search() {
 
     let config = SearchBatchConfig::new("rust_qb_text_idx".to_string(), query).with_batch_size(100);
 
-    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create search iterator");
+    let total_rows = tokio::task::spawn_blocking(move || {
+        let mut iterator = HashSearchIterator::new(&url, schema, config, None)
+            .expect("Failed to create search iterator");
 
-    let mut total_rows = 0;
-    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
-        total_rows += batch.num_rows();
-    }
+        let mut total = 0;
+        while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+            total += batch.num_rows();
+        }
+        total
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(total_rows, 1); // Only "Python Programming Guide"
 
@@ -496,13 +507,9 @@ fn test_query_builder_text_search() {
 }
 
 /// Test query builder with tag search.
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_query_builder_tag_search() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_query_builder_tag_search() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:qb:tag:*");
     setup_test_products("rust:qb:tag:");
@@ -527,13 +534,18 @@ fn test_query_builder_tag_search() {
 
     let config = SearchBatchConfig::new("rust_qb_tag_idx".to_string(), query).with_batch_size(100);
 
-    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create search iterator");
+    let total_rows = tokio::task::spawn_blocking(move || {
+        let mut iterator = HashSearchIterator::new(&url, schema, config, None)
+            .expect("Failed to create search iterator");
 
-    let mut total_rows = 0;
-    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
-        total_rows += batch.num_rows();
-    }
+        let mut total = 0;
+        while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+            total += batch.num_rows();
+        }
+        total
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     assert_eq!(total_rows, 3); // Python, Rust, JavaScript
 
@@ -542,13 +554,9 @@ fn test_query_builder_tag_search() {
 }
 
 /// Test query builder with numeric range.
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_query_builder_numeric_range() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_query_builder_numeric_range() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:qb:num:*");
     setup_test_products("rust:qb:num:");
@@ -573,13 +581,18 @@ fn test_query_builder_numeric_range() {
 
     let config = SearchBatchConfig::new("rust_qb_num_idx".to_string(), query).with_batch_size(100);
 
-    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create search iterator");
+    let total_rows = tokio::task::spawn_blocking(move || {
+        let mut iterator = HashSearchIterator::new(&url, schema, config, None)
+            .expect("Failed to create search iterator");
 
-    let mut total_rows = 0;
-    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
-        total_rows += batch.num_rows();
-    }
+        let mut total = 0;
+        while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+            total += batch.num_rows();
+        }
+        total
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     // Rust (3499), Data Science (3999), Redis (3299), Kubernetes (3699) = 4 products
     assert_eq!(total_rows, 4);
@@ -589,13 +602,9 @@ fn test_query_builder_numeric_range() {
 }
 
 /// Test query builder with AND combination.
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_query_builder_and_combination() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_query_builder_and_combination() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:qb:and:*");
     setup_test_products("rust:qb:and:");
@@ -622,13 +631,18 @@ fn test_query_builder_and_combination() {
 
     let config = SearchBatchConfig::new("rust_qb_and_idx".to_string(), query).with_batch_size(100);
 
-    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create search iterator");
+    let total_rows = tokio::task::spawn_blocking(move || {
+        let mut iterator = HashSearchIterator::new(&url, schema, config, None)
+            .expect("Failed to create search iterator");
 
-    let mut total_rows = 0;
-    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
-        total_rows += batch.num_rows();
-    }
+        let mut total = 0;
+        while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+            total += batch.num_rows();
+        }
+        total
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     // Python (4.5) and Rust (4.8) have rating >= 4.5 in programming category
     assert_eq!(total_rows, 2);
@@ -638,13 +652,9 @@ fn test_query_builder_and_combination() {
 }
 
 /// Test query builder with OR combination using tag_or.
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_query_builder_tag_or() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_query_builder_tag_or() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:qb:or:*");
     setup_test_products("rust:qb:or:");
@@ -672,13 +682,18 @@ fn test_query_builder_tag_or() {
 
     let config = SearchBatchConfig::new("rust_qb_or_idx".to_string(), query).with_batch_size(100);
 
-    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create search iterator");
+    let total_rows = tokio::task::spawn_blocking(move || {
+        let mut iterator = HashSearchIterator::new(&url, schema, config, None)
+            .expect("Failed to create search iterator");
 
-    let mut total_rows = 0;
-    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
-        total_rows += batch.num_rows();
-    }
+        let mut total = 0;
+        while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+            total += batch.num_rows();
+        }
+        total
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     // programming (3) + database (2) = 5 products
     assert_eq!(total_rows, 5);
@@ -688,13 +703,9 @@ fn test_query_builder_tag_or() {
 }
 
 /// Test query builder with prefix search.
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_query_builder_prefix_search() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_query_builder_prefix_search() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:qb:prefix:*");
     setup_test_products("rust:qb:prefix:");
@@ -716,13 +727,18 @@ fn test_query_builder_prefix_search() {
     let config =
         SearchBatchConfig::new("rust_qb_prefix_idx".to_string(), query).with_batch_size(100);
 
-    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create search iterator");
+    let total_rows = tokio::task::spawn_blocking(move || {
+        let mut iterator = HashSearchIterator::new(&url, schema, config, None)
+            .expect("Failed to create search iterator");
 
-    let mut total_rows = 0;
-    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
-        total_rows += batch.num_rows();
-    }
+        let mut total = 0;
+        while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+            total += batch.num_rows();
+        }
+        total
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     // "Data Science Handbook" and "Database Design Patterns"
     assert_eq!(total_rows, 2);
@@ -732,13 +748,9 @@ fn test_query_builder_prefix_search() {
 }
 
 /// Test query builder with fuzzy search.
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_query_builder_fuzzy_search() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_query_builder_fuzzy_search() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:qb:fuzzy:*");
     setup_test_products("rust:qb:fuzzy:");
@@ -760,13 +772,18 @@ fn test_query_builder_fuzzy_search() {
     let config =
         SearchBatchConfig::new("rust_qb_fuzzy_idx".to_string(), query).with_batch_size(100);
 
-    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create search iterator");
+    let total_rows = tokio::task::spawn_blocking(move || {
+        let mut iterator = HashSearchIterator::new(&url, schema, config, None)
+            .expect("Failed to create search iterator");
 
-    let mut total_rows = 0;
-    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
-        total_rows += batch.num_rows();
-    }
+        let mut total = 0;
+        while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+            total += batch.num_rows();
+        }
+        total
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     // Should find "Python Programming Guide" despite typo
     assert_eq!(total_rows, 1);
@@ -776,13 +793,9 @@ fn test_query_builder_fuzzy_search() {
 }
 
 /// Test query builder with NOT (negation).
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_query_builder_negation() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_query_builder_negation() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:qb:not:*");
     setup_test_products("rust:qb:not:");
@@ -806,13 +819,18 @@ fn test_query_builder_negation() {
 
     let config = SearchBatchConfig::new("rust_qb_not_idx".to_string(), query).with_batch_size(100);
 
-    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create search iterator");
+    let total_rows = tokio::task::spawn_blocking(move || {
+        let mut iterator = HashSearchIterator::new(&url, schema, config, None)
+            .expect("Failed to create search iterator");
 
-    let mut total_rows = 0;
-    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
-        total_rows += batch.num_rows();
-    }
+        let mut total = 0;
+        while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+            total += batch.num_rows();
+        }
+        total
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     // 10 total - 3 cloud = 7 products
     assert_eq!(total_rows, 7);
@@ -822,13 +840,9 @@ fn test_query_builder_negation() {
 }
 
 /// Test query builder with complex boolean expression.
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_query_builder_complex_boolean() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_query_builder_complex_boolean() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:qb:bool:*");
     setup_test_products("rust:qb:bool:");
@@ -857,13 +871,18 @@ fn test_query_builder_complex_boolean() {
 
     let config = SearchBatchConfig::new("rust_qb_bool_idx".to_string(), query).with_batch_size(100);
 
-    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create search iterator");
+    let total_rows = tokio::task::spawn_blocking(move || {
+        let mut iterator = HashSearchIterator::new(&url, schema, config, None)
+            .expect("Failed to create search iterator");
 
-    let mut total_rows = 0;
-    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
-        total_rows += batch.num_rows();
-    }
+        let mut total = 0;
+        while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+            total += batch.num_rows();
+        }
+        total
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     // Programming with price < 3500 and rating >= 4.5: Python (2999, 4.5)
     // Rust is 3499 but rating 4.8, still qualifies
@@ -876,13 +895,9 @@ fn test_query_builder_complex_boolean() {
 }
 
 /// Test query builder with infix (substring) search.
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_query_builder_infix_search() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_query_builder_infix_search() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:qb:infix:*");
     setup_test_products("rust:qb:infix:");
@@ -904,13 +919,18 @@ fn test_query_builder_infix_search() {
     let config =
         SearchBatchConfig::new("rust_qb_infix_idx".to_string(), query).with_batch_size(100);
 
-    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create search iterator");
+    let total_rows = tokio::task::spawn_blocking(move || {
+        let mut iterator = HashSearchIterator::new(&url, schema, config, None)
+            .expect("Failed to create search iterator");
 
-    let mut total_rows = 0;
-    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
-        total_rows += batch.num_rows();
-    }
+        let mut total = 0;
+        while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+            total += batch.num_rows();
+        }
+        total
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     // "Data Science Handbook" contains "Science"
     assert_eq!(total_rows, 1);
@@ -920,13 +940,9 @@ fn test_query_builder_infix_search() {
 }
 
 /// Test query builder with phrase search.
-#[test]
-#[ignore] // Requires Redis with RediSearch
-fn test_query_builder_phrase_search() {
-    if !redis_available() {
-        eprintln!("Skipping test: Redis not available");
-        return;
-    }
+#[tokio::test]
+async fn test_query_builder_phrase_search() {
+    let url = ensure_redis().await.to_string();
 
     cleanup_keys("rust:qb:phrase:*");
     setup_test_products("rust:qb:phrase:");
@@ -948,13 +964,18 @@ fn test_query_builder_phrase_search() {
     let config =
         SearchBatchConfig::new("rust_qb_phrase_idx".to_string(), query).with_batch_size(100);
 
-    let mut iterator = HashSearchIterator::new(&redis_url(), schema, config, None)
-        .expect("Failed to create search iterator");
+    let total_rows = tokio::task::spawn_blocking(move || {
+        let mut iterator = HashSearchIterator::new(&url, schema, config, None)
+            .expect("Failed to create search iterator");
 
-    let mut total_rows = 0;
-    while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
-        total_rows += batch.num_rows();
-    }
+        let mut total = 0;
+        while let Some(batch) = iterator.next_batch().expect("Failed to get batch") {
+            total += batch.num_rows();
+        }
+        total
+    })
+    .await
+    .expect("spawn_blocking failed");
 
     // "JavaScript Web Development" contains the phrase
     assert_eq!(total_rows, 1);
