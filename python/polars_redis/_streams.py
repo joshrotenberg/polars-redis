@@ -10,9 +10,8 @@ with consumer group support and real-time tailing.
 
 from __future__ import annotations
 
-import time
 from collections.abc import AsyncIterator, Iterator
-from typing import Any, Literal
+from typing import Any
 
 import polars as pl
 
@@ -299,7 +298,7 @@ def iter_stream(
         client.close()
 
 
-async def stream_batches(
+async def iter_stream_async(
     url: str,
     stream: str,
     *,
@@ -348,7 +347,7 @@ async def stream_batches(
         >>> import polars_redis as redis
         >>>
         >>> async def process_events():
-        ...     async for batch_df in redis.stream_batches(
+        ...     async for batch_df in redis.iter_stream_async(
         ...         "redis://localhost",
         ...         stream="events",
         ...         batch_size=100,

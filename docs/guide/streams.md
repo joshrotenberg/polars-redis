@@ -17,7 +17,7 @@ Redis Streams are append-only log data structures ideal for:
 - Single stream consumption with `read_stream()` and `scan_stream()`
 - Consumer group support for distributed processing
 - Blocking reads for real-time tailing
-- Batch iteration with `iter_stream()` and `stream_batches()`
+- Batch iteration with `iter_stream()` and `iter_stream_async()`
 - Manual or automatic message acknowledgment
 
 ## Differences from `scan_streams`/`read_streams`
@@ -227,7 +227,7 @@ for batch_df in redis.iter_stream(
 import asyncio
 
 async def process_stream():
-    async for batch_df in redis.stream_batches(
+    async for batch_df in redis.iter_stream_async(
         "redis://localhost",
         stream="events",
         batch_size=100,
@@ -337,7 +337,7 @@ Synchronous iterator yielding DataFrame batches.
 | `block_ms` | `int` | `1000` | Block timeout per batch |
 | *(plus all `read_stream` params)* | | | |
 
-### `stream_batches()`
+### `iter_stream_async()`
 
 Async iterator yielding DataFrame batches.
 
