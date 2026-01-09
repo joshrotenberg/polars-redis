@@ -180,8 +180,42 @@ jobs:
           REDIS_URL: redis://localhost:6379
         run: pytest tests/ -v
 
+  # Minimal wheel build for PRs (fast feedback)
   build-wheels:
     name: Build Wheels
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install maturin
+        run: pip install maturin
+
+      - name: Build wheel
+        run: maturin build --release --features python
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-ubuntu-py${{ matrix.python-version }}
+          path: target/wheels/*.whl
+
+  # Full wheel build for main branch (complete coverage)
+  build-wheels-full:
+    name: Build Wheels (Full Matrix)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
