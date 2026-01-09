@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1767828199230,
+  "lastUpdate": 1767996412015,
   "repoUrl": "https://github.com/joshrotenberg/polars-redis",
   "entries": {
     "Rust Benchmarks": [
@@ -3563,6 +3563,138 @@ window.BENCHMARK_DATA = {
             "name": "projection/25_of_50_fields",
             "value": 1144,
             "range": "± 6",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "joshrotenberg@gmail.com",
+            "name": "Josh Rotenberg",
+            "username": "joshrotenberg"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "33f4fd3a16e7f74ad81e28133c8f6fa7db303789",
+          "message": "refactor: convert integration tests to use docker-wrapper (#191)\n\n- Convert all integration tests from #[test] #[ignore] to #[tokio::test] with ensure_redis()\n- Wrap sync Redis operations in spawn_blocking to avoid runtime nesting errors\n- Fix Index::exists and Index::drop to handle 'no such index' error message\n- Fix Index::create_if_not_exists to handle 'already exists' error variants\n- Improve wait_for_index to properly check percent_indexed status\n- Fix geo test with valid latitude range for Redis GEOADD\n- Tests now auto-detect Redis or start container via docker-wrapper",
+          "timestamp": "2026-01-09T13:56:39-08:00",
+          "tree_id": "06c64e2236cf435302f1a672b9f273023feba27a",
+          "url": "https://github.com/joshrotenberg/polars-redis/commit/33f4fd3a16e7f74ad81e28133c8f6fa7db303789"
+        },
+        "date": 1767996411574,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "schema_creation/small_3_fields",
+            "value": 320,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/medium_10_fields",
+            "value": 1088,
+            "range": "± 2",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/large_50_fields",
+            "value": 7013,
+            "range": "± 29",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/default",
+            "value": 27,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/with_options",
+            "value": 27,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/100",
+            "value": 249,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/100",
+            "value": 1180,
+            "range": "± 13",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/100",
+            "value": 99,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/1000",
+            "value": 3145,
+            "range": "± 32",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/1000",
+            "value": 12808,
+            "range": "± 24",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/1000",
+            "value": 938,
+            "range": "± 3",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/10000",
+            "value": 37263,
+            "range": "± 111",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/10000",
+            "value": 134494,
+            "range": "± 3510",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/10000",
+            "value": 9469,
+            "range": "± 32",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "arrow_schema/to_arrow_schema",
+            "value": 739,
+            "range": "± 7",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/no_filter",
+            "value": 19,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/5_of_50_fields",
+            "value": 1022,
+            "range": "± 6",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/25_of_50_fields",
+            "value": 1266,
+            "range": "± 26",
             "unit": "ns/iter"
           }
         ]
