@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1767996412015,
+  "lastUpdate": 1768000842137,
   "repoUrl": "https://github.com/joshrotenberg/polars-redis",
   "entries": {
     "Rust Benchmarks": [
@@ -3695,6 +3695,138 @@ window.BENCHMARK_DATA = {
             "name": "projection/25_of_50_fields",
             "value": 1266,
             "range": "± 26",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "41898282+github-actions[bot]@users.noreply.github.com",
+            "name": "github-actions[bot]",
+            "username": "github-actions[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "e2f133408b7b5cdef25e8ad8f78486720e6ec1d3",
+          "message": "chore(main): release polars-redis 0.1.7 (#142)\n\nCo-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>",
+          "timestamp": "2026-01-09T15:10:05-08:00",
+          "tree_id": "27ada69a5f477ba174816519b03727ea1cd474db",
+          "url": "https://github.com/joshrotenberg/polars-redis/commit/e2f133408b7b5cdef25e8ad8f78486720e6ec1d3"
+        },
+        "date": 1768000841806,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "schema_creation/small_3_fields",
+            "value": 324,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/medium_10_fields",
+            "value": 1089,
+            "range": "± 6",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/large_50_fields",
+            "value": 7037,
+            "range": "± 21",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/default",
+            "value": 26,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/with_options",
+            "value": 27,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/100",
+            "value": 249,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/100",
+            "value": 1191,
+            "range": "± 2",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/100",
+            "value": 99,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/1000",
+            "value": 3265,
+            "range": "± 38",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/1000",
+            "value": 12452,
+            "range": "± 23",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/1000",
+            "value": 938,
+            "range": "± 2",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/10000",
+            "value": 37821,
+            "range": "± 281",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/10000",
+            "value": 128880,
+            "range": "± 787",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/10000",
+            "value": 9575,
+            "range": "± 65",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "arrow_schema/to_arrow_schema",
+            "value": 763,
+            "range": "± 6",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/no_filter",
+            "value": 20,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/5_of_50_fields",
+            "value": 942,
+            "range": "± 38",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/25_of_50_fields",
+            "value": 1149,
+            "range": "± 9",
             "unit": "ns/iter"
           }
         ]
