@@ -188,7 +188,7 @@ For continuous streaming, use iterators that yield batches of messages:
 
 ```python
 # Process batches of up to 100 messages or every second
-for batch_df in redis.iter_batches(
+for batch_df in redis.iter_pubsub(
     "redis://localhost",
     channels=["events"],
     batch_size=100,
@@ -209,7 +209,7 @@ for batch_df in redis.iter_batches(
 import asyncio
 
 async def process_events():
-    async for batch_df in redis.subscribe_batches(
+    async for batch_df in redis.iter_pubsub_async(
         "redis://localhost",
         channels=["events"],
         batch_size=100,
@@ -301,7 +301,7 @@ Collect messages into a DataFrame.
 | `include_channel` | `bool` | `False` | Include channel column |
 | `include_timestamp` | `bool` | `False` | Include timestamp column |
 
-### `iter_batches()`
+### `iter_pubsub()`
 
 Synchronous iterator yielding DataFrame batches.
 
@@ -311,11 +311,11 @@ Synchronous iterator yielding DataFrame batches.
 | `batch_timeout_ms` | `int` | `1000` | Timeout to yield partial batch |
 | *(plus all `collect_pubsub` params)* | | | |
 
-### `subscribe_batches()`
+### `iter_pubsub_async()`
 
 Async iterator yielding DataFrame batches.
 
-Same parameters as `iter_batches()`.
+Same parameters as `iter_pubsub()`.
 
 ## See Also
 

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import threading
 import time
 from collections.abc import AsyncIterator, Iterator
 from typing import Any, Callable, Literal
@@ -193,7 +192,7 @@ def collect_pubsub(
     return df
 
 
-async def subscribe_batches(
+async def iter_pubsub_async(
     url: str,
     channels: list[str],
     *,
@@ -209,7 +208,7 @@ async def subscribe_batches(
     message_column: str = "message",
     timestamp_column: str = "_received_at",
 ) -> AsyncIterator[pl.DataFrame]:
-    """Async iterator that yields batches of messages as DataFrames.
+    """Async iterator that yields batches of Pub/Sub messages as DataFrames.
 
     Subscribes to the specified channels and yields DataFrames containing
     batches of messages. Each batch contains up to `batch_size` messages
@@ -238,7 +237,7 @@ async def subscribe_batches(
         >>> import polars_redis as redis
         >>>
         >>> async def process_events():
-        ...     async for batch_df in redis.subscribe_batches(
+        ...     async for batch_df in redis.iter_pubsub_async(
         ...         "redis://localhost",
         ...         channels=["events"],
         ...         batch_size=100,
@@ -336,7 +335,7 @@ async def subscribe_batches(
         await client.close()
 
 
-def iter_batches(
+def iter_pubsub(
     url: str,
     channels: list[str],
     *,
@@ -352,10 +351,10 @@ def iter_batches(
     message_column: str = "message",
     timestamp_column: str = "_received_at",
 ) -> Iterator[pl.DataFrame]:
-    """Synchronous iterator that yields batches of messages as DataFrames.
+    """Synchronous iterator that yields batches of Pub/Sub messages as DataFrames.
 
-    This is a synchronous wrapper around subscribe_batches for use in
-    non-async contexts.
+    Subscribes to the specified channels and yields DataFrames containing
+    batches of messages for real-time processing.
 
     Args:
         url: Redis connection URL.
@@ -378,7 +377,7 @@ def iter_batches(
     Example:
         >>> import polars_redis as redis
         >>>
-        >>> for batch_df in redis.iter_batches(
+        >>> for batch_df in redis.iter_pubsub(
         ...     "redis://localhost",
         ...     channels=["events"],
         ...     batch_size=100,

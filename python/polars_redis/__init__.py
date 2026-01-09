@@ -105,8 +105,8 @@ from polars_redis._pipeline import (
 )
 from polars_redis._pubsub import (
     collect_pubsub,
-    iter_batches,
-    subscribe_batches,
+    iter_pubsub,
+    iter_pubsub_async,
 )
 from polars_redis._read import (
     read_hashes,
@@ -146,9 +146,9 @@ from polars_redis._smart import (
 from polars_redis._streams import (
     ack_entries,
     iter_stream,
+    iter_stream_async,
     read_stream,
     scan_stream,
-    stream_batches,
 )
 from polars_redis._write import (
     WriteResult,
@@ -285,13 +285,13 @@ __all__ = [
     "RenameResult",
     # Pub/Sub streaming
     "collect_pubsub",
-    "subscribe_batches",
-    "iter_batches",
+    "iter_pubsub",
+    "iter_pubsub_async",
     # Stream consumption (single stream with consumer groups)
     "read_stream",
     "scan_stream",
     "iter_stream",
-    "stream_batches",
+    "iter_stream_async",
     "ack_entries",
     # Environment defaults
     "get_default_batch_size",

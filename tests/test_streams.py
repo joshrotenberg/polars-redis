@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
-from typing import Any
 
 import polars as pl
 import pytest
@@ -479,11 +478,11 @@ class TestIterStream:
             client.close()
 
 
-class TestStreamBatches:
-    """Tests for stream_batches async iterator."""
+class TestIterStreamAsync:
+    """Tests for iter_stream_async async iterator."""
 
     @pytest.mark.asyncio
-    async def test_stream_batches_basic(self, redis_url: str, redis_available: bool) -> None:
+    async def test_iter_stream_async_basic(self, redis_url: str, redis_available: bool) -> None:
         """Test basic async batch iteration."""
         if not redis_available:
             pytest.skip("Redis not available")
@@ -504,7 +503,7 @@ class TestStreamBatches:
 
         try:
             batches = []
-            async for batch in pr.stream_batches(
+            async for batch in pr.iter_stream_async(
                 redis_url,
                 stream=stream,
                 batch_size=5,
@@ -531,15 +530,15 @@ class TestStreamsUnit:
         from polars_redis import (
             ack_entries,
             iter_stream,
+            iter_stream_async,
             read_stream,
             scan_stream,
-            stream_batches,
         )
 
         assert callable(read_stream)
         assert callable(scan_stream)
         assert callable(iter_stream)
-        assert callable(stream_batches)
+        assert callable(iter_stream_async)
         assert callable(ack_entries)
 
     def test_read_stream_signature(self) -> None:

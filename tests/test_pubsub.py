@@ -370,10 +370,10 @@ class TestCollectPubsub:
         assert "ts" in df.columns
 
 
-class TestIterBatches:
-    """Tests for iter_batches synchronous iterator."""
+class TestIterPubsub:
+    """Tests for iter_pubsub synchronous iterator."""
 
-    def test_iter_batches_by_size(self, redis_url: str, redis_available: bool) -> None:
+    def test_iter_pubsub_by_size(self, redis_url: str, redis_available: bool) -> None:
         """Test yielding batches by size."""
         if not redis_available:
             pytest.skip("Redis not available")
@@ -397,7 +397,7 @@ class TestIterBatches:
         thread.start()
 
         batches = []
-        for batch in pr.iter_batches(
+        for batch in pr.iter_pubsub(
             redis_url,
             channels=[channel],
             batch_size=5,
@@ -415,7 +415,7 @@ class TestIterBatches:
         # First batch should have up to 5 messages
         assert len(batches[0]) <= 5
 
-    def test_iter_batches_by_timeout(self, redis_url: str, redis_available: bool) -> None:
+    def test_iter_pubsub_by_timeout(self, redis_url: str, redis_available: bool) -> None:
         """Test yielding batches by timeout."""
         if not redis_available:
             pytest.skip("Redis not available")
@@ -437,7 +437,7 @@ class TestIterBatches:
         thread.start()
 
         batches = []
-        for batch in pr.iter_batches(
+        for batch in pr.iter_pubsub(
             redis_url,
             channels=[channel],
             batch_size=100,  # Large batch size
@@ -456,11 +456,11 @@ class TestIterBatches:
             assert len(batch) < 100
 
 
-class TestSubscribeBatches:
-    """Tests for subscribe_batches async iterator."""
+class TestIterPubsubAsync:
+    """Tests for iter_pubsub_async async iterator."""
 
     @pytest.mark.asyncio
-    async def test_subscribe_batches_basic(self, redis_url: str, redis_available: bool) -> None:
+    async def test_iter_pubsub_async_basic(self, redis_url: str, redis_available: bool) -> None:
         """Test basic async batch iteration."""
         if not redis_available:
             pytest.skip("Redis not available")
@@ -480,7 +480,7 @@ class TestSubscribeBatches:
         publish_task = asyncio.create_task(publish_messages())
 
         batches = []
-        async for batch in pr.subscribe_batches(
+        async for batch in pr.iter_pubsub_async(
             redis_url,
             channels=[channel],
             batch_size=5,
@@ -496,7 +496,7 @@ class TestSubscribeBatches:
         assert len(batches) >= 1
 
     @pytest.mark.asyncio
-    async def test_subscribe_batches_json(self, redis_url: str, redis_available: bool) -> None:
+    async def test_iter_pubsub_async_json(self, redis_url: str, redis_available: bool) -> None:
         """Test async iteration with JSON messages."""
         if not redis_available:
             pytest.skip("Redis not available")
@@ -517,7 +517,7 @@ class TestSubscribeBatches:
         publish_task = asyncio.create_task(publish_messages())
 
         batches = []
-        async for batch in pr.subscribe_batches(
+        async for batch in pr.iter_pubsub_async(
             redis_url,
             channels=[channel],
             batch_size=5,
@@ -565,11 +565,11 @@ class TestPubsubUnit:
 
     def test_imports(self) -> None:
         """Test that pubsub functions are importable."""
-        from polars_redis import collect_pubsub, iter_batches, subscribe_batches
+        from polars_redis import collect_pubsub, iter_pubsub, iter_pubsub_async
 
         assert callable(collect_pubsub)
-        assert callable(iter_batches)
-        assert callable(subscribe_batches)
+        assert callable(iter_pubsub)
+        assert callable(iter_pubsub_async)
 
     def test_collect_pubsub_signature(self) -> None:
         """Test function signature includes expected parameters."""
