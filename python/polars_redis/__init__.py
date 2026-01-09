@@ -97,6 +97,13 @@ from polars_redis._keys import (
     set_ttl,
     set_ttl_from_column,
 )
+from polars_redis._multi import (
+    Destination,
+    DestinationResult,
+    MultiWriteResult,
+    write_hashes_multi,
+    write_json_multi,
+)
 from polars_redis._pipeline import (
     CommandResult,
     Pipeline,
@@ -218,6 +225,12 @@ __all__ = [
     "write_strings",
     "write_zsets",
     "WriteResult",
+    # Multi-cluster write
+    "write_hashes_multi",
+    "write_json_multi",
+    "Destination",
+    "DestinationResult",
+    "MultiWriteResult",
     # Pipeline and Transaction
     "Pipeline",
     "Transaction",
