@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.1.7](https://github.com/joshrotenberg/polars-redis/compare/polars-redis-v0.1.6...polars-redis-v0.1.7) (2026-01-09)
+
+
+### Features
+
+* add geospatial support for Redis GEO commands ([#176](https://github.com/joshrotenberg/polars-redis/issues/176)) ([7783387](https://github.com/joshrotenberg/polars-redis/commit/7783387e8c69740b62b829798828bc0f603776b3))
+* add key management utilities ([#175](https://github.com/joshrotenberg/polars-redis/issues/175)) ([8e2ea51](https://github.com/joshrotenberg/polars-redis/commit/8e2ea51654e9e5c906970f6115459c420bcfd8ea)), closes [#169](https://github.com/joshrotenberg/polars-redis/issues/169)
+* add pipeline and transaction support ([#174](https://github.com/joshrotenberg/polars-redis/issues/174)) ([637f742](https://github.com/joshrotenberg/polars-redis/commit/637f742bea90b490dac50ebed59bf8d5be95142e)), closes [#168](https://github.com/joshrotenberg/polars-redis/issues/168)
+* add RediSearch index management helpers ([#141](https://github.com/joshrotenberg/polars-redis/issues/141)) ([422086d](https://github.com/joshrotenberg/polars-redis/commit/422086d745e6875f3099aefc8381eb3d07b8db48))
+* add smart_scan with automatic index detection ([#144](https://github.com/joshrotenberg/polars-redis/issues/144)) ([354ba0b](https://github.com/joshrotenberg/polars-redis/commit/354ba0bbe264cf1f7370e35c0bf9d37b02db40f1))
+* complete RediSearch coverage with enhanced search features ([#143](https://github.com/joshrotenberg/polars-redis/issues/143)) ([12abe96](https://github.com/joshrotenberg/polars-redis/commit/12abe96a40805d170b15af224776a009a5f3b2d8))
+
+
+### Bug Fixes
+
+* improve error messages with actionable suggestions ([#167](https://github.com/joshrotenberg/polars-redis/issues/167)) ([8e53787](https://github.com/joshrotenberg/polars-redis/commit/8e53787877d27567fdd19f523e195cfa30740415))
+
+
+### Performance Improvements
+
+* expand benchmark coverage for caching and streaming ([#160](https://github.com/joshrotenberg/polars-redis/issues/160)) ([4a65866](https://github.com/joshrotenberg/polars-redis/commit/4a658660ae5ef812c74eb74be07d31f49afb2696)), closes [#150](https://github.com/joshrotenberg/polars-redis/issues/150)
+
 ## [0.1.6](https://github.com/joshrotenberg/polars-redis/compare/polars-redis-v0.1.5...polars-redis-v0.1.6) (2026-01-06)
 
 
