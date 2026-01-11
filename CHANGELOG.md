@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/joshrotenberg/polars-redis/compare/polars-redis-v0.1.7...polars-redis-v0.1.8) (2026-01-11)
+
+
+### Features
+
+* add multi-cluster parallel write support ([#200](https://github.com/joshrotenberg/polars-redis/issues/200)) ([92fd76b](https://github.com/joshrotenberg/polars-redis/commit/92fd76bd7d666b4e2910917ebe64ae35c207996d))
+
 ## [0.1.7](https://github.com/joshrotenberg/polars-redis/compare/polars-redis-v0.1.6...polars-redis-v0.1.7) (2026-01-09)
 
 
