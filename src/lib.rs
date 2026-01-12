@@ -169,6 +169,7 @@ pub use io::infer::{
     FieldInferenceInfo, InferredSchema, InferredSchemaWithConfidence, infer_hash_schema,
     infer_hash_schema_with_confidence, infer_json_schema,
 };
+pub use io::multi::{Destination, DestinationResult, MultiClusterWriter, MultiWriteResult};
 pub use io::types::hash::{BatchConfig, HashBatchIterator, HashFetcher};
 #[cfg(feature = "cluster")]
 pub use io::types::hash::{ClusterHashBatchIterator, ClusterHashFetcher};
