@@ -35,6 +35,14 @@ from polars_redis._cache import (
     get_cached_dataframe,
     scan_cached,
 )
+from polars_redis._consumer import (
+    CheckpointStore,
+    ConsumerStats,
+    FileCheckpointStore,
+    MemoryCheckpointStore,
+    RedisCheckpointStore,
+    StreamConsumer,
+)
 from polars_redis._decorator import (
     cache,
     cache_lazy,
@@ -306,6 +314,13 @@ __all__ = [
     "iter_stream",
     "iter_stream_async",
     "ack_entries",
+    # Stream consumer with checkpointing
+    "StreamConsumer",
+    "CheckpointStore",
+    "MemoryCheckpointStore",
+    "FileCheckpointStore",
+    "RedisCheckpointStore",
+    "ConsumerStats",
     # Environment defaults
     "get_default_batch_size",
     "get_default_count_hint",
