@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1768000842137,
+  "lastUpdate": 1768247922541,
   "repoUrl": "https://github.com/joshrotenberg/polars-redis",
   "entries": {
     "Rust Benchmarks": [
@@ -3827,6 +3827,138 @@ window.BENCHMARK_DATA = {
             "name": "projection/25_of_50_fields",
             "value": 1149,
             "range": "± 9",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "joshrotenberg@gmail.com",
+            "name": "Josh Rotenberg",
+            "username": "joshrotenberg"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "37eaf031f871ffde15bd3cb785e8eae71bf7488d",
+          "message": "feat: Rust/Python API parity (Issue #204) (#207)\n\n* feat: add StreamConsumer with checkpointing and consumer group support\n\n- Add CheckpointStore trait with Memory and Redis implementations\n- Add StreamConsumer with XREADGROUP and XACK support\n- Add ConsumerConfig for flexible configuration\n- Add ConsumerStats for consumption metrics\n- Add Python bindings: PyStreamConsumer, py_create_consumer_group,\n  py_destroy_consumer_group, py_stream_ack\n- Add utility functions: create_consumer_group, destroy_consumer_group,\n  stream_ack\n\nPart of #204\n\n* feat: add MultiClusterWriter for parallel writes to multiple destinations\n\n- Add Destination struct for configuring write targets\n- Add DestinationResult and MultiWriteResult for detailed results\n- Add MultiClusterWriter with parallel write_hashes and write_json\n- Support key prefixing per destination\n- Support per-destination timeout\n\nPart of #204\n\n* feat: add smart scan and convenience methods for API parity\n\nPriority 3: Smart scan with auto index detection\n- Add explain_scan() to analyze query strategy without executing\n- Add smart_scan_hashes() that auto-detects RediSearch indexes\n- Add SmartScanResult enum for unified iterator interface\n- Add PySmartScanIterator and py_explain_scan Python bindings\n\nPriority 4: Convenience methods\n- Add geo_add_from_columns() for DataFrame-friendly geo operations\n- Add scan_cached() for automatic scan result caching\n- Add py_geo_add_from_columns and py_scan_cached Python bindings\n\nPart of #204\n\n* more",
+          "timestamp": "2026-01-12T11:48:14-08:00",
+          "tree_id": "6dc5f9b5a08186f6ec1367742d18a3aa331d5139",
+          "url": "https://github.com/joshrotenberg/polars-redis/commit/37eaf031f871ffde15bd3cb785e8eae71bf7488d"
+        },
+        "date": 1768247922114,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "schema_creation/small_3_fields",
+            "value": 314,
+            "range": "± 5",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/medium_10_fields",
+            "value": 1099,
+            "range": "± 22",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "schema_creation/large_50_fields",
+            "value": 6988,
+            "range": "± 34",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/default",
+            "value": 27,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_config/with_options",
+            "value": 27,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/100",
+            "value": 249,
+            "range": "± 2",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/100",
+            "value": 1180,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/100",
+            "value": 79,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/1000",
+            "value": 3243,
+            "range": "± 71",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/1000",
+            "value": 12812,
+            "range": "± 114",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/1000",
+            "value": 938,
+            "range": "± 6",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/int64/10000",
+            "value": 38796,
+            "range": "± 426",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/float64/10000",
+            "value": 128989,
+            "range": "± 1302",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "type_parsing/boolean/10000",
+            "value": 9493,
+            "range": "± 58",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "arrow_schema/to_arrow_schema",
+            "value": 724,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/no_filter",
+            "value": 21,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/5_of_50_fields",
+            "value": 918,
+            "range": "± 2",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "projection/25_of_50_fields",
+            "value": 1110,
+            "range": "± 3",
             "unit": "ns/iter"
           }
         ]
