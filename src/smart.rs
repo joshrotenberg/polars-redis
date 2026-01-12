@@ -7,26 +7,38 @@
 //! # Example
 //!
 //! ```ignore
-//! use polars_redis::smart::{find_index_for_pattern, list_indexes, ExecutionStrategy};
+//! use polars_redis::smart::{explain_scan, smart_scan_hashes, ExecutionStrategy};
 //!
-//! // Find an index that covers a key pattern
-//! let index = find_index_for_pattern(&mut conn, "user:*").await?;
-//! if let Some(idx) = index {
-//!     println!("Found index: {} covering prefixes: {:?}", idx.name, idx.prefixes);
+//! // Explain what strategy would be used
+//! let plan = explain_scan("redis://localhost:6379", "user:*")?;
+//! println!("Strategy: {}", plan.strategy);
+//! if let Some(idx) = &plan.index {
+//!     println!("Using index: {}", idx.name);
 //! }
 //!
-//! // List all indexes
-//! let indexes = list_indexes(&mut conn).await?;
-//! for idx in indexes {
-//!     println!("{}: {:?}", idx.name, idx.fields);
+//! // Smart scan automatically chooses best strategy
+//! let schema = HashSchema::new(vec![
+//!     ("name".to_string(), RedisType::Utf8),
+//!     ("age".to_string(), RedisType::Int64),
+//! ]);
+//! let config = BatchConfig::new("user:*");
+//! let mut iter = smart_scan_hashes("redis://localhost:6379", schema, config, None)?;
+//! while let Some(batch) = iter.next_batch()? {
+//!     println!("Got {} rows", batch.num_rows());
 //! }
 //! ```
 
 use std::fmt;
 
 use redis::aio::ConnectionManager;
+use tokio::runtime::Runtime;
 
-use crate::error::Result;
+use crate::connection::RedisConnection;
+use crate::error::{Error, Result};
+use crate::io::types::hash::{BatchConfig, HashBatchIterator};
+#[cfg(feature = "search")]
+use crate::io::types::hash::{HashSearchIterator, SearchBatchConfig};
+use crate::schema::HashSchema;
 
 /// Strategy for executing a query.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -324,6 +336,174 @@ pub async fn plan_query(conn: &mut ConnectionManager, pattern: &str) -> Result<Q
         );
         Ok(plan)
     }
+}
+
+// ============================================================================
+// Synchronous API
+// ============================================================================
+
+/// Explain what scan strategy would be used for a pattern.
+///
+/// This is a synchronous wrapper that returns a query plan without executing.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `pattern` - Key pattern (e.g., "user:*")
+///
+/// # Returns
+/// A `QueryPlan` describing the optimal execution strategy.
+///
+/// # Example
+///
+/// ```ignore
+/// let plan = explain_scan("redis://localhost:6379", "user:*")?;
+/// println!("{}", plan.explain());
+/// ```
+pub fn explain_scan(url: &str, pattern: &str) -> Result<QueryPlan> {
+    let runtime =
+        Runtime::new().map_err(|e| Error::Runtime(format!("Failed to create runtime: {}", e)))?;
+    let connection = RedisConnection::new(url)?;
+    let mut conn = runtime.block_on(connection.get_connection_manager())?;
+
+    runtime.block_on(plan_query(&mut conn, pattern))
+}
+
+/// Result of smart scan detection.
+pub enum SmartScanResult {
+    /// Using SCAN (no index found).
+    Scan(HashBatchIterator),
+    /// Using FT.SEARCH (index found).
+    #[cfg(feature = "search")]
+    Search(HashSearchIterator),
+}
+
+impl std::fmt::Debug for SmartScanResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SmartScanResult::Scan(_) => write!(f, "SmartScanResult::Scan(...)"),
+            #[cfg(feature = "search")]
+            SmartScanResult::Search(_) => write!(f, "SmartScanResult::Search(...)"),
+        }
+    }
+}
+
+impl SmartScanResult {
+    /// Get the next batch from the iterator.
+    pub fn next_batch(&mut self) -> Result<Option<arrow::array::RecordBatch>> {
+        match self {
+            SmartScanResult::Scan(iter) => iter.next_batch(),
+            #[cfg(feature = "search")]
+            SmartScanResult::Search(iter) => iter.next_batch(),
+        }
+    }
+
+    /// Check if iteration is complete.
+    pub fn is_done(&self) -> bool {
+        match self {
+            SmartScanResult::Scan(iter) => iter.is_done(),
+            #[cfg(feature = "search")]
+            SmartScanResult::Search(iter) => iter.is_done(),
+        }
+    }
+
+    /// Get the number of rows yielded so far.
+    pub fn rows_yielded(&self) -> usize {
+        match self {
+            SmartScanResult::Scan(iter) => iter.rows_yielded(),
+            #[cfg(feature = "search")]
+            SmartScanResult::Search(iter) => iter.rows_yielded(),
+        }
+    }
+
+    /// Get the execution strategy being used.
+    pub fn strategy(&self) -> ExecutionStrategy {
+        match self {
+            SmartScanResult::Scan(_) => ExecutionStrategy::Scan,
+            #[cfg(feature = "search")]
+            SmartScanResult::Search(_) => ExecutionStrategy::Search,
+        }
+    }
+}
+
+/// Smart scan for hashes that auto-detects and uses RediSearch if available.
+///
+/// This function checks if a RediSearch index exists for the given pattern.
+/// If found, it uses FT.SEARCH for efficient server-side filtering.
+/// Otherwise, it falls back to SCAN.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `schema` - Hash schema
+/// * `config` - Batch configuration with pattern
+/// * `projection` - Optional list of fields to fetch
+///
+/// # Returns
+/// A `SmartScanResult` that can be used to iterate over batches.
+///
+/// # Example
+///
+/// ```ignore
+/// let schema = HashSchema::new(vec![
+///     ("name".to_string(), RedisType::Utf8),
+///     ("age".to_string(), RedisType::Int64),
+/// ]);
+/// let config = BatchConfig::new("user:*");
+///
+/// let mut iter = smart_scan_hashes("redis://localhost:6379", schema, config, None)?;
+/// while let Some(batch) = iter.next_batch()? {
+///     println!("Got {} rows using {:?}", batch.num_rows(), iter.strategy());
+/// }
+/// ```
+pub fn smart_scan_hashes(
+    url: &str,
+    schema: HashSchema,
+    config: BatchConfig,
+    projection: Option<Vec<String>>,
+) -> Result<SmartScanResult> {
+    // First, check if an index exists
+    let plan = explain_scan(url, &config.pattern)?;
+
+    match plan.strategy {
+        #[cfg(feature = "search")]
+        ExecutionStrategy::Search if plan.index.is_some() => {
+            let index = plan.index.unwrap();
+
+            // Convert BatchConfig to SearchBatchConfig
+            let search_config =
+                SearchBatchConfig::new(&index.name, "*").with_batch_size(config.batch_size);
+
+            let iter = HashSearchIterator::new(url, schema, search_config, projection)?;
+            Ok(SmartScanResult::Search(iter))
+        },
+        _ => {
+            // Fall back to SCAN
+            let iter = HashBatchIterator::new(url, schema, config, projection)?;
+            Ok(SmartScanResult::Scan(iter))
+        },
+    }
+}
+
+/// Smart scan with query plan - returns both iterator and plan.
+///
+/// This is useful when you want to know what strategy was chosen.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `schema` - Hash schema
+/// * `config` - Batch configuration with pattern
+/// * `projection` - Optional list of fields to fetch
+///
+/// # Returns
+/// A tuple of (SmartScanResult, QueryPlan).
+pub fn smart_scan_hashes_with_plan(
+    url: &str,
+    schema: HashSchema,
+    config: BatchConfig,
+    projection: Option<Vec<String>>,
+) -> Result<(SmartScanResult, QueryPlan)> {
+    let plan = explain_scan(url, &config.pattern)?;
+    let iter = smart_scan_hashes(url, schema, config, projection)?;
+    Ok((iter, plan))
 }
 
 #[cfg(test)]

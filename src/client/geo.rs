@@ -159,6 +159,57 @@ pub fn geo_add(url: &str, key: &str, locations: &[(String, f64, f64)]) -> Result
     })
 }
 
+/// Add locations to a geo set from separate column vectors.
+///
+/// This is a DataFrame-friendly variant that accepts separate vectors for names,
+/// longitudes, and latitudes, matching how data is typically stored in DataFrames.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `key` - Redis key for the geo set
+/// * `names` - Vector of location names
+/// * `longitudes` - Vector of longitude values
+/// * `latitudes` - Vector of latitude values
+///
+/// # Returns
+/// A `GeoAddResult` with added and updated counts.
+///
+/// # Example
+/// ```ignore
+/// let names = vec!["office".to_string(), "cafe".to_string()];
+/// let lons = vec![-122.4, -122.5];
+/// let lats = vec![37.7, 37.8];
+/// let result = geo_add_from_columns("redis://localhost:6379", "places", names, lons, lats)?;
+/// println!("Added {} new locations", result.added);
+/// ```
+pub fn geo_add_from_columns(
+    url: &str,
+    key: &str,
+    names: Vec<String>,
+    longitudes: Vec<f64>,
+    latitudes: Vec<f64>,
+) -> Result<GeoAddResult> {
+    // Validate that all vectors have the same length
+    if names.len() != longitudes.len() || names.len() != latitudes.len() {
+        return Err(Error::InvalidInput(format!(
+            "Vector lengths must match: names={}, longitudes={}, latitudes={}",
+            names.len(),
+            longitudes.len(),
+            latitudes.len()
+        )));
+    }
+
+    // Zip into tuples
+    let locations: Vec<(String, f64, f64)> = names
+        .into_iter()
+        .zip(longitudes)
+        .zip(latitudes)
+        .map(|((name, lon), lat)| (name, lon, lat))
+        .collect();
+
+    geo_add(url, key, &locations)
+}
+
 async fn geo_add_async(
     conn: &mut redis::aio::MultiplexedConnection,
     key: &str,
@@ -730,5 +781,17 @@ mod tests {
 
         assert_eq!(result.added, 5);
         assert_eq!(result.updated, 2);
+    }
+
+    #[test]
+    fn test_geo_add_from_columns_mismatched_lengths() {
+        let names = vec!["a".to_string(), "b".to_string()];
+        let lons = vec![-122.4];
+        let lats = vec![37.7, 37.8];
+
+        let result = geo_add_from_columns("redis://localhost:6379", "test", names, lons, lats);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Vector lengths must match"));
     }
 }

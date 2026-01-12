@@ -150,8 +150,8 @@ pub use error::{Error, Result};
 
 // Client operations (geo, keys, pipeline, pubsub)
 pub use client::geo::{
-    GeoAddResult, GeoLocation, GeoSort, GeoUnit, geo_add, geo_dist, geo_dist_matrix, geo_hash,
-    geo_pos, geo_radius, geo_radius_by_member,
+    GeoAddResult, GeoLocation, GeoSort, GeoUnit, geo_add, geo_add_from_columns, geo_dist,
+    geo_dist_matrix, geo_hash, geo_pos, geo_radius, geo_radius_by_member,
 };
 pub use client::keys::{
     DeleteResult, KeyInfo, RenameResult, TtlResult, delete_keys, delete_keys_pattern, exists_keys,
@@ -163,7 +163,7 @@ pub use client::pubsub::{PubSubConfig, PubSubMessage, PubSubStats, collect_pubsu
 // IO operations (types, write, cache, infer, search)
 pub use io::cache::{
     CacheConfig, CacheFormat, CacheInfo, IpcCompression, ParquetCompressionType, cache_exists,
-    cache_info, cache_record_batch, cache_ttl, delete_cached, get_cached_record_batch,
+    cache_info, cache_record_batch, cache_ttl, delete_cached, get_cached_record_batch, scan_cached,
 };
 pub use io::infer::{
     FieldInferenceInfo, InferredSchema, InferredSchemaWithConfidence, infer_hash_schema,
@@ -214,7 +214,10 @@ pub use index::{
 #[cfg(feature = "search")]
 pub use query_builder::{Predicate, PredicateBuilder, Value};
 #[cfg(feature = "search")]
-pub use smart::{DetectedIndex, ExecutionStrategy, QueryPlan};
+pub use smart::{
+    DetectedIndex, ExecutionStrategy, QueryPlan, SmartScanResult, explain_scan, smart_scan_hashes,
+    smart_scan_hashes_with_plan,
+};
 
 // Options and configuration
 pub use options::{
@@ -294,11 +297,13 @@ fn polars_redis_internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_cache_delete, m)?)?;
     m.add_function(wrap_pyfunction!(py_cache_exists, m)?)?;
     m.add_function(wrap_pyfunction!(py_cache_ttl, m)?)?;
+    m.add_function(wrap_pyfunction!(py_scan_cached, m)?)?;
     m.add_class::<PyPipeline>()?;
     m.add_class::<PyTransaction>()?;
     m.add_class::<PyCommandResult>()?;
     m.add_class::<PyPipelineResult>()?;
     m.add_function(wrap_pyfunction!(py_geo_add, m)?)?;
+    m.add_function(wrap_pyfunction!(py_geo_add_from_columns, m)?)?;
     m.add_function(wrap_pyfunction!(py_geo_radius, m)?)?;
     m.add_function(wrap_pyfunction!(py_geo_radius_by_member, m)?)?;
     m.add_function(wrap_pyfunction!(py_geo_dist, m)?)?;
@@ -317,6 +322,8 @@ fn polars_redis_internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_create_consumer_group, m)?)?;
     m.add_function(wrap_pyfunction!(py_destroy_consumer_group, m)?)?;
     m.add_function(wrap_pyfunction!(py_stream_ack, m)?)?;
+    m.add_function(wrap_pyfunction!(py_explain_scan, m)?)?;
+    m.add_class::<PySmartScanIterator>()?;
     #[cfg(feature = "cluster")]
     m.add_class::<PyClusterHashBatchIterator>()?;
     #[cfg(feature = "cluster")]
@@ -495,6 +502,262 @@ impl PyHashBatchIterator {
         match batch {
             Some(record_batch) => {
                 // Serialize to Arrow IPC format
+                let mut buf = Vec::new();
+                {
+                    let mut writer = arrow::ipc::writer::FileWriter::try_new(
+                        &mut buf,
+                        record_batch.schema().as_ref(),
+                    )
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to create IPC writer: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.write(&record_batch).map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to write batch: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.finish().map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to finish IPC: {}",
+                            e
+                        ))
+                    })?;
+                }
+
+                Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
+            },
+            None => Ok(None),
+        }
+    }
+
+    /// Check if iteration is complete.
+    fn is_done(&self) -> bool {
+        self.inner.is_done()
+    }
+
+    /// Get the number of rows yielded so far.
+    fn rows_yielded(&self) -> usize {
+        self.inner.rows_yielded()
+    }
+}
+
+// ============================================================================
+// Smart Scan Python Bindings
+// ============================================================================
+
+#[cfg(feature = "python")]
+/// Explain what scan strategy would be used for a pattern.
+///
+/// This checks if a RediSearch index exists for the given key pattern
+/// and returns information about the optimal execution strategy.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `pattern` - Key pattern (e.g., "user:*")
+///
+/// # Returns
+/// A dictionary with strategy information:
+/// - strategy: "SEARCH", "SCAN", or "HYBRID"
+/// - index_name: Name of detected index (if any)
+/// - index_prefixes: Prefixes covered by the index
+/// - server_query: Server-side query string
+/// - warnings: List of warnings about the execution plan
+/// - explanation: Human-readable explanation of the plan
+#[pyfunction]
+fn py_explain_scan(
+    py: Python<'_>,
+    url: &str,
+    pattern: &str,
+) -> PyResult<std::collections::HashMap<String, Py<PyAny>>> {
+    let plan = smart::explain_scan(url, pattern)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    let mut result = std::collections::HashMap::new();
+
+    result.insert(
+        "strategy".to_string(),
+        format!("{}", plan.strategy)
+            .into_pyobject(py)?
+            .into_any()
+            .unbind(),
+    );
+
+    if let Some(index) = &plan.index {
+        result.insert(
+            "index_name".to_string(),
+            index.name.clone().into_pyobject(py)?.into_any().unbind(),
+        );
+        result.insert(
+            "index_prefixes".to_string(),
+            index
+                .prefixes
+                .clone()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind(),
+        );
+        result.insert(
+            "index_type".to_string(),
+            index.on_type.clone().into_pyobject(py)?.into_any().unbind(),
+        );
+        result.insert(
+            "index_fields".to_string(),
+            index.fields.clone().into_pyobject(py)?.into_any().unbind(),
+        );
+    } else {
+        result.insert(
+            "index_name".to_string(),
+            py.None().into_pyobject(py)?.into_any().unbind(),
+        );
+        result.insert(
+            "index_prefixes".to_string(),
+            py.None().into_pyobject(py)?.into_any().unbind(),
+        );
+        result.insert(
+            "index_type".to_string(),
+            py.None().into_pyobject(py)?.into_any().unbind(),
+        );
+        result.insert(
+            "index_fields".to_string(),
+            py.None().into_pyobject(py)?.into_any().unbind(),
+        );
+    }
+
+    if let Some(query) = &plan.server_query {
+        result.insert(
+            "server_query".to_string(),
+            query.clone().into_pyobject(py)?.into_any().unbind(),
+        );
+    } else {
+        result.insert(
+            "server_query".to_string(),
+            py.None().into_pyobject(py)?.into_any().unbind(),
+        );
+    }
+
+    result.insert(
+        "warnings".to_string(),
+        plan.warnings.clone().into_pyobject(py)?.into_any().unbind(),
+    );
+    result.insert(
+        "explanation".to_string(),
+        plan.explain().into_pyobject(py)?.into_any().unbind(),
+    );
+
+    Ok(result)
+}
+
+#[cfg(feature = "python")]
+/// Python wrapper for SmartScanResult.
+///
+/// This iterator automatically chooses between SCAN and FT.SEARCH
+/// based on available RediSearch indexes.
+#[pyclass]
+pub struct PySmartScanIterator {
+    inner: smart::SmartScanResult,
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl PySmartScanIterator {
+    /// Create a new PySmartScanIterator.
+    ///
+    /// # Arguments
+    /// * `url` - Redis connection URL
+    /// * `pattern` - Key pattern to match
+    /// * `schema` - List of (field_name, type_name) tuples
+    /// * `batch_size` - Keys per batch
+    /// * `count_hint` - SCAN COUNT hint
+    /// * `projection` - Optional list of columns to fetch
+    /// * `include_key` - Whether to include the Redis key as a column
+    /// * `key_column_name` - Name of the key column
+    /// * `max_rows` - Optional maximum rows to return
+    #[new]
+    #[pyo3(signature = (
+        url,
+        pattern,
+        schema,
+        batch_size = 1000,
+        count_hint = 100,
+        projection = None,
+        include_key = true,
+        key_column_name = "_key".to_string(),
+        max_rows = None
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        url: String,
+        pattern: String,
+        schema: Vec<(String, String)>,
+        batch_size: usize,
+        count_hint: usize,
+        projection: Option<Vec<String>>,
+        include_key: bool,
+        key_column_name: String,
+        max_rows: Option<usize>,
+    ) -> PyResult<Self> {
+        // Parse schema from Python types
+        let field_types: Vec<(String, RedisType)> = schema
+            .into_iter()
+            .map(|(name, type_str)| {
+                let redis_type = match type_str.to_lowercase().as_str() {
+                    "utf8" | "str" | "string" => RedisType::Utf8,
+                    "int64" | "int" | "integer" => RedisType::Int64,
+                    "float64" | "float" | "double" => RedisType::Float64,
+                    "bool" | "boolean" => RedisType::Boolean,
+                    _ => {
+                        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                            "Unknown type '{}' for field '{}'. Supported: utf8, int64, float64, bool",
+                            type_str, name
+                        )));
+                    }
+                };
+                Ok((name, redis_type))
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+
+        let hash_schema = HashSchema::new(field_types)
+            .with_key(include_key)
+            .with_key_column_name(key_column_name);
+
+        let mut config = BatchConfig::new(pattern)
+            .with_batch_size(batch_size)
+            .with_count_hint(count_hint);
+
+        if let Some(max) = max_rows {
+            config = config.with_max_rows(max);
+        }
+
+        let inner = smart::smart_scan_hashes(&url, hash_schema, config, projection)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        Ok(Self { inner })
+    }
+
+    /// Get the execution strategy being used.
+    ///
+    /// Returns "SEARCH" if using RediSearch or "SCAN" if using SCAN.
+    fn strategy(&self) -> String {
+        format!("{}", self.inner.strategy())
+    }
+
+    /// Get the next batch as Arrow IPC bytes.
+    ///
+    /// Returns None when iteration is complete.
+    fn next_batch_ipc(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let batch = self
+            .inner
+            .next_batch()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        match batch {
+            Some(record_batch) => {
                 let mut buf = Vec::new();
                 {
                     let mut writer = arrow::ipc::writer::FileWriter::try_new(
@@ -1708,6 +1971,88 @@ fn py_cache_ttl(url: &str, key: &str) -> PyResult<Option<i64>> {
     })
 }
 
+#[cfg(feature = "python")]
+/// Scan hashes with automatic caching.
+///
+/// Checks if a cached result exists. If found, returns cached data.
+/// Otherwise, performs the scan, caches the result, and returns it.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `pattern` - Key pattern to scan (e.g., "user:*")
+/// * `schema` - List of (field_name, type_name) tuples
+/// * `cache_key` - Redis key to use for caching the result
+/// * `ttl` - Optional TTL in seconds for the cached result
+/// * `projection` - Optional list of fields to fetch
+///
+/// # Returns
+/// A tuple of (Arrow IPC bytes, from_cache: bool)
+#[pyfunction]
+#[pyo3(signature = (url, pattern, schema, cache_key, ttl = None, projection = None))]
+fn py_scan_cached(
+    py: Python<'_>,
+    url: &str,
+    pattern: &str,
+    schema: Vec<(String, String)>,
+    cache_key: &str,
+    ttl: Option<i64>,
+    projection: Option<Vec<String>>,
+) -> PyResult<(Py<PyAny>, bool)> {
+    // Parse schema from Python types
+    let field_types: Vec<(String, RedisType)> = schema
+        .into_iter()
+        .map(|(name, type_str)| {
+            let redis_type = match type_str.to_lowercase().as_str() {
+                "utf8" | "str" | "string" => RedisType::Utf8,
+                "int64" | "int" | "integer" => RedisType::Int64,
+                "float64" | "float" | "double" => RedisType::Float64,
+                "bool" | "boolean" => RedisType::Boolean,
+                _ => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                        "Unknown type '{}' for field '{}'. Supported: utf8, int64, float64, bool",
+                        type_str, name
+                    )));
+                },
+            };
+            Ok((name, redis_type))
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+
+    let hash_schema = HashSchema::new(field_types);
+
+    let (batch, from_cache) =
+        io::cache::scan_cached(url, pattern, hash_schema, cache_key, ttl, projection)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    // Serialize to Arrow IPC format
+    let mut buf = Vec::new();
+    {
+        let mut writer = arrow::ipc::writer::FileWriter::try_new(&mut buf, batch.schema().as_ref())
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to create IPC writer: {}",
+                    e
+                ))
+            })?;
+
+        writer.write(&batch).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to write batch: {}",
+                e
+            ))
+        })?;
+
+        writer.finish().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to finish IPC: {}",
+                e
+            ))
+        })?;
+    }
+
+    Ok((pyo3::types::PyBytes::new(py, &buf).into(), from_cache))
+}
+
 // ============================================================================
 // Geospatial Python bindings
 // ============================================================================
@@ -1731,6 +2076,40 @@ fn py_geo_add(
     use crate::client::geo::geo_add;
 
     let result = geo_add(url, key, &locations)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    let mut dict = std::collections::HashMap::new();
+    dict.insert("added".to_string(), result.added);
+    dict.insert("updated".to_string(), result.updated);
+    Ok(dict)
+}
+
+#[cfg(feature = "python")]
+/// Add locations to a geo set from separate column vectors.
+///
+/// This is a DataFrame-friendly variant that accepts separate vectors for names,
+/// longitudes, and latitudes.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `key` - Redis key for the geo set
+/// * `names` - List of location names
+/// * `longitudes` - List of longitude values
+/// * `latitudes` - List of latitude values
+///
+/// # Returns
+/// A dict with `added` and `updated` counts.
+#[pyfunction]
+fn py_geo_add_from_columns(
+    url: &str,
+    key: &str,
+    names: Vec<String>,
+    longitudes: Vec<f64>,
+    latitudes: Vec<f64>,
+) -> PyResult<std::collections::HashMap<String, usize>> {
+    use crate::client::geo::geo_add_from_columns;
+
+    let result = geo_add_from_columns(url, key, names, longitudes, latitudes)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
     let mut dict = std::collections::HashMap::new();

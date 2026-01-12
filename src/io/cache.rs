@@ -320,6 +320,100 @@ pub fn cache_info(url: &str, key: &str) -> Result<Option<CacheInfo>> {
 }
 
 // ============================================================================
+// Convenience functions
+// ============================================================================
+
+/// Scan hashes with automatic caching.
+///
+/// This function checks if a cached result exists for the given cache key.
+/// If found and valid, it returns the cached data. Otherwise, it performs
+/// the scan, caches the result, and returns it.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `pattern` - Key pattern to scan (e.g., "user:*")
+/// * `schema` - Hash schema describing the fields
+/// * `cache_key` - Redis key to use for caching the result
+/// * `ttl_seconds` - Optional TTL for the cached result
+/// * `projection` - Optional list of fields to fetch
+///
+/// # Returns
+/// A tuple of (RecordBatch, bool) where bool indicates if result was from cache.
+///
+/// # Example
+/// ```ignore
+/// use polars_redis::io::cache::scan_cached;
+/// use polars_redis::schema::{HashSchema, RedisType};
+///
+/// let schema = HashSchema::new(vec![
+///     ("name".to_string(), RedisType::Utf8),
+///     ("age".to_string(), RedisType::Int64),
+/// ]);
+///
+/// let (batch, from_cache) = scan_cached(
+///     "redis://localhost:6379",
+///     "user:*",
+///     schema,
+///     "cache:users",
+///     Some(3600),
+///     None,
+/// )?;
+///
+/// if from_cache {
+///     println!("Loaded {} rows from cache", batch.num_rows());
+/// } else {
+///     println!("Scanned {} rows and cached", batch.num_rows());
+/// }
+/// ```
+pub fn scan_cached(
+    url: &str,
+    pattern: &str,
+    schema: crate::schema::HashSchema,
+    cache_key: &str,
+    ttl_seconds: Option<i64>,
+    projection: Option<Vec<String>>,
+) -> Result<(RecordBatch, bool)> {
+    // Check if cached result exists
+    if let Some(cached_batch) = get_cached_record_batch(url, cache_key)? {
+        return Ok((cached_batch, true));
+    }
+
+    // Perform the scan
+    use crate::io::types::hash::{BatchConfig, HashBatchIterator};
+
+    let config = BatchConfig::new(pattern.to_string());
+    let arrow_schema = std::sync::Arc::new(schema.to_arrow_schema());
+    let mut iterator = HashBatchIterator::new(url, schema, config, projection)?;
+
+    // Collect all batches
+    let mut batches = Vec::new();
+    while let Some(batch) = iterator.next_batch()? {
+        batches.push(batch);
+    }
+
+    // Combine batches if multiple
+    let result_batch = if batches.is_empty() {
+        // Return empty batch with schema
+        arrow::array::RecordBatch::new_empty(arrow_schema)
+    } else if batches.len() == 1 {
+        batches.into_iter().next().unwrap()
+    } else {
+        let schema = batches[0].schema();
+        arrow::compute::concat_batches(&schema, &batches)
+            .map_err(|e| Error::Runtime(format!("Failed to concatenate batches: {}", e)))?
+    };
+
+    // Cache the result
+    let mut config = CacheConfig::default();
+    if let Some(ttl) = ttl_seconds {
+        config = config.with_ttl(ttl);
+    }
+    cache_record_batch(url, cache_key, &result_batch, &config)?;
+
+    Ok((result_batch, false))
+}
+
+// ============================================================================
 // Async implementations
 // ============================================================================
 
