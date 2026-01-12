@@ -185,7 +185,11 @@ pub use io::types::set::ClusterSetBatchIterator;
 pub use io::types::set::{SetBatchIterator, SetSchema};
 #[cfg(feature = "cluster")]
 pub use io::types::stream::ClusterStreamBatchIterator;
-pub use io::types::stream::{StreamBatchIterator, StreamSchema};
+pub use io::types::stream::{
+    CheckpointStore, ConsumerConfig, ConsumerStats, MemoryCheckpointStore, RedisCheckpointStore,
+    StreamBatchIterator, StreamConsumer, StreamSchema, create_consumer_group,
+    destroy_consumer_group, stream_ack,
+};
 #[cfg(feature = "cluster")]
 pub use io::types::string::ClusterStringBatchIterator;
 pub use io::types::string::{StringBatchIterator, StringSchema};
@@ -265,6 +269,7 @@ fn polars_redis_internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyListBatchIterator>()?;
     m.add_class::<PyZSetBatchIterator>()?;
     m.add_class::<PyStreamBatchIterator>()?;
+    m.add_class::<PyStreamConsumer>()?;
     m.add_class::<PyTimeSeriesBatchIterator>()?;
     #[cfg(feature = "search")]
     m.add_class::<PyHashSearchIterator>()?;
@@ -308,6 +313,9 @@ fn polars_redis_internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_persist_keys, m)?)?;
     m.add_function(wrap_pyfunction!(py_exists_keys, m)?)?;
     m.add_function(wrap_pyfunction!(py_get_ttl, m)?)?;
+    m.add_function(wrap_pyfunction!(py_create_consumer_group, m)?)?;
+    m.add_function(wrap_pyfunction!(py_destroy_consumer_group, m)?)?;
+    m.add_function(wrap_pyfunction!(py_stream_ack, m)?)?;
     #[cfg(feature = "cluster")]
     m.add_class::<PyClusterHashBatchIterator>()?;
     #[cfg(feature = "cluster")]
@@ -529,6 +537,296 @@ impl PyHashBatchIterator {
     fn rows_yielded(&self) -> usize {
         self.inner.rows_yielded()
     }
+}
+
+// ============================================================================
+// Stream Consumer Python bindings
+// ============================================================================
+
+#[cfg(feature = "python")]
+/// Python wrapper for StreamConsumer with consumer group support.
+///
+/// This class provides stream consumption with consumer groups, checkpointing,
+/// and entry acknowledgment (XACK).
+#[pyclass]
+pub struct PyStreamConsumer {
+    inner: StreamConsumer,
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl PyStreamConsumer {
+    /// Create a new PyStreamConsumer.
+    ///
+    /// # Arguments
+    /// * `url` - Redis connection URL
+    /// * `stream` - Stream key to consume from
+    /// * `group` - Consumer group name
+    /// * `consumer` - Consumer name within the group
+    /// * `fields` - List of field names to extract from entries
+    /// * `batch_size` - Entries per batch (default: 100)
+    /// * `block_ms` - Block timeout in milliseconds (default: 5000)
+    /// * `auto_ack` - Automatically acknowledge entries after reading (default: false)
+    /// * `create_group` - Create consumer group if it doesn't exist (default: true)
+    /// * `group_start_id` - Start ID for new groups ("0" = beginning, "$" = now)
+    /// * `include_key` - Whether to include the stream key column
+    /// * `include_id` - Whether to include the entry ID column
+    /// * `include_timestamp` - Whether to include the timestamp column
+    /// * `include_sequence` - Whether to include the sequence column
+    #[new]
+    #[pyo3(signature = (
+        url,
+        stream,
+        group,
+        consumer,
+        fields = vec![],
+        batch_size = 100,
+        block_ms = 5000,
+        auto_ack = false,
+        create_group = true,
+        group_start_id = "0".to_string(),
+        include_key = true,
+        include_id = true,
+        include_timestamp = true,
+        include_sequence = false
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        url: String,
+        stream: String,
+        group: String,
+        consumer: String,
+        fields: Vec<String>,
+        batch_size: usize,
+        block_ms: u64,
+        auto_ack: bool,
+        create_group: bool,
+        group_start_id: String,
+        include_key: bool,
+        include_id: bool,
+        include_timestamp: bool,
+        include_sequence: bool,
+    ) -> PyResult<Self> {
+        let schema = StreamSchema::new()
+            .with_key(include_key)
+            .with_id(include_id)
+            .with_timestamp(include_timestamp)
+            .with_sequence(include_sequence)
+            .set_fields(fields);
+
+        let config = ConsumerConfig::new()
+            .with_batch_size(batch_size)
+            .with_block_ms(block_ms)
+            .with_auto_ack(auto_ack)
+            .with_create_group(create_group)
+            .with_group_start_id(&group_start_id);
+
+        let inner = StreamConsumer::new(&url, &stream, &group, &consumer)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?
+            .with_schema(schema)
+            .with_config(config);
+
+        Ok(Self { inner })
+    }
+
+    /// Get the next batch as Arrow IPC bytes.
+    ///
+    /// Returns None when no entries are available within the block timeout.
+    fn next_batch_ipc(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let batch = self
+            .inner
+            .next_batch()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        match batch {
+            Some(record_batch) => {
+                let mut buf = Vec::new();
+                {
+                    let mut writer = arrow::ipc::writer::FileWriter::try_new(
+                        &mut buf,
+                        record_batch.schema().as_ref(),
+                    )
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to create IPC writer: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.write(&record_batch).map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to write batch: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.finish().map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to finish IPC: {}",
+                            e
+                        ))
+                    })?;
+                }
+
+                Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
+            },
+            None => Ok(None),
+        }
+    }
+
+    /// Acknowledge the entries from the last batch.
+    ///
+    /// Returns the number of entries acknowledged.
+    fn ack_batch(&mut self) -> PyResult<usize> {
+        self.inner
+            .ack_batch()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    }
+
+    /// Acknowledge specific entry IDs.
+    ///
+    /// Returns the number of entries acknowledged.
+    fn ack_entries(&mut self, ids: Vec<String>) -> PyResult<usize> {
+        self.inner
+            .ack_entries(&ids)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    }
+
+    /// Get the number of pending entries for this consumer.
+    fn pending_count(&mut self) -> PyResult<u64> {
+        self.inner
+            .pending_count()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    }
+
+    /// Rollback the current batch (don't acknowledge, allow re-delivery).
+    fn rollback(&mut self) {
+        self.inner.rollback();
+    }
+
+    /// Get the stream key.
+    #[getter]
+    fn stream(&self) -> &str {
+        self.inner.stream()
+    }
+
+    /// Get the group name.
+    #[getter]
+    fn group(&self) -> &str {
+        self.inner.group()
+    }
+
+    /// Get the consumer name.
+    #[getter]
+    fn consumer_name(&self) -> &str {
+        self.inner.consumer_name()
+    }
+
+    /// Get consumption statistics.
+    fn stats(&self) -> PyResult<HashMap<String, Py<PyAny>>> {
+        let stats = self.inner.stats();
+        Python::attach(|py| {
+            let mut dict = HashMap::new();
+            dict.insert(
+                "batches_processed".to_string(),
+                stats
+                    .batches_processed
+                    .into_pyobject(py)?
+                    .into_any()
+                    .unbind(),
+            );
+            dict.insert(
+                "entries_processed".to_string(),
+                stats
+                    .entries_processed
+                    .into_pyobject(py)?
+                    .into_any()
+                    .unbind(),
+            );
+            dict.insert(
+                "entries_per_second".to_string(),
+                stats
+                    .entries_per_second()
+                    .into_pyobject(py)?
+                    .into_any()
+                    .unbind(),
+            );
+            dict.insert(
+                "elapsed_seconds".to_string(),
+                stats
+                    .elapsed()
+                    .as_secs_f64()
+                    .into_pyobject(py)?
+                    .into_any()
+                    .unbind(),
+            );
+            if let Some(ref last_id) = stats.last_entry_id {
+                dict.insert(
+                    "last_entry_id".to_string(),
+                    last_id.clone().into_pyobject(py)?.into_any().unbind(),
+                );
+            }
+            Ok(dict)
+        })
+    }
+}
+
+#[cfg(feature = "python")]
+/// Create a consumer group for a stream.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `stream` - Stream key
+/// * `group` - Group name to create
+/// * `start_id` - Starting ID ("0" = from beginning, "$" = from now)
+/// * `mkstream` - Whether to create the stream if it doesn't exist
+///
+/// # Returns
+/// True if the group was created, False if it already existed.
+#[pyfunction]
+#[pyo3(signature = (url, stream, group, start_id = "0", mkstream = true))]
+fn py_create_consumer_group(
+    url: &str,
+    stream: &str,
+    group: &str,
+    start_id: &str,
+    mkstream: bool,
+) -> PyResult<bool> {
+    create_consumer_group(url, stream, group, start_id, mkstream)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+#[cfg(feature = "python")]
+/// Destroy a consumer group.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `stream` - Stream key
+/// * `group` - Group name to destroy
+///
+/// # Returns
+/// True if the group was destroyed, False if it didn't exist.
+#[pyfunction]
+fn py_destroy_consumer_group(url: &str, stream: &str, group: &str) -> PyResult<bool> {
+    destroy_consumer_group(url, stream, group)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+#[cfg(feature = "python")]
+/// Acknowledge stream entries.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `stream` - Stream key
+/// * `group` - Consumer group name
+/// * `ids` - Entry IDs to acknowledge
+///
+/// # Returns
+/// Number of entries acknowledged.
+#[pyfunction]
+fn py_stream_ack(url: &str, stream: &str, group: &str, ids: Vec<String>) -> PyResult<usize> {
+    stream_ack(url, stream, group, &ids)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
 // ============================================================================
