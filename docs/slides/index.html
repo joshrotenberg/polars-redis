@@ -496,7 +496,8 @@ df = redis.get_cached_dataframe(url, "result")</code></pre>
                                 style="margin-top: 0.5em"
                             >
                                 <ul class="small">
-                                    <li>Auto-chunking (no 512MB limit)</li>
+                                    <li>Auto-chunking for large DataFrames</li>
+                                    <li>Only limited by Redis storage</li>
                                     <li>Arrow IPC or Parquet format</li>
                                     <li>lz4, zstd, gzip compression</li>
                                 </ul>
@@ -508,6 +509,9 @@ df = redis.get_cached_dataframe(url, "result")</code></pre>
                 <!-- Client Operations -->
                 <section>
                     <h2>Redis Operations While You're Here</h2>
+                    <p class="small" style="margin-bottom: 0.5em">
+                        Common Redis client commands included as a bonus.
+                    </p>
                     <div class="columns">
                         <div class="column">
                             <h3 class="redis-red">Geospatial</h3>
