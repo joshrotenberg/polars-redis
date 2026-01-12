@@ -353,25 +353,50 @@ df = redis.search_hashes(
 
                 <!-- Query Builder -->
                 <section>
-                    <h2>Query Builder: Polars-like Syntax</h2>
-                    <pre><code class="language-python">from polars_redis import col
+                    <h2>RediSearch Query Builder</h2>
+                    <p class="small" style="margin-bottom: 0.5em">
+                        Build <span class="redis-red">RediSearch</span> queries
+                        with Polars-like syntax. Requires a RediSearch index on
+                        your data.
+                    </p>
+                    <div class="columns">
+                        <div class="column">
+                            <h3 class="polars-blue">Python</h3>
+                            <pre><code class="language-python">from polars_redis import col
 
-# Build queries with familiar syntax
+# Numeric + tag filter
 query = (col("age") > 30) & (col("status") == "active")
-# Generates: @age:[(30 +inf] @status:{active}
 
-# Complex queries are readable
+# Range + multi-tag
 query = (
     col("price").is_between(100, 500) &
-    col("category").has_any_tag(["electronics", "computers"]) &
-    ~(col("status") == "discontinued")
+    col("category").has_any_tag(["electronics", "computers"])
 )
 
 # Text search
-query = col("title").contains("python") & col("author").starts_with("jo")
+query = col("title").contains("python")
 
 # Geo search
 query = col("location").within_radius(-122.4, 37.7, 10, "km")</code></pre>
+                        </div>
+                        <div class="column">
+                            <h3 class="redis-red">
+                                Generated RediSearch Syntax
+                            </h3>
+                            <pre><code class="language-text"># Numeric + tag filter
+@age:[(30 +inf] @status:{active}
+
+# Range + multi-tag
+@price:[100 500] @category:{electronics|computers}
+
+
+# Text search
+@title:python
+
+# Geo search
+@location:[-122.4 37.7 10 km]</code></pre>
+                        </div>
+                    </div>
                     <p class="small">
                         No need to learn RediSearch query syntax - use what you
                         know from Polars.
