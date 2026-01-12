@@ -631,9 +631,9 @@ for batch in redis.iter_stream(url, "events"):
                     </div>
                     <p style="margin-top: 1em" class="small">
                         This is for the <span class="green">sweet spot</span>:
-                        datasets that fit in memory, where Redis is already your
-                        source of truth, and you want to query without copying
-                        data elsewhere.
+                        datasets that fit in memory, whether Redis is your
+                        source of truth or you're aggregating data from
+                        elsewhere into Redis for fast access.
                     </p>
                 </section>
 
