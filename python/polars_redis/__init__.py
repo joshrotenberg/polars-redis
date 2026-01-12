@@ -133,6 +133,12 @@ from polars_redis._read import (
     read_timeseries,
     read_zsets,
 )
+from polars_redis._replication import (
+    BatchResult,
+    ReplicationDestination,
+    ReplicationPipeline,
+    ReplicationStats,
+)
 from polars_redis._scan import (
     scan_hashes,
     scan_json,
@@ -321,6 +327,11 @@ __all__ = [
     "FileCheckpointStore",
     "RedisCheckpointStore",
     "ConsumerStats",
+    # Replication pipeline
+    "ReplicationPipeline",
+    "ReplicationDestination",
+    "ReplicationStats",
+    "BatchResult",
     # Environment defaults
     "get_default_batch_size",
     "get_default_count_hint",
