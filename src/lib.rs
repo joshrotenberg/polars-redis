@@ -150,8 +150,8 @@ pub use error::{Error, Result};
 
 // Client operations (geo, keys, pipeline, pubsub)
 pub use client::geo::{
-    GeoAddResult, GeoLocation, GeoSort, GeoUnit, geo_add, geo_dist, geo_dist_matrix, geo_hash,
-    geo_pos, geo_radius, geo_radius_by_member,
+    GeoAddResult, GeoLocation, GeoSort, GeoUnit, geo_add, geo_add_from_columns, geo_dist,
+    geo_dist_matrix, geo_hash, geo_pos, geo_radius, geo_radius_by_member,
 };
 pub use client::keys::{
     DeleteResult, KeyInfo, RenameResult, TtlResult, delete_keys, delete_keys_pattern, exists_keys,
@@ -163,11 +163,16 @@ pub use client::pubsub::{PubSubConfig, PubSubMessage, PubSubStats, collect_pubsu
 // IO operations (types, write, cache, infer, search)
 pub use io::cache::{
     CacheConfig, CacheFormat, CacheInfo, IpcCompression, ParquetCompressionType, cache_exists,
-    cache_info, cache_record_batch, cache_ttl, delete_cached, get_cached_record_batch,
+    cache_info, cache_record_batch, cache_ttl, delete_cached, get_cached_record_batch, scan_cached,
 };
 pub use io::infer::{
     FieldInferenceInfo, InferredSchema, InferredSchemaWithConfidence, infer_hash_schema,
     infer_hash_schema_with_confidence, infer_json_schema,
+};
+pub use io::multi::{Destination, DestinationResult, MultiClusterWriter, MultiWriteResult};
+pub use io::replication::{
+    Filter, FilterValue, Predicate as ReplicationPredicate, ReplicationConfig,
+    ReplicationDestination, ReplicationPipeline, ReplicationStats,
 };
 pub use io::types::hash::{BatchConfig, HashBatchIterator, HashFetcher};
 #[cfg(feature = "cluster")]
@@ -185,7 +190,11 @@ pub use io::types::set::ClusterSetBatchIterator;
 pub use io::types::set::{SetBatchIterator, SetSchema};
 #[cfg(feature = "cluster")]
 pub use io::types::stream::ClusterStreamBatchIterator;
-pub use io::types::stream::{StreamBatchIterator, StreamSchema};
+pub use io::types::stream::{
+    CheckpointStore, ConsumerConfig, ConsumerStats, MemoryCheckpointStore, RedisCheckpointStore,
+    StreamBatchIterator, StreamConsumer, StreamSchema, create_consumer_group,
+    destroy_consumer_group, stream_ack,
+};
 #[cfg(feature = "cluster")]
 pub use io::types::string::ClusterStringBatchIterator;
 pub use io::types::string::{StringBatchIterator, StringSchema};
@@ -209,7 +218,10 @@ pub use index::{
 #[cfg(feature = "search")]
 pub use query_builder::{Predicate, PredicateBuilder, Value};
 #[cfg(feature = "search")]
-pub use smart::{DetectedIndex, ExecutionStrategy, QueryPlan};
+pub use smart::{
+    DetectedIndex, ExecutionStrategy, QueryPlan, SmartScanResult, explain_scan, smart_scan_hashes,
+    smart_scan_hashes_with_plan,
+};
 
 // Options and configuration
 pub use options::{
@@ -265,6 +277,7 @@ fn polars_redis_internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyListBatchIterator>()?;
     m.add_class::<PyZSetBatchIterator>()?;
     m.add_class::<PyStreamBatchIterator>()?;
+    m.add_class::<PyStreamConsumer>()?;
     m.add_class::<PyTimeSeriesBatchIterator>()?;
     #[cfg(feature = "search")]
     m.add_class::<PyHashSearchIterator>()?;
@@ -288,11 +301,13 @@ fn polars_redis_internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_cache_delete, m)?)?;
     m.add_function(wrap_pyfunction!(py_cache_exists, m)?)?;
     m.add_function(wrap_pyfunction!(py_cache_ttl, m)?)?;
+    m.add_function(wrap_pyfunction!(py_scan_cached, m)?)?;
     m.add_class::<PyPipeline>()?;
     m.add_class::<PyTransaction>()?;
     m.add_class::<PyCommandResult>()?;
     m.add_class::<PyPipelineResult>()?;
     m.add_function(wrap_pyfunction!(py_geo_add, m)?)?;
+    m.add_function(wrap_pyfunction!(py_geo_add_from_columns, m)?)?;
     m.add_function(wrap_pyfunction!(py_geo_radius, m)?)?;
     m.add_function(wrap_pyfunction!(py_geo_radius_by_member, m)?)?;
     m.add_function(wrap_pyfunction!(py_geo_dist, m)?)?;
@@ -308,6 +323,11 @@ fn polars_redis_internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_persist_keys, m)?)?;
     m.add_function(wrap_pyfunction!(py_exists_keys, m)?)?;
     m.add_function(wrap_pyfunction!(py_get_ttl, m)?)?;
+    m.add_function(wrap_pyfunction!(py_create_consumer_group, m)?)?;
+    m.add_function(wrap_pyfunction!(py_destroy_consumer_group, m)?)?;
+    m.add_function(wrap_pyfunction!(py_stream_ack, m)?)?;
+    m.add_function(wrap_pyfunction!(py_explain_scan, m)?)?;
+    m.add_class::<PySmartScanIterator>()?;
     #[cfg(feature = "cluster")]
     m.add_class::<PyClusterHashBatchIterator>()?;
     #[cfg(feature = "cluster")]
@@ -529,6 +549,552 @@ impl PyHashBatchIterator {
     fn rows_yielded(&self) -> usize {
         self.inner.rows_yielded()
     }
+}
+
+// ============================================================================
+// Smart Scan Python Bindings
+// ============================================================================
+
+#[cfg(feature = "python")]
+/// Explain what scan strategy would be used for a pattern.
+///
+/// This checks if a RediSearch index exists for the given key pattern
+/// and returns information about the optimal execution strategy.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `pattern` - Key pattern (e.g., "user:*")
+///
+/// # Returns
+/// A dictionary with strategy information:
+/// - strategy: "SEARCH", "SCAN", or "HYBRID"
+/// - index_name: Name of detected index (if any)
+/// - index_prefixes: Prefixes covered by the index
+/// - server_query: Server-side query string
+/// - warnings: List of warnings about the execution plan
+/// - explanation: Human-readable explanation of the plan
+#[pyfunction]
+fn py_explain_scan(
+    py: Python<'_>,
+    url: &str,
+    pattern: &str,
+) -> PyResult<std::collections::HashMap<String, Py<PyAny>>> {
+    let plan = smart::explain_scan(url, pattern)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    let mut result = std::collections::HashMap::new();
+
+    result.insert(
+        "strategy".to_string(),
+        format!("{}", plan.strategy)
+            .into_pyobject(py)?
+            .into_any()
+            .unbind(),
+    );
+
+    if let Some(index) = &plan.index {
+        result.insert(
+            "index_name".to_string(),
+            index.name.clone().into_pyobject(py)?.into_any().unbind(),
+        );
+        result.insert(
+            "index_prefixes".to_string(),
+            index
+                .prefixes
+                .clone()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind(),
+        );
+        result.insert(
+            "index_type".to_string(),
+            index.on_type.clone().into_pyobject(py)?.into_any().unbind(),
+        );
+        result.insert(
+            "index_fields".to_string(),
+            index.fields.clone().into_pyobject(py)?.into_any().unbind(),
+        );
+    } else {
+        result.insert(
+            "index_name".to_string(),
+            py.None().into_pyobject(py)?.into_any().unbind(),
+        );
+        result.insert(
+            "index_prefixes".to_string(),
+            py.None().into_pyobject(py)?.into_any().unbind(),
+        );
+        result.insert(
+            "index_type".to_string(),
+            py.None().into_pyobject(py)?.into_any().unbind(),
+        );
+        result.insert(
+            "index_fields".to_string(),
+            py.None().into_pyobject(py)?.into_any().unbind(),
+        );
+    }
+
+    if let Some(query) = &plan.server_query {
+        result.insert(
+            "server_query".to_string(),
+            query.clone().into_pyobject(py)?.into_any().unbind(),
+        );
+    } else {
+        result.insert(
+            "server_query".to_string(),
+            py.None().into_pyobject(py)?.into_any().unbind(),
+        );
+    }
+
+    result.insert(
+        "warnings".to_string(),
+        plan.warnings.clone().into_pyobject(py)?.into_any().unbind(),
+    );
+    result.insert(
+        "explanation".to_string(),
+        plan.explain().into_pyobject(py)?.into_any().unbind(),
+    );
+
+    Ok(result)
+}
+
+#[cfg(feature = "python")]
+/// Python wrapper for SmartScanResult.
+///
+/// This iterator automatically chooses between SCAN and FT.SEARCH
+/// based on available RediSearch indexes.
+#[pyclass]
+pub struct PySmartScanIterator {
+    inner: smart::SmartScanResult,
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl PySmartScanIterator {
+    /// Create a new PySmartScanIterator.
+    ///
+    /// # Arguments
+    /// * `url` - Redis connection URL
+    /// * `pattern` - Key pattern to match
+    /// * `schema` - List of (field_name, type_name) tuples
+    /// * `batch_size` - Keys per batch
+    /// * `count_hint` - SCAN COUNT hint
+    /// * `projection` - Optional list of columns to fetch
+    /// * `include_key` - Whether to include the Redis key as a column
+    /// * `key_column_name` - Name of the key column
+    /// * `max_rows` - Optional maximum rows to return
+    #[new]
+    #[pyo3(signature = (
+        url,
+        pattern,
+        schema,
+        batch_size = 1000,
+        count_hint = 100,
+        projection = None,
+        include_key = true,
+        key_column_name = "_key".to_string(),
+        max_rows = None
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        url: String,
+        pattern: String,
+        schema: Vec<(String, String)>,
+        batch_size: usize,
+        count_hint: usize,
+        projection: Option<Vec<String>>,
+        include_key: bool,
+        key_column_name: String,
+        max_rows: Option<usize>,
+    ) -> PyResult<Self> {
+        // Parse schema from Python types
+        let field_types: Vec<(String, RedisType)> = schema
+            .into_iter()
+            .map(|(name, type_str)| {
+                let redis_type = match type_str.to_lowercase().as_str() {
+                    "utf8" | "str" | "string" => RedisType::Utf8,
+                    "int64" | "int" | "integer" => RedisType::Int64,
+                    "float64" | "float" | "double" => RedisType::Float64,
+                    "bool" | "boolean" => RedisType::Boolean,
+                    _ => {
+                        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                            "Unknown type '{}' for field '{}'. Supported: utf8, int64, float64, bool",
+                            type_str, name
+                        )));
+                    }
+                };
+                Ok((name, redis_type))
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+
+        let hash_schema = HashSchema::new(field_types)
+            .with_key(include_key)
+            .with_key_column_name(key_column_name);
+
+        let mut config = BatchConfig::new(pattern)
+            .with_batch_size(batch_size)
+            .with_count_hint(count_hint);
+
+        if let Some(max) = max_rows {
+            config = config.with_max_rows(max);
+        }
+
+        let inner = smart::smart_scan_hashes(&url, hash_schema, config, projection)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        Ok(Self { inner })
+    }
+
+    /// Get the execution strategy being used.
+    ///
+    /// Returns "SEARCH" if using RediSearch or "SCAN" if using SCAN.
+    fn strategy(&self) -> String {
+        format!("{}", self.inner.strategy())
+    }
+
+    /// Get the next batch as Arrow IPC bytes.
+    ///
+    /// Returns None when iteration is complete.
+    fn next_batch_ipc(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let batch = self
+            .inner
+            .next_batch()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        match batch {
+            Some(record_batch) => {
+                let mut buf = Vec::new();
+                {
+                    let mut writer = arrow::ipc::writer::FileWriter::try_new(
+                        &mut buf,
+                        record_batch.schema().as_ref(),
+                    )
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to create IPC writer: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.write(&record_batch).map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to write batch: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.finish().map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to finish IPC: {}",
+                            e
+                        ))
+                    })?;
+                }
+
+                Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
+            },
+            None => Ok(None),
+        }
+    }
+
+    /// Check if iteration is complete.
+    fn is_done(&self) -> bool {
+        self.inner.is_done()
+    }
+
+    /// Get the number of rows yielded so far.
+    fn rows_yielded(&self) -> usize {
+        self.inner.rows_yielded()
+    }
+}
+
+// ============================================================================
+// Stream Consumer Python bindings
+// ============================================================================
+
+#[cfg(feature = "python")]
+/// Python wrapper for StreamConsumer with consumer group support.
+///
+/// This class provides stream consumption with consumer groups, checkpointing,
+/// and entry acknowledgment (XACK).
+#[pyclass]
+pub struct PyStreamConsumer {
+    inner: StreamConsumer,
+}
+
+#[cfg(feature = "python")]
+#[pymethods]
+impl PyStreamConsumer {
+    /// Create a new PyStreamConsumer.
+    ///
+    /// # Arguments
+    /// * `url` - Redis connection URL
+    /// * `stream` - Stream key to consume from
+    /// * `group` - Consumer group name
+    /// * `consumer` - Consumer name within the group
+    /// * `fields` - List of field names to extract from entries
+    /// * `batch_size` - Entries per batch (default: 100)
+    /// * `block_ms` - Block timeout in milliseconds (default: 5000)
+    /// * `auto_ack` - Automatically acknowledge entries after reading (default: false)
+    /// * `create_group` - Create consumer group if it doesn't exist (default: true)
+    /// * `group_start_id` - Start ID for new groups ("0" = beginning, "$" = now)
+    /// * `include_key` - Whether to include the stream key column
+    /// * `include_id` - Whether to include the entry ID column
+    /// * `include_timestamp` - Whether to include the timestamp column
+    /// * `include_sequence` - Whether to include the sequence column
+    #[new]
+    #[pyo3(signature = (
+        url,
+        stream,
+        group,
+        consumer,
+        fields = vec![],
+        batch_size = 100,
+        block_ms = 5000,
+        auto_ack = false,
+        create_group = true,
+        group_start_id = "0".to_string(),
+        include_key = true,
+        include_id = true,
+        include_timestamp = true,
+        include_sequence = false
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        url: String,
+        stream: String,
+        group: String,
+        consumer: String,
+        fields: Vec<String>,
+        batch_size: usize,
+        block_ms: u64,
+        auto_ack: bool,
+        create_group: bool,
+        group_start_id: String,
+        include_key: bool,
+        include_id: bool,
+        include_timestamp: bool,
+        include_sequence: bool,
+    ) -> PyResult<Self> {
+        let schema = StreamSchema::new()
+            .with_key(include_key)
+            .with_id(include_id)
+            .with_timestamp(include_timestamp)
+            .with_sequence(include_sequence)
+            .set_fields(fields);
+
+        let config = ConsumerConfig::new()
+            .with_batch_size(batch_size)
+            .with_block_ms(block_ms)
+            .with_auto_ack(auto_ack)
+            .with_create_group(create_group)
+            .with_group_start_id(&group_start_id);
+
+        let inner = StreamConsumer::new(&url, &stream, &group, &consumer)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?
+            .with_schema(schema)
+            .with_config(config);
+
+        Ok(Self { inner })
+    }
+
+    /// Get the next batch as Arrow IPC bytes.
+    ///
+    /// Returns None when no entries are available within the block timeout.
+    fn next_batch_ipc(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let batch = self
+            .inner
+            .next_batch()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        match batch {
+            Some(record_batch) => {
+                let mut buf = Vec::new();
+                {
+                    let mut writer = arrow::ipc::writer::FileWriter::try_new(
+                        &mut buf,
+                        record_batch.schema().as_ref(),
+                    )
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to create IPC writer: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.write(&record_batch).map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to write batch: {}",
+                            e
+                        ))
+                    })?;
+
+                    writer.finish().map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "Failed to finish IPC: {}",
+                            e
+                        ))
+                    })?;
+                }
+
+                Ok(Some(pyo3::types::PyBytes::new(py, &buf).into()))
+            },
+            None => Ok(None),
+        }
+    }
+
+    /// Acknowledge the entries from the last batch.
+    ///
+    /// Returns the number of entries acknowledged.
+    fn ack_batch(&mut self) -> PyResult<usize> {
+        self.inner
+            .ack_batch()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    }
+
+    /// Acknowledge specific entry IDs.
+    ///
+    /// Returns the number of entries acknowledged.
+    fn ack_entries(&mut self, ids: Vec<String>) -> PyResult<usize> {
+        self.inner
+            .ack_entries(&ids)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    }
+
+    /// Get the number of pending entries for this consumer.
+    fn pending_count(&mut self) -> PyResult<u64> {
+        self.inner
+            .pending_count()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    }
+
+    /// Rollback the current batch (don't acknowledge, allow re-delivery).
+    fn rollback(&mut self) {
+        self.inner.rollback();
+    }
+
+    /// Get the stream key.
+    #[getter]
+    fn stream(&self) -> &str {
+        self.inner.stream()
+    }
+
+    /// Get the group name.
+    #[getter]
+    fn group(&self) -> &str {
+        self.inner.group()
+    }
+
+    /// Get the consumer name.
+    #[getter]
+    fn consumer_name(&self) -> &str {
+        self.inner.consumer_name()
+    }
+
+    /// Get consumption statistics.
+    fn stats(&self) -> PyResult<HashMap<String, Py<PyAny>>> {
+        let stats = self.inner.stats();
+        Python::attach(|py| {
+            let mut dict = HashMap::new();
+            dict.insert(
+                "batches_processed".to_string(),
+                stats
+                    .batches_processed
+                    .into_pyobject(py)?
+                    .into_any()
+                    .unbind(),
+            );
+            dict.insert(
+                "entries_processed".to_string(),
+                stats
+                    .entries_processed
+                    .into_pyobject(py)?
+                    .into_any()
+                    .unbind(),
+            );
+            dict.insert(
+                "entries_per_second".to_string(),
+                stats
+                    .entries_per_second()
+                    .into_pyobject(py)?
+                    .into_any()
+                    .unbind(),
+            );
+            dict.insert(
+                "elapsed_seconds".to_string(),
+                stats
+                    .elapsed()
+                    .as_secs_f64()
+                    .into_pyobject(py)?
+                    .into_any()
+                    .unbind(),
+            );
+            if let Some(ref last_id) = stats.last_entry_id {
+                dict.insert(
+                    "last_entry_id".to_string(),
+                    last_id.clone().into_pyobject(py)?.into_any().unbind(),
+                );
+            }
+            Ok(dict)
+        })
+    }
+}
+
+#[cfg(feature = "python")]
+/// Create a consumer group for a stream.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `stream` - Stream key
+/// * `group` - Group name to create
+/// * `start_id` - Starting ID ("0" = from beginning, "$" = from now)
+/// * `mkstream` - Whether to create the stream if it doesn't exist
+///
+/// # Returns
+/// True if the group was created, False if it already existed.
+#[pyfunction]
+#[pyo3(signature = (url, stream, group, start_id = "0", mkstream = true))]
+fn py_create_consumer_group(
+    url: &str,
+    stream: &str,
+    group: &str,
+    start_id: &str,
+    mkstream: bool,
+) -> PyResult<bool> {
+    create_consumer_group(url, stream, group, start_id, mkstream)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+#[cfg(feature = "python")]
+/// Destroy a consumer group.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `stream` - Stream key
+/// * `group` - Group name to destroy
+///
+/// # Returns
+/// True if the group was destroyed, False if it didn't exist.
+#[pyfunction]
+fn py_destroy_consumer_group(url: &str, stream: &str, group: &str) -> PyResult<bool> {
+    destroy_consumer_group(url, stream, group)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+#[cfg(feature = "python")]
+/// Acknowledge stream entries.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `stream` - Stream key
+/// * `group` - Consumer group name
+/// * `ids` - Entry IDs to acknowledge
+///
+/// # Returns
+/// Number of entries acknowledged.
+#[pyfunction]
+fn py_stream_ack(url: &str, stream: &str, group: &str, ids: Vec<String>) -> PyResult<usize> {
+    stream_ack(url, stream, group, &ids)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
 // ============================================================================
@@ -1409,6 +1975,88 @@ fn py_cache_ttl(url: &str, key: &str) -> PyResult<Option<i64>> {
     })
 }
 
+#[cfg(feature = "python")]
+/// Scan hashes with automatic caching.
+///
+/// Checks if a cached result exists. If found, returns cached data.
+/// Otherwise, performs the scan, caches the result, and returns it.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `pattern` - Key pattern to scan (e.g., "user:*")
+/// * `schema` - List of (field_name, type_name) tuples
+/// * `cache_key` - Redis key to use for caching the result
+/// * `ttl` - Optional TTL in seconds for the cached result
+/// * `projection` - Optional list of fields to fetch
+///
+/// # Returns
+/// A tuple of (Arrow IPC bytes, from_cache: bool)
+#[pyfunction]
+#[pyo3(signature = (url, pattern, schema, cache_key, ttl = None, projection = None))]
+fn py_scan_cached(
+    py: Python<'_>,
+    url: &str,
+    pattern: &str,
+    schema: Vec<(String, String)>,
+    cache_key: &str,
+    ttl: Option<i64>,
+    projection: Option<Vec<String>>,
+) -> PyResult<(Py<PyAny>, bool)> {
+    // Parse schema from Python types
+    let field_types: Vec<(String, RedisType)> = schema
+        .into_iter()
+        .map(|(name, type_str)| {
+            let redis_type = match type_str.to_lowercase().as_str() {
+                "utf8" | "str" | "string" => RedisType::Utf8,
+                "int64" | "int" | "integer" => RedisType::Int64,
+                "float64" | "float" | "double" => RedisType::Float64,
+                "bool" | "boolean" => RedisType::Boolean,
+                _ => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                        "Unknown type '{}' for field '{}'. Supported: utf8, int64, float64, bool",
+                        type_str, name
+                    )));
+                },
+            };
+            Ok((name, redis_type))
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+
+    let hash_schema = HashSchema::new(field_types);
+
+    let (batch, from_cache) =
+        io::cache::scan_cached(url, pattern, hash_schema, cache_key, ttl, projection)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    // Serialize to Arrow IPC format
+    let mut buf = Vec::new();
+    {
+        let mut writer = arrow::ipc::writer::FileWriter::try_new(&mut buf, batch.schema().as_ref())
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to create IPC writer: {}",
+                    e
+                ))
+            })?;
+
+        writer.write(&batch).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to write batch: {}",
+                e
+            ))
+        })?;
+
+        writer.finish().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to finish IPC: {}",
+                e
+            ))
+        })?;
+    }
+
+    Ok((pyo3::types::PyBytes::new(py, &buf).into(), from_cache))
+}
+
 // ============================================================================
 // Geospatial Python bindings
 // ============================================================================
@@ -1432,6 +2080,40 @@ fn py_geo_add(
     use crate::client::geo::geo_add;
 
     let result = geo_add(url, key, &locations)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    let mut dict = std::collections::HashMap::new();
+    dict.insert("added".to_string(), result.added);
+    dict.insert("updated".to_string(), result.updated);
+    Ok(dict)
+}
+
+#[cfg(feature = "python")]
+/// Add locations to a geo set from separate column vectors.
+///
+/// This is a DataFrame-friendly variant that accepts separate vectors for names,
+/// longitudes, and latitudes.
+///
+/// # Arguments
+/// * `url` - Redis connection URL
+/// * `key` - Redis key for the geo set
+/// * `names` - List of location names
+/// * `longitudes` - List of longitude values
+/// * `latitudes` - List of latitude values
+///
+/// # Returns
+/// A dict with `added` and `updated` counts.
+#[pyfunction]
+fn py_geo_add_from_columns(
+    url: &str,
+    key: &str,
+    names: Vec<String>,
+    longitudes: Vec<f64>,
+    latitudes: Vec<f64>,
+) -> PyResult<std::collections::HashMap<String, usize>> {
+    use crate::client::geo::geo_add_from_columns;
+
+    let result = geo_add_from_columns(url, key, names, longitudes, latitudes)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
     let mut dict = std::collections::HashMap::new();
