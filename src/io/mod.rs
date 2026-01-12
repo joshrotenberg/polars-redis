@@ -12,10 +12,12 @@
 //! - [`infer`] - Schema inference from Redis data
 //! - [`scanner`] - Key scanning utilities
 //! - [`multi`] - Multi-cluster write operations
+//! - [`replication`] - CDC-style replication pipeline
 
 pub mod cache;
 pub mod infer;
 pub mod multi;
+pub mod replication;
 pub mod scanner;
 #[cfg(feature = "search")]
 pub mod search;

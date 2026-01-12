@@ -526,6 +526,54 @@ impl StreamConsumer {
         Ok(Some(batch))
     }
 
+    /// Get the next batch of raw entries as (entry_id, fields) pairs.
+    ///
+    /// This is useful when you need to apply custom filtering logic
+    /// before processing entries.
+    ///
+    /// Returns an empty Vec when no entries are available within the block timeout.
+    pub async fn next_batch_raw(
+        &mut self,
+    ) -> Result<Vec<(String, std::collections::HashMap<String, String>)>> {
+        // Initialize stats timer on first call
+        if self.stats.started_at.is_none() {
+            self.stats.started_at = Some(std::time::Instant::now());
+        }
+
+        // Ensure consumer group exists
+        self.ensure_group()?;
+
+        // Read entries using XREADGROUP
+        let entries = self.read_entries()?;
+
+        if entries.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Store entry IDs for later acknowledgment
+        self.pending_ids = entries.iter().map(|e| e.id.clone()).collect();
+
+        // Update stats
+        self.stats.batches_processed += 1;
+        self.stats.entries_processed += entries.len() as u64;
+        if let Some(last_id) = self.pending_ids.last() {
+            self.stats.last_entry_id = Some(last_id.clone());
+        }
+
+        // Convert to (id, fields) pairs
+        let result: Vec<(String, std::collections::HashMap<String, String>)> =
+            entries.into_iter().map(|e| (e.id, e.fields)).collect();
+
+        Ok(result)
+    }
+
+    /// Acknowledge specific entry IDs.
+    ///
+    /// Use this when processing entries one at a time with custom logic.
+    pub async fn ack(&mut self, entry_ids: &[String]) -> Result<usize> {
+        self.ack_entries(entry_ids)
+    }
+
     /// Read entries from the stream using XREADGROUP.
     fn read_entries(&mut self) -> Result<Vec<StreamEntry>> {
         let mut conn = self.conn.clone();
